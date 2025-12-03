@@ -1,93 +1,677 @@
 # detection/card_detector.py
-"""Card detection using template matching"""
+"""Detect cards in hand with improved matching"""
 
 import cv2
 import numpy as np
 from pathlib import Path
+from typing import List, Tuple, Optional
 from config.game_config import CARD_SLOTS
 
 
 class CardDetector:
-    """Detect cards in hand using normalized templates"""
-    
-    def __init__(self, templates_dir='data/card_templates'):
-        self.templates = self._load_templates(templates_dir)
-        print(f"   ✅ Loaded {len(self.templates)} card templates")
-    
-    def _load_templates(self, templates_dir):
-        """Load all normalized card templates"""
-        templates = {}
-        templates_path = Path(templates_dir)
-        
-        for subfolder in ['base', 'evolution', 'hero']:
-            folder = templates_path / subfolder
-            if not folder.exists():
-                continue
-            
-            for img_path in folder.glob('*.png'):
-                card_name = img_path.stem
-                template = cv2.imread(str(img_path))
-                if template is not None:
-                    templates[card_name] = template
-        
-        return templates
-    
-    def detect_cards_in_hand(self, frame: np.ndarray) -> list:
-        """Detect which 4 cards are in hand"""
-        
-        cards = []
-        
+    """Detect cards in hand using template matching"""
+
+    # CROP SETTINGS - Adjust these to change what area is matched
+    CROP_TOP = 0.17  # Remove top border
+    CROP_BOTTOM = 0.28  # Remove elixir + bottom border
+    CROP_SIDE = 0.12  # Remove side borders
+
+    # Card selection lift offset (when player taps a card)
+    CARD_LIFT_OFFSET = 21
+
+    # Persistence settings
+    CONFIDENCE_THRESHOLD = 5  # Frames before we lock in a card
+    MAX_WAITING_FRAMES = 25  # Maximum frames waiting_for_card can appear
+
+    # Special card names (can be with or without folder prefix)
+    WAITING_CARD_NAMES = ["waiting_for_card", "other/waiting_for_card"]
+
+    def __init__(self, templates_dir="data/card_templates"):
+        self.templates_dir = Path(templates_dir)
+        print(f"🔍 Initializing CardDetector with templates from: {self.templates_dir}")
+        # Print full path
+        print(f"   Full path: {self.templates_dir.resolve()}")
+        self.templates = {}
+        self.templates_gray = {}
+        self._load_templates()
+
+        # Card persistence - remember locked cards per slot
+        self._locked_cards = ["unknown", "unknown", "unknown", "unknown"]
+
+        # Track consecutive detections per slot
+        self._detection_counts = [
+            {"card": "unknown", "count": 0},
+            {"card": "unknown", "count": 0},
+            {"card": "unknown", "count": 0},
+            {"card": "unknown", "count": 0},
+        ]
+
+        # Track waiting_for_card state per slot
+        self._waiting_state = [
+            {"active": False, "frames": 0},
+            {"active": False, "frames": 0},
+            {"active": False, "frames": 0},
+            {"active": False, "frames": 0},
+        ]
+
+    def _load_templates(self):
+        """Load all card templates from subdirectories"""
+        if not self.templates_dir.exists():
+            print(f"⚠️  Templates directory not found: {self.templates_dir}")
+            return
+
+        print(f"🔍 Loading card templates from: {self.templates_dir}")
+
+        # Search recursively for all image files in subdirectories
+        template_files = (
+            list(self.templates_dir.rglob("*.png"))
+            + list(self.templates_dir.rglob("*.jpg"))
+            + list(self.templates_dir.rglob("*.jpeg"))
+        )
+
+        if not template_files:
+            print(f"⚠️  No image files found in {self.templates_dir} or subdirectories")
+            return
+
+        print(f"   Found {len(template_files)} template files")
+
+        for template_path in template_files:
+            # Get relative path from templates_dir for naming
+            relative_path = template_path.relative_to(self.templates_dir)
+            # Use just the stem (filename without extension) for the card name
+            # But preserve folder for special cards like "other/waiting_for_card"
+            parent = relative_path.parent
+            if str(parent) != ".":
+                card_name = f"{parent}/{template_path.stem}"
+            else:
+                card_name = template_path.stem
+
+            template = cv2.imread(str(template_path))
+            if template is not None:
+                self.templates[card_name] = template
+                self.templates_gray[card_name] = cv2.cvtColor(
+                    template, cv2.COLOR_BGR2GRAY
+                )
+
+        # Also load waiting_for_card with simple name for easier matching
+        for name in list(self.templates.keys()):
+            if "waiting_for_card" in name and "waiting_for_card" not in self.templates:
+                self.templates["waiting_for_card"] = self.templates[name]
+                self.templates_gray["waiting_for_card"] = self.templates_gray[name]
+                print(f"   ✓ Aliased '{name}' as 'waiting_for_card'")
+
+        print(f"   ✅ Loaded {len(self.templates)} templates")
+
+        # Print organized summary
+        if self.templates:
+            print(f"\n📊 Template categories:")
+            categories = {}
+            for card_name in self.templates.keys():
+                category = card_name.split("/")[0] if "/" in card_name else "root"
+                categories[category] = categories.get(category, 0) + 1
+
+            for category, count in sorted(categories.items()):
+                print(f"   • {category}: {count} cards")
+
+    def detect_cards_with_debug(
+        self, frame: np.ndarray, debug_frame: np.ndarray = None
+    ) -> List[dict]:
+        """
+        Detect cards with TIGHT cropping - just the artwork, no borders or elixir
+        """
+
+        detected_cards = []
+
         for slot_idx, (x1, y1, x2, y2) in enumerate(CARD_SLOTS):
-            card_region = frame[y1:y2, x1:x2]
-            
-            if card_region.size == 0:
-                cards.append('unknown')
+            h, w = frame.shape[:2]
+
+            if x2 > w or y2 > h or x1 >= x2 or y1 >= y2:
+                detected_cards.append(
+                    {"name": "unknown", "score": 0.0, "method": "invalid"}
+                )
                 continue
-            
-            # Normalize card (remove border, resize)
-            normalized = self._normalize_card(card_region)
-            
-            # Match template
-            best_match = self._match_template(normalized)
-            cards.append(best_match)
-        
-        return cards
-    
-    def _normalize_card(self, card_region: np.ndarray) -> np.ndarray:
-        """Normalize card region (same as templates)"""
-        
-        height, width = card_region.shape[:2]
-        
-        # Crop border (15%)
-        crop = 0.15
-        x = int(width * crop)
-        y = int(height * crop)
-        w = int(width * (1 - 2 * crop))
-        h = int(height * (1 - 2 * crop))
-        
-        cropped = card_region[y:y+h, x:x+w]
-        
-        # Resize to template size (120x90)
-        resized = cv2.resize(cropped, (120, 90), interpolation=cv2.INTER_AREA)
-        
-        return resized
-    
-    def _match_template(self, card_image: np.ndarray) -> str:
-        """Find best matching template"""
-        
-        best_score = 0
-        best_card = 'unknown'
-        
-        for card_name, template in self.templates.items():
-            result = cv2.matchTemplate(card_image, template, cv2.TM_CCOEFF_NORMED)
-            score = np.max(result)
-            
-            if score > best_score:
-                best_score = score
-                best_card = card_name
-        
-        # Confidence threshold
-        if best_score < 0.55:  # Adjust as needed
-            return 'unknown'
-        
-        return best_card
+
+            # Try normal position first
+            result = self._detect_card_at_position(frame, x1, y1, x2, y2)
+
+            # If not found, try lifted position (card selected by player)
+            if result["name"] == "unknown":
+                lifted_y1 = max(0, y1 - self.CARD_LIFT_OFFSET)
+                lifted_y2 = max(0, y2 - self.CARD_LIFT_OFFSET)
+
+                if lifted_y1 < lifted_y2:
+                    lifted_result = self._detect_card_at_position(
+                        frame, x1, lifted_y1, x2, lifted_y2
+                    )
+                    if lifted_result["name"] != "unknown":
+                        result = lifted_result
+                        result["method"] += "_lifted"
+
+            # Apply persistence and transition validation
+            result = self._apply_persistence_logic(slot_idx, result)
+
+            detected_cards.append(result)
+
+            # Draw debug visualization
+            if debug_frame is not None:
+                self._draw_debug_visualization(
+                    debug_frame, frame, slot_idx, x1, y1, x2, y2, result
+                )
+
+        return detected_cards
+
+    def _is_waiting_for_card(self, card_name: str) -> bool:
+        """Check if the detected card is a waiting_for_card placeholder"""
+        return card_name in self.WAITING_CARD_NAMES or card_name.endswith(
+            "waiting_for_card"
+        )
+
+    def _apply_persistence_logic(self, slot_idx: int, result: dict) -> dict:
+        """
+        Apply persistence logic with transition validation:
+        - Need 5 consecutive frames to lock in a card
+        - Card can only change via waiting_for_card
+        - waiting_for_card lasts max 25 frames
+        """
+        detected_name = result["name"]
+        locked_card = self._locked_cards[slot_idx]
+        detection_info = self._detection_counts[slot_idx]
+        waiting_state = self._waiting_state[slot_idx]
+
+        # Handle waiting_for_card detection
+        if self._is_waiting_for_card(detected_name):
+            # Enter waiting state
+            waiting_state["active"] = True
+            waiting_state["frames"] = 0
+            self._locked_cards[slot_idx] = "unknown"
+            detection_info["card"] = "waiting_for_card"
+            detection_info["count"] = 1
+            return {
+                "name": "waiting_for_card",
+                "score": result["score"],
+                "method": "waiting",
+            }
+
+        # If in waiting state, track frames
+        if waiting_state["active"]:
+            waiting_state["frames"] += 1
+
+            # If we detect a valid card while waiting, start counting
+            if detected_name != "unknown" and not self._is_waiting_for_card(
+                detected_name
+            ):
+                if detection_info["card"] == detected_name:
+                    detection_info["count"] += 1
+                else:
+                    detection_info["card"] = detected_name
+                    detection_info["count"] = 1
+
+                # Lock in after threshold
+                if detection_info["count"] >= self.CONFIDENCE_THRESHOLD:
+                    self._locked_cards[slot_idx] = detected_name
+                    waiting_state["active"] = False
+                    waiting_state["frames"] = 0
+                    return {
+                        "name": detected_name,
+                        "score": result["score"],
+                        "method": result["method"] + "_confirmed",
+                    }
+                else:
+                    # Still building confidence, show as waiting
+                    return {
+                        "name": "waiting_for_card",
+                        "score": 0.0,
+                        "method": f"confirming_{detection_info['count']}/{self.CONFIDENCE_THRESHOLD}",
+                    }
+
+            # Max waiting frames exceeded - force accept next detection
+            if waiting_state["frames"] >= self.MAX_WAITING_FRAMES:
+                waiting_state["active"] = False
+                waiting_state["frames"] = 0
+                if detected_name != "unknown":
+                    self._locked_cards[slot_idx] = detected_name
+                    detection_info["card"] = detected_name
+                    detection_info["count"] = 1
+                    return {
+                        "name": detected_name,
+                        "score": result["score"],
+                        "method": result["method"] + "_forced",
+                    }
+
+            # Still waiting
+            return {
+                "name": "waiting_for_card",
+                "score": 0.0,
+                "method": f"waiting_{waiting_state['frames']}/{self.MAX_WAITING_FRAMES}",
+            }
+
+        # Not in waiting state - normal detection
+        if locked_card != "unknown" and not self._is_waiting_for_card(locked_card):
+            # We have a locked card
+            if detected_name == locked_card:
+                # Same card detected - reinforce
+                detection_info["count"] = min(
+                    detection_info["count"] + 1, self.CONFIDENCE_THRESHOLD + 5
+                )
+                return {
+                    "name": locked_card,
+                    "score": result["score"],
+                    "method": result["method"] + "_locked",
+                }
+
+            elif (
+                detected_name != "unknown"
+                and detected_name != locked_card
+                and not self._is_waiting_for_card(detected_name)
+            ):
+                # Different card detected - this should be impossible without waiting_for_card
+                # This is likely a misdetection, or we missed waiting_for_card
+                # Treat as waiting_for_card if this persists
+                if detection_info["card"] == detected_name:
+                    detection_info["count"] += 1
+                else:
+                    detection_info["card"] = detected_name
+                    detection_info["count"] = 1
+
+                # If we see a different card for many frames, assume we missed waiting_for_card
+                if detection_info["count"] >= self.CONFIDENCE_THRESHOLD:
+                    # Transition to new card (we missed waiting_for_card)
+                    self._locked_cards[slot_idx] = detected_name
+                    return {
+                        "name": detected_name,
+                        "score": result["score"],
+                        "method": result["method"] + "_transition",
+                    }
+
+                # Otherwise, stick with locked card
+                return {
+                    "name": locked_card,
+                    "score": 0.0,
+                    "method": "persisted_over_" + detected_name,
+                }
+
+            else:
+                # Unknown detection - stick with locked card
+                return {"name": locked_card, "score": 0.0, "method": "persisted"}
+
+        else:
+            # No locked card yet - build confidence
+            if detected_name != "unknown" and not self._is_waiting_for_card(
+                detected_name
+            ):
+                if detection_info["card"] == detected_name:
+                    detection_info["count"] += 1
+                else:
+                    detection_info["card"] = detected_name
+                    detection_info["count"] = 1
+
+                # Lock in after threshold
+                if detection_info["count"] >= self.CONFIDENCE_THRESHOLD:
+                    self._locked_cards[slot_idx] = detected_name
+                    return {
+                        "name": detected_name,
+                        "score": result["score"],
+                        "method": result["method"] + "_confirmed",
+                    }
+                else:
+                    return {
+                        "name": detected_name,
+                        "score": result["score"],
+                        "method": f"building_{detection_info['count']}/{self.CONFIDENCE_THRESHOLD}",
+                    }
+
+            return result
+
+    def _draw_debug_visualization(
+        self,
+        debug_frame: np.ndarray,
+        frame: np.ndarray,
+        slot_idx: int,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        result: dict,
+    ):
+        """Draw debug visualization for a card slot"""
+        card_region = frame[y1:y2, x1:x2]
+        card_height = card_region.shape[0]
+        card_width = card_region.shape[1]
+
+        crop_top = int(card_height * self.CROP_TOP)
+        crop_bottom = int(card_height * (1 - self.CROP_BOTTOM))
+        crop_left = int(card_width * self.CROP_SIDE)
+        crop_right = int(card_width * (1 - self.CROP_SIDE))
+
+        # Draw FULL card slot (yellow)
+        cv2.rectangle(debug_frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
+
+        # Draw lifted card slot (cyan)
+        lifted_y1 = max(0, y1 - self.CARD_LIFT_OFFSET)
+        lifted_y2 = max(0, y2 - self.CARD_LIFT_OFFSET)
+        cv2.rectangle(debug_frame, (x1, lifted_y1), (x2, lifted_y2), (255, 255, 0), 1)
+
+        # Draw TIGHT CROP region (green)
+        tight_x1 = x1 + crop_left
+        tight_y1 = y1 + crop_top
+        tight_x2 = x1 + crop_right
+        tight_y2 = y1 + crop_bottom
+        cv2.rectangle(
+            debug_frame,
+            (tight_x1, tight_y1),
+            (tight_x2, tight_y2),
+            (0, 255, 0),
+            2,
+        )
+
+        # Color based on method
+        method = result.get("method", "")
+        if "persisted" in method:
+            color = (255, 165, 0)  # Blue-ish (persisted)
+        elif "waiting" in method or "confirming" in method:
+            color = (255, 0, 255)  # Magenta (waiting)
+        elif "locked" in method or "confirmed" in method:
+            color = (0, 255, 0)  # Green (confident)
+        elif "building" in method:
+            color = (0, 255, 255)  # Yellow (building confidence)
+        elif result["name"] != "unknown":
+            if result["score"] >= 0.70:
+                color = (0, 255, 0)  # Green
+            elif result["score"] >= 0.60:
+                color = (0, 255, 255)  # Yellow
+            else:
+                color = (0, 165, 255)  # Orange
+        else:
+            color = (0, 0, 255)  # Red
+
+        # Get short card name (remove folder prefix)
+        card_name = result["name"]
+        if "/" in card_name:
+            card_name = card_name.split("/")[-1]
+
+        # Draw background for better readability
+        text = f"{card_name}"
+        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
+        cv2.rectangle(
+            debug_frame,
+            (x1, y1 - 18),
+            (x1 + text_size[0] + 4, y1 - 2),
+            (0, 0, 0),
+            -1,
+        )
+        cv2.putText(
+            debug_frame,
+            text,
+            (x1 + 2, y1 - 6),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            color,
+            1,
+        )
+
+        # Show score and method below card
+        info_text = f"{result['score']:.2f} {method}"
+        text_size2 = cv2.getTextSize(info_text, cv2.FONT_HERSHEY_SIMPLEX, 0.3, 1)[0]
+        cv2.rectangle(
+            debug_frame,
+            (x1, y2 + 2),
+            (x1 + text_size2[0] + 4, y2 + 16),
+            (0, 0, 0),
+            -1,
+        )
+        cv2.putText(
+            debug_frame,
+            info_text,
+            (x1 + 2, y2 + 12),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.3,
+            color,
+            1,
+        )
+
+    def _detect_card_at_position(
+        self, frame: np.ndarray, x1: int, y1: int, x2: int, y2: int
+    ) -> dict:
+        """Detect a card at a specific position"""
+
+        h, w = frame.shape[:2]
+
+        if x2 > w or y2 > h or x1 >= x2 or y1 >= y2:
+            return {"name": "unknown", "score": 0.0, "method": "invalid"}
+
+        card_region = frame[y1:y2, x1:x2]
+
+        if card_region.size == 0:
+            return {"name": "unknown", "score": 0.0, "method": "empty"}
+
+        # TIGHT CROP: Remove borders and elixir
+        card_height = card_region.shape[0]
+        card_width = card_region.shape[1]
+
+        # Calculate crop coordinates
+        crop_top = int(card_height * self.CROP_TOP)
+        crop_bottom = int(card_height * (1 - self.CROP_BOTTOM))
+        crop_left = int(card_width * self.CROP_SIDE)
+        crop_right = int(card_width * (1 - self.CROP_SIDE))
+
+        # Extract just the centered artwork
+        card_artwork = card_region[crop_top:crop_bottom, crop_left:crop_right]
+
+        if card_artwork.size == 0:
+            return {"name": "unknown", "score": 0.0, "method": "empty"}
+
+        # FIRST: Check for waiting_for_card (priority check)
+        waiting_result = self._check_waiting_for_card(card_artwork)
+        if waiting_result is not None:
+            return waiting_result
+
+        # Try detection with score tracking
+        result = {"name": "unknown", "score": 0.0, "method": "none"}
+
+        # 1. Color matching (skip waiting_for_card - already checked)
+        name, score = self._match_card_with_score(
+            card_artwork, use_gray=False, threshold=0.60
+        )
+        if name != "unknown":
+            result = {"name": name, "score": score, "method": "color"}
+
+        # 2. Grayscale (for unaffordable cards)
+        if result["name"] == "unknown":
+            name, score = self._match_card_with_score(
+                card_artwork, use_gray=True, threshold=0.55
+            )
+            if name != "unknown":
+                result = {"name": name, "score": score, "method": "gray"}
+
+        # 3. Even tighter crop
+        if result["name"] == "unknown":
+            tighter_top = int(card_height * 0.20)
+            tighter_bottom = int(card_height * 0.70)
+            tighter_left = int(card_width * 0.15)
+            tighter_right = int(card_width * 0.85)
+
+            card_tighter = card_region[
+                tighter_top:tighter_bottom, tighter_left:tighter_right
+            ]
+
+            if card_tighter.size > 0:
+                name, score = self._match_card_with_score(
+                    card_tighter, use_gray=False, threshold=0.50
+                )
+                if name != "unknown":
+                    result = {"name": name, "score": score, "method": "tight"}
+
+        # 4. Last resort
+        if result["name"] == "unknown":
+            tighter_top = int(card_height * 0.20)
+            tighter_bottom = int(card_height * 0.70)
+            tighter_left = int(card_width * 0.15)
+            tighter_right = int(card_width * 0.85)
+
+            card_tighter = card_region[
+                tighter_top:tighter_bottom, tighter_left:tighter_right
+            ]
+
+            if card_tighter.size > 0:
+                name, score = self._match_card_with_score(
+                    card_tighter, use_gray=True, threshold=0.45
+                )
+                if name != "unknown":
+                    result = {"name": name, "score": score, "method": "tight_gray"}
+
+        return result
+
+    def _check_waiting_for_card(self, card_artwork: np.ndarray) -> Optional[dict]:
+        """
+        Check if the card region looks like the waiting_for_card placeholder.
+        Uses direct template matching since waiting_for_card has a distinctive look.
+        """
+
+        if card_artwork.size == 0:
+            return None
+
+        try:
+            # Get waiting_for_card template
+            waiting_template = self.templates.get(
+                "waiting_for_card"
+            ) or self.templates.get("other/waiting_for_card")
+
+            if waiting_template is None:
+                return None
+
+            # Resize template to match card size (not the other way around)
+            template_resized = cv2.resize(
+                waiting_template, (card_artwork.shape[1], card_artwork.shape[0])
+            )
+
+            # Use COLOR matching - waiting_for_card has distinctive blue color
+            result_color = cv2.matchTemplate(
+                card_artwork, template_resized, cv2.TM_CCOEFF_NORMED
+            )
+            # Get max score safely
+            score_color = float(np.max(result_color))
+
+            # Also try grayscale for shape
+            if len(card_artwork.shape) == 3:
+                card_gray = cv2.cvtColor(card_artwork, cv2.COLOR_BGR2GRAY)
+            else:
+                card_gray = card_artwork
+
+            if len(template_resized.shape) == 3:
+                template_gray = cv2.cvtColor(template_resized, cv2.COLOR_BGR2GRAY)
+            else:
+                template_gray = template_resized
+
+            result_gray = cv2.matchTemplate(
+                card_gray, template_gray, cv2.TM_CCOEFF_NORMED
+            )
+            # Get max score safely
+            score_gray = float(np.max(result_gray))
+
+            # Use the better score
+            best_score = max(score_color, score_gray)
+            method = "waiting_color" if score_color >= score_gray else "waiting_gray"
+
+            # Threshold of 0.45 for waiting_for_card
+            if best_score > 0.45:
+                return {
+                    "name": "waiting_for_card",
+                    "score": best_score,
+                    "method": method,
+                }
+
+            return None
+
+        except Exception as e:
+            print(f"⚠️ _check_waiting_for_card error: {e}")
+            return None
+
+    def detect_cards_in_hand(self, frame: np.ndarray) -> List[str]:
+        """
+        Detect cards with TIGHT cropping - just artwork, no borders
+        """
+        # Use detect_cards_with_debug and extract names
+        results = self.detect_cards_with_debug(frame, debug_frame=None)
+        return [r["name"] for r in results]
+
+    def reset_persistence(self):
+        """Reset card persistence - call when starting a new match"""
+        self._locked_cards = ["unknown", "unknown", "unknown", "unknown"]
+        self._detection_counts = [
+            {"card": "unknown", "count": 0},
+            {"card": "unknown", "count": 0},
+            {"card": "unknown", "count": 0},
+            {"card": "unknown", "count": 0},
+        ]
+        self._waiting_state = [
+            {"active": False, "frames": 0},
+            {"active": False, "frames": 0},
+            {"active": False, "frames": 0},
+            {"active": False, "frames": 0},
+        ]
+
+    def _match_card_with_score(
+        self, card_region: np.ndarray, use_gray: bool = False, threshold: float = 0.45
+    ) -> Tuple[str, float]:
+        """Match card region with templates and return both name and score"""
+
+        if len(self.templates) == 0:
+            return "unknown", 0.0
+
+        best_match = "unknown"
+        best_score = 0.0
+
+        templates_to_use = self.templates_gray if use_gray else self.templates
+
+        for card_name, template in templates_to_use.items():
+            # Skip waiting_for_card in normal matching (handled separately)
+            if self._is_waiting_for_card(card_name):
+                continue
+
+            try:
+                # Resize template to match card size
+                template_resized = cv2.resize(
+                    template, (card_region.shape[1], card_region.shape[0])
+                )
+
+                if use_gray:
+                    # Convert both to grayscale
+                    if len(card_region.shape) == 3:
+                        card_to_match = cv2.cvtColor(card_region, cv2.COLOR_BGR2GRAY)
+                    else:
+                        card_to_match = card_region
+
+                    if len(template_resized.shape) == 3:
+                        template_to_match = cv2.cvtColor(
+                            template_resized, cv2.COLOR_BGR2GRAY
+                        )
+                    else:
+                        template_to_match = template_resized
+                else:
+                    # Use color matching directly
+                    card_to_match = card_region
+                    template_to_match = template_resized
+
+                # Template matching
+                result = cv2.matchTemplate(
+                    card_to_match, template_to_match, cv2.TM_CCOEFF_NORMED
+                )
+                # Get max score safely
+                score = float(np.max(result))
+
+                if score > best_score:
+                    best_score = score
+                    if score > threshold:
+                        best_match = card_name
+
+            except Exception:
+                continue
+
+        return best_match, best_score
+
+    def _match_card(
+        self, card_region: np.ndarray, use_gray: bool = False, threshold: float = 0.45
+    ) -> str:
+        """Match card region with templates (returns name only)"""
+        name, _ = self._match_card_with_score(card_region, use_gray, threshold)
+        return name

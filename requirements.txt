@@ -24,3 +24,6 @@ pywin32>=305
 # Data
 pandas>=2.0.0
 scikit-learn>=1.3.0
+
+# Formatting
+black>=25.0.0
