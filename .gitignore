@@ -1,0 +1,7 @@
+.DS_Store
+__pycache__/
+*.pyc
+venv/
+env/
+MERGED_NEW_SAMETEAM-1/
+runs/
