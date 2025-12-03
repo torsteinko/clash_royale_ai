@@ -1,4 +1,4 @@
-"""OCR for elixir, timer, tower HP"""
+"""OCR for elixir, timer, tower HP - optimized with bar detection"""
 
 import cv2
 import numpy as np
@@ -12,57 +12,182 @@ class OCRReader:
         #     r"C:\Program Files\Tesseract-OCR\tesseract.exe"
         # )
 
-        # Elixir bar region (where the purple bar and number are)
-        # Adjust these based on your screen resolution
-        self.ELIXIR_NUMBER_REGION = (305, 1227, 380, 1270)  # (x1, y1, x2, y2)
+        # Elixir bar region (the purple/pink bar itself, not the number)
+        # This is the horizontal bar that fills up as elixir regenerates
+        # Format: (x1, y1, x2, y2) - the full bar region
+        self.ELIXIR_BAR_REGION = (192, 1264, 691, 1235)  # Full bar area
+        self.ELIXIR_BAR_EMPTY_X = 192  # X where bar starts (0 elixir)
+        self.ELIXIR_BAR_FULL_X = 691  # X where bar ends (10 elixir)
 
-        # Card elixir cost regions (bottom of each card slot)
-        # These are relative offsets from card slot bottom-left
-        self.CARD_ELIXIR_OFFSET = {
-            "x_offset": 45,  # Center of card
-            "y_offset": -25,  # From bottom of card slot
-            "width": 30,
-            "height": 30,
-        }
+        # Purple/pink color range in HSV for detecting elixir bar fill
+        # Elixir bar is bright pink/magenta
+        self.ELIXIR_COLOR_LOW = np.array([140, 80, 100])  # HSV low
+        self.ELIXIR_COLOR_HIGH = np.array([170, 255, 255])  # HSV high
+
+        # Card elixir cost - tight centered region at bottom of card
+        # Adjusted to be higher and more centered on the elixir number
+        self.CARD_ELIXIR_WIDTH = 30  # Very narrow - just the number
+        self.CARD_ELIXIR_HEIGHT = 30  # Short box
+        self.CARD_ELIXIR_Y_OFFSET = (
+            -1  # Pixels up from very bottom of card slot (higher)
+        )
 
     def read_elixir(self, frame: np.ndarray) -> float:
         """
-        Read current elixir from the elixir bar.
-        Returns float 0-10, or None if cannot read.
+        Read current elixir by measuring purple bar + recharge progress.
+
+        Bar structure at Y=1245:
+        - Bar starts at x=195, each elixir = 50 pixels
+        - Three color zones (in BGR/HSV):
+          1. Purple (filled) - bright magenta
+          2. Recharge (partial) - higher brightness, LOWER saturation than empty
+          3. Empty - dark blue, HIGH saturation, LOW brightness
+
+        Photoshop values (H:0-360, S:0-100, V:0-100):
+        - Empty:    H=215, S=97%, V=47%, RGB(4,53,120)
+        - Recharge: H=221, S=67%, V=64%, RGB(54,88,162)
+
+        OpenCV HSV (H:0-179, S:0-255, V:0-255):
+        - Empty:    H=107, S=247, V=120
+        - Recharge: H=110, S=171, V=163
+
+        Returns float 0.0-10.0 with decimal precision from recharge bar.
         """
         try:
-            x1, y1, x2, y2 = self.ELIXIR_NUMBER_REGION
+            # Single Y coordinate to sample (middle of bar)
+            BAR_Y = 1245
+
+            # Bar dimensions
+            BAR_START_X = 195
+            BAR_END_X = 695
+            PIXELS_PER_ELIXIR = 50
+
             h, w = frame.shape[:2]
 
             # Bounds check
+            if BAR_END_X > w or BAR_Y >= h:
+                return None
+
+            # Get single row of pixels at BAR_Y
+            row_bgr = frame[BAR_Y, BAR_START_X:BAR_END_X]
+
+            if row_bgr.size == 0:
+                return None
+
+            # Convert to HSV
+            row_reshaped = row_bgr.reshape(1, -1, 3)
+            hsv_row = cv2.cvtColor(row_reshaped, cv2.COLOR_BGR2HSV)[0]
+
+            # Extract channels
+            hue = hsv_row[:, 0].astype(np.int16)
+            sat = hsv_row[:, 1].astype(np.int16)
+            val = hsv_row[:, 2].astype(np.int16)
+
+            # Also get blue channel directly (BGR)
+            blue_channel = row_bgr[:, 0].astype(np.int16)
+
+            # === COLOR DEFINITIONS (OpenCV scale) ===
+            # Purple (filled elixir): magenta/pink hue, high saturation
+            # Hue around 140-170 in OpenCV (280-340 in Photoshop)
+            purple_mask = (
+                (hue >= 130)
+                & (hue <= 175)  # Purple/magenta hue
+                & (sat >= 100)  # Good saturation
+                & (val >= 100)  # Visible brightness
+            )
+
+            # Empty: H=107 (OpenCV), S=247, V=120, Blue=120
+            # Recharge: H=110 (OpenCV), S=171, V=163, Blue=162
+            #
+            # Key insight: Recharge has LOWER saturation and HIGHER value than empty!
+            # Also recharge has higher blue channel value
+
+            # Empty detection: high saturation (>200), lower value (<140), lower blue (<140)
+            empty_mask = (
+                (sat >= 200)  # High saturation (empty is very saturated)
+                & (val <= 140)  # Lower brightness
+                & (blue_channel <= 140)  # Lower blue channel
+            )
+
+            # Recharge detection: lower saturation (<200), higher value (>140), higher blue (>140)
+            # Also must be in the blue hue range (not purple)
+            recharge_mask = (
+                (hue >= 100)
+                & (hue <= 130)  # Blue hue range (not purple)
+                & (sat < 220)  # Lower saturation than empty
+                & (val >= 130)  # Brighter than empty
+                & (blue_channel >= 130)  # Higher blue than empty
+                & ~purple_mask  # Not purple
+            )
+
+            # Find rightmost purple pixel (full elixir bars)
+            purple_indices = np.where(purple_mask)[0]
+
+            if len(purple_indices) == 0:
+                # No purple - check if there's recharge (between 0 and 1)
+                recharge_indices = np.where(recharge_mask)[0]
+                if len(recharge_indices) > 0:
+                    rightmost_recharge = recharge_indices[-1]
+                    elixir = rightmost_recharge / PIXELS_PER_ELIXIR
+                    return round(max(0.0, min(10.0, elixir)), 1)
+                return 0.0
+
+            rightmost_purple = purple_indices[-1]
+
+            # Calculate full elixir from purple
+            full_elixir = rightmost_purple / PIXELS_PER_ELIXIR
+
+            # Now check for recharge bar AFTER the purple
+            if rightmost_purple < len(row_bgr) - 1:
+                # Check pixels after purple for recharge
+                after_purple_mask = recharge_mask[rightmost_purple + 1 :]
+                recharge_indices_after = np.where(after_purple_mask)[0]
+
+                if len(recharge_indices_after) > 0:
+                    # Find how far the recharge extends
+                    rightmost_recharge_relative = recharge_indices_after[-1]
+
+                    # Add 1 because indices are 0-based
+                    partial_pixels = rightmost_recharge_relative + 1
+                    partial_elixir = partial_pixels / PIXELS_PER_ELIXIR
+
+                    total_elixir = full_elixir + partial_elixir
+                    return round(max(0.0, min(10.0, total_elixir)), 1)
+
+            # No recharge found, just return full elixir
+            return round(max(0.0, min(10.0, full_elixir)), 1)
+
+        except Exception as e:
+            return None
+
+    def read_elixir_ocr(self, frame: np.ndarray) -> float:
+        """
+        Read current elixir using OCR (slower, but more precise).
+        Kept as fallback if bar detection fails.
+        """
+        try:
+            # Use a region near the elixir number (left side of bar)
+            x1, y1 = 295, 1225
+            x2, y2 = 360, 1260
+            h, w = frame.shape[:2]
+
             if x2 > w or y2 > h:
                 return None
 
             elixir_region = frame[y1:y2, x1:x2]
-
             if elixir_region.size == 0:
                 return None
 
-            # Preprocess for OCR
-            # The elixir number is white/pink on purple background
             gray = cv2.cvtColor(elixir_region, cv2.COLOR_BGR2GRAY)
-
-            # Threshold to get white text
             _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-
-            # Scale up for better OCR
             scaled = cv2.resize(thresh, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
 
-            # OCR with digit-only config
             config = "--psm 7 -c tessedit_char_whitelist=0123456789"
             text = pytesseract.image_to_string(scaled, config=config).strip()
 
-            # Parse number
             if text:
-                # Handle "10" specially
                 if "10" in text:
                     return 10.0
-                # Get first digit
                 digits = re.findall(r"\d+", text)
                 if digits:
                     val = int(digits[0])
@@ -71,8 +196,25 @@ class OCRReader:
 
             return None
 
-        except Exception as e:
+        except Exception:
             return None
+
+    def get_card_elixir_region(self, card_slot: tuple) -> tuple:
+        """
+        Get the pixel region for a card's elixir cost number.
+        Returns (x1, y1, x2, y2) or None if invalid.
+        """
+        x1, y1, x2, y2 = card_slot
+        card_width = x2 - x1
+        center_x = x1 + (card_width // 2)
+
+        half_w = self.CARD_ELIXIR_WIDTH // 2
+        elixir_x1 = center_x - half_w
+        elixir_x2 = center_x + half_w
+        elixir_y2 = y2 - self.CARD_ELIXIR_Y_OFFSET
+        elixir_y1 = elixir_y2 - self.CARD_ELIXIR_HEIGHT
+
+        return (elixir_x1, elixir_y1, elixir_x2, elixir_y2)
 
     def read_card_elixir_cost(self, frame: np.ndarray, card_slot: tuple) -> int:
         """
@@ -81,15 +223,10 @@ class OCRReader:
         Returns int 1-10, or None if cannot read.
         """
         try:
-            x1, y1, x2, y2 = card_slot
             h, w = frame.shape[:2]
-
-            # Calculate elixir number position (bottom center of card)
-            card_width = x2 - x1
-            elixir_x1 = x1 + (card_width // 2) - 15
-            elixir_x2 = elixir_x1 + 30
-            elixir_y1 = y2 - 35
-            elixir_y2 = y2 - 5
+            elixir_x1, elixir_y1, elixir_x2, elixir_y2 = self.get_card_elixir_region(
+                card_slot
+            )
 
             # Bounds check
             if elixir_x2 > w or elixir_y2 > h or elixir_x1 < 0 or elixir_y1 < 0:
@@ -104,10 +241,10 @@ class OCRReader:
             gray = cv2.cvtColor(elixir_region, cv2.COLOR_BGR2GRAY)
             _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
 
-            # Scale up
-            scaled = cv2.resize(thresh, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            # Scale up for better OCR
+            scaled = cv2.resize(thresh, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
 
-            # OCR
+            # OCR - single character mode
             config = "--psm 10 -c tessedit_char_whitelist=0123456789"
             text = pytesseract.image_to_string(scaled, config=config).strip()
 
@@ -122,6 +259,44 @@ class OCRReader:
 
         except Exception:
             return None
+
+    def draw_debug_regions(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Draw debug rectangles showing where OCR regions are located.
+        Returns a copy of frame with debug overlays.
+        """
+        debug = frame.copy()
+
+        # Draw elixir bar region (cyan)
+        x1, y1, x2, y2 = self.ELIXIR_BAR_REGION
+        cv2.rectangle(debug, (x1, y1), (x2, y2), (255, 255, 0), 2)
+        cv2.putText(
+            debug,
+            "ELIXIR BAR",
+            (x1, y1 - 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            (255, 255, 0),
+            1,
+        )
+
+        # Draw each card elixir region (magenta)
+        from config.game_config import CARD_SLOTS
+
+        for idx, slot in enumerate(CARD_SLOTS):
+            ex1, ey1, ex2, ey2 = self.get_card_elixir_region(slot)
+            cv2.rectangle(debug, (ex1, ey1), (ex2, ey2), (255, 0, 255), 2)
+            cv2.putText(
+                debug,
+                f"C{idx+1}",
+                (ex1, ey1 - 3),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.3,
+                (255, 0, 255),
+                1,
+            )
+
+        return debug
 
     def is_card_affordable(
         self, frame: np.ndarray, card_slot: tuple, current_elixir: float = None

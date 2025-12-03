@@ -1,33 +1,16 @@
 # detection/card_detector_simple.py
-"""Simple card detector with GPU acceleration and deck inference optimization"""
+"""Simple card detector using only color template matching"""
 
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional
 from config.game_config import CARD_SLOTS
 from detection.ocr_reader import OCRReader
 
-# Try to import PyTorch for GPU acceleration
-try:
-    import torch
-    import torch.nn.functional as F
-
-    TORCH_AVAILABLE = torch.cuda.is_available()
-    if TORCH_AVAILABLE:
-        TORCH_DEVICE = torch.device("cuda")
-        print(f"🚀 GPU acceleration enabled: {torch.cuda.get_device_name(0)}")
-    else:
-        TORCH_DEVICE = torch.device("cpu")
-        print("⚠️  CUDA not available, using CPU")
-except ImportError:
-    TORCH_AVAILABLE = False
-    TORCH_DEVICE = None
-    print("⚠️  PyTorch not installed, using CPU-only matching")
-
 
 class CardDetectorSimple:
-    """Detect cards in hand using simple color template matching with GPU acceleration"""
+    """Detect cards in hand using simple color template matching"""
 
     # CROP SETTINGS - Adjust these to change what area is matched
     CROP_TOP = 0.17  # Remove top border
@@ -43,10 +26,6 @@ class CardDetectorSimple:
 
     # Special card names (can be with or without folder prefix)
     WAITING_CARD_NAMES = ["waiting_for_card", "other/waiting_for_card"]
-
-    # Speed optimization settings
-    HISTOGRAM_SHORTLIST_SIZE = 10  # Number of templates to check after histogram filter
-    EARLY_ACCEPT_THRESHOLD = 0.85  # If score exceeds this, accept immediately
 
     def __init__(self, templates_dir="data/card_templates"):
         self.templates_dir = Path(templates_dir)
@@ -81,42 +60,27 @@ class CardDetectorSimple:
             {"active": False, "frames": 0},
         ]
 
-        # === SPEED OPTIMIZATION STATE ===
-        # Template resize cache
-        self._template_resize_cache: Dict[tuple, np.ndarray] = {}
-
-        # Histogram-based fast filtering
-        self._template_histograms: Dict[str, np.ndarray] = {}
-        self._precompute_template_histograms()
-
-        # GPU tensors (if available)
-        self._gpu_templates: Dict[str, torch.Tensor] = {}
-        if TORCH_AVAILABLE:
-            self._prepare_gpu_templates()
+        # Cache/resizing/histogram helpers
+        self._template_resize_cache = (
+            {}
+        )  # key: (name,w,h,use_gray) -> resized np.ndarray
+        self._template_histograms = {}  # key: name -> cv2 hist (color)
+        self._precomputed = False
 
         # Deck inference (speed optimization)
-        self._seen_card_names: List[str] = []  # ordered seen non-waiting names (unique)
-        self._seen_card_set: set = set()
-        self.active_deck: Optional[List[str]] = (
-            None  # list of 8 base names when inferred
-        )
-        self.deck_confirmed: bool = False
-        self.allowed_template_names: Optional[List[str]] = None
+        self._seen_card_names = []  # ordered seen non-waiting names (unique)
+        self._seen_card_set = set()
+        self.active_deck = None  # list of 8 base names when inferred
+        self.deck_confirmed = False
+        self.allowed_template_names = None  # dict of templates to restrict matching to
 
-        # Elixir tracking (fast bar detection, no OCR needed)
-        self._current_elixir: Optional[float] = None
+        # OCR throttle
+        self._frame_count = 0
+        self.ocr_read_every_n_frames = 2
+        self._current_elixir = None  # cached per-frame elixir read
 
-        # Per-slot elixir cost cache: only read OCR once per card, reset on waiting_for_card
-        # Format: {slot_idx: {"cost": int, "needs_read": bool, "pending": bool}}
-        self._slot_elixir_cache = [
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-        ]
-
-        # Gray state is derived from: current_elixir < card_cost
-        self._cached_gray_states = [False, False, False, False]
+        # Precompute histograms after templates loaded
+        self._precompute_template_histograms()
 
     def _load_templates(self):
         """Load all card templates from subdirectories"""
@@ -149,6 +113,7 @@ class CardDetectorSimple:
             template = cv2.imread(str(template_path))
             if template is not None:
                 self.templates[card_name] = template
+                # Also create grayscale version
                 self.templates_gray[card_name] = cv2.cvtColor(
                     template, cv2.COLOR_BGR2GRAY
                 )
@@ -162,92 +127,90 @@ class CardDetectorSimple:
 
         print(f"   ✅ Loaded {len(self.templates)} templates")
 
+        # Print organized summary
         if self.templates:
             print(f"\n📊 Template categories:")
             categories = {}
             for card_name in self.templates.keys():
                 category = card_name.split("/")[0] if "/" in card_name else "root"
                 categories[category] = categories.get(category, 0) + 1
+
             for category, count in sorted(categories.items()):
                 print(f"   • {category}: {count} cards")
 
     def _precompute_template_histograms(self):
-        """Compute color histograms for fast template pre-filtering"""
-        print("   📊 Precomputing template histograms...")
+        """Compute small color histograms for each color template to allow fast shortlist."""
+        if self._precomputed or not self.templates:
+            return
+
         for name, tpl in self.templates.items():
             try:
-                # Resize to small size for fast histogram
-                small = cv2.resize(tpl, (32, 32), interpolation=cv2.INTER_AREA)
-                # Compute simplified color histogram (fewer bins = faster)
+                # Resize small for histogram (keep aspect but small)
+                small = cv2.resize(tpl, (64, 64), interpolation=cv2.INTER_AREA)
                 hist = cv2.calcHist(
-                    [small], [0, 1, 2], None, [4, 4, 4], [0, 256, 0, 256, 0, 256]
+                    [small], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256]
                 )
                 cv2.normalize(hist, hist)
-                self._template_histograms[name] = hist.flatten().astype(np.float32)
+                self._template_histograms[name] = hist.flatten()
             except Exception:
                 continue
-        print(f"   ✅ Histograms ready for {len(self._template_histograms)} templates")
 
-    def _prepare_gpu_templates(self):
-        """Prepare templates as GPU tensors for fast matching"""
-        if not TORCH_AVAILABLE:
-            return
-        print("   🚀 Preparing GPU templates...")
-        # We'll prepare these on-demand when we know the target size
-        self._gpu_templates_prepared = False
+        self._precomputed = True
 
-    def _get_shortlist_by_histogram(
-        self, card_artwork: np.ndarray, top_k: int = None
-    ) -> List[str]:
-        """Get top-k most similar templates by histogram comparison (very fast)"""
-        if top_k is None:
-            top_k = self.HISTOGRAM_SHORTLIST_SIZE
+    def _compute_color_hist(self, image: np.ndarray):
+        """Compute same histogram for a queried card region (small & normalized)."""
+        if image is None or image.size == 0:
+            return None
+        small = cv2.resize(image, (64, 64), interpolation=cv2.INTER_AREA)
+        hist = cv2.calcHist(
+            [small], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256]
+        )
+        cv2.normalize(hist, hist)
+        return hist.flatten()
 
-        if not self._template_histograms:
+    def _shortlist_templates_by_hist(self, card_artwork: np.ndarray, top_k: int = 12):
+        """Return top_k template names most similar by histogram (fast)."""
+        query_hist = self._compute_color_hist(card_artwork)
+        if query_hist is None or not self._template_histograms:
             return list(self.templates.keys())
 
-        try:
-            # Compute query histogram
-            small = cv2.resize(card_artwork, (32, 32), interpolation=cv2.INTER_AREA)
-            query_hist = cv2.calcHist(
-                [small], [0, 1, 2], None, [4, 4, 4], [0, 256, 0, 256, 0, 256]
-            )
-            cv2.normalize(query_hist, query_hist)
-            query_flat = query_hist.flatten().astype(np.float32)
-        except Exception:
-            return list(self.templates.keys())
-
-        # Get candidate templates (restricted if deck confirmed)
-        if self.deck_confirmed and self.allowed_template_names:
-            candidates = self.allowed_template_names
-        else:
-            candidates = list(self.templates.keys())
-
-        # Score by histogram similarity (dot product of normalized histograms)
+        # Compare via correlation (higher is more similar)
         scores = []
-        for name in candidates:
+        # choose candidates source (allowed vs all)
+        candidate_names = (
+            self.allowed_template_names
+            if self.deck_confirmed and self.allowed_template_names
+            else list(self.templates.keys())
+        )
+
+        for name in candidate_names:
             tpl_hist = self._template_histograms.get(name)
-            if tpl_hist is not None:
-                score = np.dot(query_flat, tpl_hist)
-                scores.append((score, name))
+            if tpl_hist is None:
+                continue
+            # use dot product as proxy (histograms are normalized)
+            score = float(np.dot(query_hist, tpl_hist))
+            scores.append((score, name))
 
         if not scores:
-            return candidates
+            return candidate_names
 
-        # Sort by score descending and take top_k
-        scores.sort(reverse=True, key=lambda x: x[0])
-        return [name for _, name in scores[:top_k]]
+        scores.sort(reverse=True)
+        shortlisted = [n for _, n in scores[:top_k]]
+        return shortlisted
 
     def _cache_resize_template(
         self, name: str, target_w: int, target_h: int, use_gray: bool = False
-    ) -> Optional[np.ndarray]:
-        """Get cached resized template or create and cache it"""
-        key = (name, target_w, target_h, use_gray)
+    ):
+        """Return cached resized template or resize+cache it."""
+        key = (name, target_w, target_h, bool(use_gray))
         if key in self._template_resize_cache:
             return self._template_resize_cache[key]
 
-        source = self.templates_gray if use_gray else self.templates
-        tpl = source.get(name)
+        tpl = (
+            self.templates_gray[name]
+            if use_gray and name in self.templates_gray
+            else self.templates[name]
+        )
         if tpl is None:
             return None
 
@@ -255,77 +218,24 @@ class CardDetectorSimple:
             resized = cv2.resize(
                 tpl, (target_w, target_h), interpolation=cv2.INTER_AREA
             )
-            # Limit cache size
-            if len(self._template_resize_cache) > 500:
-                # Clear half the cache
-                keys_to_remove = list(self._template_resize_cache.keys())[:250]
-                for k in keys_to_remove:
-                    del self._template_resize_cache[k]
+            if use_gray and len(resized.shape) == 3:
+                resized = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
             self._template_resize_cache[key] = resized
             return resized
         except Exception:
             return None
 
-    def _match_template_gpu(
-        self, card_artwork: np.ndarray, template: np.ndarray
-    ) -> float:
-        """GPU-accelerated template matching using PyTorch"""
-        if not TORCH_AVAILABLE:
-            return self._match_template_cpu(card_artwork, template)
-
-        try:
-            # Ensure same size
-            if card_artwork.shape != template.shape:
-                template = cv2.resize(
-                    template, (card_artwork.shape[1], card_artwork.shape[0])
-                )
-
-            # Convert to tensors
-            card_tensor = torch.from_numpy(card_artwork.astype(np.float32)).to(
-                TORCH_DEVICE
-            )
-            tpl_tensor = torch.from_numpy(template.astype(np.float32)).to(TORCH_DEVICE)
-
-            # Normalize
-            card_norm = card_tensor - card_tensor.mean()
-            tpl_norm = tpl_tensor - tpl_tensor.mean()
-
-            # Compute normalized cross-correlation
-            numerator = (card_norm * tpl_norm).sum()
-            denominator = torch.sqrt((card_norm**2).sum() * (tpl_norm**2).sum())
-
-            if denominator > 0:
-                score = (numerator / denominator).item()
-            else:
-                score = 0.0
-
-            return score
-
-        except Exception:
-            return self._match_template_cpu(card_artwork, template)
-
-    def _match_template_cpu(
-        self, card_artwork: np.ndarray, template: np.ndarray
-    ) -> float:
-        """CPU template matching"""
-        try:
-            if card_artwork.shape != template.shape:
-                template = cv2.resize(
-                    template, (card_artwork.shape[1], card_artwork.shape[0])
-                )
-            result = cv2.matchTemplate(card_artwork, template, cv2.TM_CCOEFF_NORMED)
-            return float(np.max(result))
-        except Exception:
-            return 0.0
-
     def detect_cards_with_debug(
         self, frame: np.ndarray, debug_frame: np.ndarray = None
     ) -> List[dict]:
         """Detect cards with debug visualization"""
+
         detected_cards = []
 
-        # Read current elixir using fast bar detection (every frame is fine, it's fast)
-        self._current_elixir = self.ocr_reader.read_elixir(frame)
+        # Throttle OCR reads: read elixir only every N frames
+        self._frame_count += 1
+        if (self._frame_count % self.ocr_read_every_n_frames) == 0:
+            self._current_elixir = self.ocr_reader.read_elixir(frame)
 
         for slot_idx, (x1, y1, x2, y2) in enumerate(CARD_SLOTS):
             h, w = frame.shape[:2]
@@ -336,35 +246,15 @@ class CardDetectorSimple:
                 )
                 continue
 
-            slot_cache = self._slot_elixir_cache[slot_idx]
-
-            # If we need to read elixir cost for this slot (after waiting_for_card)
-            if slot_cache["needs_read"]:
-                cost = self.ocr_reader.read_card_elixir_cost(frame, (x1, y1, x2, y2))
-                if cost is not None:
-                    slot_cache["cost"] = cost
-                    slot_cache["needs_read"] = False
-                    slot_cache["pending"] = False
-                else:
-                    # Mark as pending - we'll defer card detection until we know cost
-                    slot_cache["pending"] = True
-
-            # Determine if card is gray based on elixir cost vs current elixir
-            card_cost = slot_cache["cost"]
-            if card_cost is not None and self._current_elixir is not None:
-                is_gray = self._current_elixir < card_cost
-            else:
-                # Fallback to saturation-based detection
-                is_gray = self.ocr_reader.detect_gray_card(frame, (x1, y1, x2, y2))
-
-            self._cached_gray_states[slot_idx] = is_gray
+            # Check if card is grayed out (unaffordable)
+            is_gray = self.ocr_reader.detect_gray_card(frame, (x1, y1, x2, y2))
 
             # Try normal position first
             result = self._detect_card_at_position(
                 frame, x1, y1, x2, y2, use_gray=is_gray
             )
 
-            # If low score, try lifted position
+            # If low score, try lifted position (card selected by player)
             if result["score"] < 0.5:
                 lifted_y1 = max(0, y1 - self.CARD_LIFT_OFFSET)
                 lifted_y2 = max(0, y2 - self.CARD_LIFT_OFFSET)
@@ -380,13 +270,9 @@ class CardDetectorSimple:
             # Apply persistence and transition validation
             result = self._apply_persistence_logic(slot_idx, result)
 
-            # Update deck inference
-            self._update_deck_inference(result)
-
-            # Add extra info
+            # Add elixir info to result
             result["is_gray"] = is_gray
             result["current_elixir"] = self._current_elixir
-            result["card_cost"] = card_cost
 
             detected_cards.append(result)
 
@@ -408,34 +294,33 @@ class CardDetectorSimple:
         use_gray: bool = False,
     ) -> dict:
         """Detect a card at a specific position"""
+
         h, w = frame.shape[:2]
 
         if x2 > w or y2 > h or x1 >= x2 or y1 >= y2:
             return {"name": "unknown", "score": 0.0, "method": "invalid"}
 
         card_region = frame[y1:y2, x1:x2]
+
         if card_region.size == 0:
             return {"name": "unknown", "score": 0.0, "method": "empty"}
 
-        # TIGHT CROP
-        card_height, card_width = card_region.shape[:2]
+        # TIGHT CROP: Remove borders and elixir
+        card_height = card_region.shape[0]
+        card_width = card_region.shape[1]
+
         crop_top = int(card_height * self.CROP_TOP)
         crop_bottom = int(card_height * (1 - self.CROP_BOTTOM))
         crop_left = int(card_width * self.CROP_SIDE)
         crop_right = int(card_width * (1 - self.CROP_SIDE))
 
         card_artwork = card_region[crop_top:crop_bottom, crop_left:crop_right]
+
         if card_artwork.size == 0:
             return {"name": "unknown", "score": 0.0, "method": "empty"}
 
-        # Convert to grayscale if needed
-        if use_gray and len(card_artwork.shape) == 3:
-            card_to_match = cv2.cvtColor(card_artwork, cv2.COLOR_BGR2GRAY)
-        else:
-            card_to_match = card_artwork
-
-        # Find best match
-        best_name, best_score = self._find_best_match(card_to_match, use_gray=use_gray)
+        # Find best matching template
+        best_name, best_score = self._find_best_match(card_artwork, use_gray=use_gray)
 
         method = "gray" if use_gray else "color"
         return {"name": best_name, "score": best_score, "method": method}
@@ -443,97 +328,67 @@ class CardDetectorSimple:
     def _find_best_match(
         self, card_artwork: np.ndarray, use_gray: bool = False
     ) -> Tuple[str, float]:
-        """Find best matching template using histogram shortlist + template matching"""
+        """Find the best matching template using histogram shortlist + template matching"""
+
         if len(self.templates) == 0:
             return "unknown", 0.0
 
-        # Get shortlist by histogram (fast pre-filter)
-        shortlist = self._get_shortlist_by_histogram(card_artwork)
-
         best_match = "unknown"
         best_score = 0.0
+
+        # Shortlist templates by histogram similarity (fast)
+        shortlist = self._shortlist_templates_by_hist(card_artwork, top_k=12)
+
+        # If deck confirmed, ensure shortlist comes from allowed templates
+        if self.deck_confirmed and self.allowed_template_names:
+            shortlist = [n for n in shortlist if n in self.allowed_template_names]
+
+        # If shortlist is empty fallback to some allowed/all
+        if not shortlist:
+            shortlist = (
+                self.allowed_template_names
+                if self.deck_confirmed and self.allowed_template_names
+                else list(self.templates.keys())
+            )
+
         target_h, target_w = card_artwork.shape[:2]
 
         for card_name in shortlist:
-            template = self._cache_resize_template(
-                card_name, target_w, target_h, use_gray=use_gray
-            )
-            if template is None:
+            try:
+                template_resized = self._cache_resize_template(
+                    card_name, target_w, target_h, use_gray=use_gray
+                )
+                if template_resized is None:
+                    continue
+
+                # Template matching (same-size -> 1x1 result)
+                result = cv2.matchTemplate(
+                    (
+                        card_artwork
+                        if not use_gray
+                        else (
+                            cv2.cvtColor(card_artwork, cv2.COLOR_BGR2GRAY)
+                            if len(card_artwork.shape) == 3
+                            else card_artwork
+                        )
+                    ),
+                    template_resized,
+                    cv2.TM_CCOEFF_NORMED,
+                )
+                score = float(np.max(result))
+
+                # quick accept if extremely good match
+                if score > 0.87:
+                    return card_name, score
+
+                if score > best_score:
+                    best_score = score
+                    best_match = card_name
+
+            except Exception:
                 continue
 
-            # Match
-            if TORCH_AVAILABLE and not use_gray:
-                score = self._match_template_gpu(card_artwork, template)
-            else:
-                score = self._match_template_cpu(card_artwork, template)
-
-            # Early exit for very good matches
-            if score > self.EARLY_ACCEPT_THRESHOLD:
-                return card_name, score
-
-            if score > best_score:
-                best_score = score
-                best_match = card_name
-
         return best_match, best_score
-
-    def _update_deck_inference(self, result: dict):
-        """Track observed cards to infer the 8-card deck for faster matching"""
-        if self.deck_confirmed:
-            return
-
-        name = result.get("name", "unknown")
-        score = result.get("score", 0.0)
-
-        # Only consider high-confidence detections of real cards
-        if name == "unknown" or self._is_waiting_for_card(name) or score < 0.6:
-            return
-
-        # Get base name without folder prefix
-        base_name = name.split("/")[-1]
-
-        if base_name not in self._seen_card_set:
-            self._seen_card_set.add(base_name)
-            self._seen_card_names.append(base_name)
-            print(f"   🎴 Deck card {len(self._seen_card_names)}/8: {base_name}")
-
-            # Once we have 8 unique cards, confirm deck
-            if len(self._seen_card_set) >= 8:
-                self._confirm_deck()
-
-    def _confirm_deck(self):
-        """Confirm the deck and restrict future matching to only these cards"""
-        self.active_deck = list(self._seen_card_names)[:8]
-
-        # Build allowed template names (include evolution variants)
-        allowed = set()
-        for tpl_name in self.templates.keys():
-            base = tpl_name.split("/")[-1]
-            # Include if exact match
-            if base in self._seen_card_set:
-                allowed.add(tpl_name)
-            # Include evolution variants
-            elif "evolution" in tpl_name.lower():
-                for seen in self._seen_card_set:
-                    if seen in tpl_name:
-                        allowed.add(tpl_name)
-                        break
-
-        # Always include waiting_for_card
-        for name in self.WAITING_CARD_NAMES:
-            if name in self.templates:
-                allowed.add(name)
-
-        self.allowed_template_names = list(allowed)
-        self.deck_confirmed = True
-
-        # Clear caches since we'll be using fewer templates
-        self._template_resize_cache.clear()
-
-        print(
-            f"\n✅ Deck confirmed! Restricting to {len(self.allowed_template_names)} templates:"
-        )
-        print(f"   Deck: {', '.join(self.active_deck)}")
 
     def _is_waiting_for_card(self, card_name: str) -> bool:
         """Check if the detected card is a waiting_for_card placeholder"""
@@ -542,7 +397,12 @@ class CardDetectorSimple:
         )
 
     def _apply_persistence_logic(self, slot_idx: int, result: dict) -> dict:
-        """Apply persistence logic with transition validation"""
+        """
+        Apply persistence logic with transition validation:
+        - Need 5 consecutive frames to lock in a card
+        - Card can only change via waiting_for_card
+        - waiting_for_card lasts max 25 frames
+        """
         detected_name = result["name"]
         locked_card = self._locked_cards[slot_idx]
         detection_info = self._detection_counts[slot_idx]
@@ -555,14 +415,6 @@ class CardDetectorSimple:
             self._locked_cards[slot_idx] = "unknown"
             detection_info["card"] = "waiting_for_card"
             detection_info["count"] = 1
-
-            # Reset elixir cost cache for this slot - new card incoming
-            self._slot_elixir_cache[slot_idx] = {
-                "cost": None,
-                "needs_read": True,
-                "pending": False,
-            }
-
             return {
                 "name": "waiting_for_card",
                 "score": result["score"],
@@ -617,7 +469,7 @@ class CardDetectorSimple:
                 "method": f"waiting_{waiting_state['frames']}/{self.MAX_WAITING_FRAMES}",
             }
 
-        # Not in waiting state
+        # Not in waiting state - normal detection
         if locked_card != "unknown" and not self._is_waiting_for_card(locked_card):
             if detected_name == locked_card:
                 detection_info["count"] = min(
@@ -655,8 +507,10 @@ class CardDetectorSimple:
                     "score": 0.0,
                     "method": "persisted_over_" + detected_name.split("/")[-1],
                 }
+
             else:
                 return {"name": locked_card, "score": 0.0, "method": "persisted"}
+
         else:
             if detected_name != "unknown" and not self._is_waiting_for_card(
                 detected_name
@@ -696,30 +550,35 @@ class CardDetectorSimple:
     ):
         """Draw debug visualization for a card slot"""
         card_region = frame[y1:y2, x1:x2]
-        card_height, card_width = card_region.shape[:2]
+        card_height = card_region.shape[0]
+        card_width = card_region.shape[1]
 
         crop_top = int(card_height * self.CROP_TOP)
         crop_bottom = int(card_height * (1 - self.CROP_BOTTOM))
         crop_left = int(card_width * self.CROP_SIDE)
         crop_right = int(card_width * (1 - self.CROP_SIDE))
 
-        # Draw slot rectangle
+        # Draw FULL card slot (yellow for color, gray for grayed out)
         is_gray = result.get("is_gray", False)
         slot_color = (128, 128, 128) if is_gray else (0, 255, 255)
         cv2.rectangle(debug_frame, (x1, y1), (x2, y2), slot_color, 2)
 
-        # Draw lifted slot
+        # Draw lifted card slot (cyan)
         lifted_y1 = max(0, y1 - self.CARD_LIFT_OFFSET)
         lifted_y2 = max(0, y2 - self.CARD_LIFT_OFFSET)
         cv2.rectangle(debug_frame, (x1, lifted_y1), (x2, lifted_y2), (255, 255, 0), 1)
 
-        # Draw crop region
+        # Draw TIGHT CROP region (green)
         tight_x1 = x1 + crop_left
         tight_y1 = y1 + crop_top
         tight_x2 = x1 + crop_right
         tight_y2 = y1 + crop_bottom
         cv2.rectangle(
-            debug_frame, (tight_x1, tight_y1), (tight_x2, tight_y2), (0, 255, 0), 2
+            debug_frame,
+            (tight_x1, tight_y1),
+            (tight_x2, tight_y2),
+            (0, 255, 0),
+            2,
         )
 
         # Color based on method
@@ -733,25 +592,33 @@ class CardDetectorSimple:
         elif "building" in method:
             color = (0, 255, 255)
         elif result["name"] != "unknown":
-            color = (
-                (0, 255, 0)
-                if result["score"] >= 0.70
-                else (0, 255, 255) if result["score"] >= 0.60 else (0, 165, 255)
-            )
+            if result["score"] >= 0.70:
+                color = (0, 255, 0)
+            elif result["score"] >= 0.60:
+                color = (0, 255, 255)
+            else:
+                color = (0, 165, 255)
         else:
             color = (0, 0, 255)
 
-        # Card name
-        card_name = (
-            result["name"].split("/")[-1] if "/" in result["name"] else result["name"]
-        )
-        text_size = cv2.getTextSize(card_name, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
+        # Get short card name (remove folder prefix)
+        card_name = result["name"]
+        if "/" in card_name:
+            card_name = card_name.split("/")[-1]
+
+        # Draw background for better readability
+        text = f"{card_name}"
+        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
         cv2.rectangle(
-            debug_frame, (x1, y1 - 18), (x1 + text_size[0] + 4, y1 - 2), (0, 0, 0), -1
+            debug_frame,
+            (x1, y1 - 18),
+            (x1 + text_size[0] + 4, y1 - 2),
+            (0, 0, 0),
+            -1,
         )
         cv2.putText(
             debug_frame,
-            card_name,
+            text,
             (x1 + 2, y1 - 6),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.4,
@@ -759,11 +626,16 @@ class CardDetectorSimple:
             1,
         )
 
-        # Score and method
+        # Show score, method, and gray status below card
+        gray_indicator = "🔘" if is_gray else "🟢"
         info_text = f"{result['score']:.2f} {method}"
         text_size2 = cv2.getTextSize(info_text, cv2.FONT_HERSHEY_SIMPLEX, 0.3, 1)[0]
         cv2.rectangle(
-            debug_frame, (x1, y2 + 2), (x1 + text_size2[0] + 4, y2 + 16), (0, 0, 0), -1
+            debug_frame,
+            (x1, y2 + 2),
+            (x1 + text_size2[0] + 4, y2 + 16),
+            (0, 0, 0),
+            -1,
         )
         cv2.putText(
             debug_frame,
@@ -795,26 +667,10 @@ class CardDetectorSimple:
             {"active": False, "frames": 0},
             {"active": False, "frames": 0},
         ]
-        # Reset elixir cost cache
-        self._slot_elixir_cache = [
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-        ]
-        self._cached_gray_states = [False, False, False, False]
-        # Also reset deck inference for new match
-        self._seen_card_names = []
-        self._seen_card_set = set()
-        self.active_deck = None
-        self.deck_confirmed = False
-        self.allowed_template_names = None
-        self._template_resize_cache.clear()
 
     def get_current_elixir(self) -> Optional[float]:
         """Get the current elixir value from last frame"""
         return self._current_elixir
 
-
-# Backwards-compatible alias
-CardDetector = CardDetectorSimple
+    # ensure alias at module level
+    CardDetector = CardDetectorSimple
