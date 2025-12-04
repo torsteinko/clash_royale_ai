@@ -1,36 +1,72 @@
-"""OCR for elixir, timer, tower HP - optimized with bar detection"""
+"""OCR for elixir, timer, tower HP - optimized with GPU-accelerated EasyOCR"""
 
 import cv2
 import numpy as np
-import pytesseract
 import re
+
+# Try to import EasyOCR for GPU acceleration, fall back to Tesseract
+try:
+    import easyocr
+    import torch
+
+    EASYOCR_AVAILABLE = True
+except ImportError:
+    EASYOCR_AVAILABLE = False
+
+try:
+    import pytesseract
+
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
 
 
 class OCRReader:
-    def __init__(self):
-        # pytesseract.pytesseract.tesseract_cmd = (
-        #     r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-        # )
+    def __init__(self, use_gpu=True):
+        # Initialize OCR engine
+        self._easyocr_reader = None
+        self._use_easyocr = False
+
+        if EASYOCR_AVAILABLE and use_gpu:
+            try:
+                gpu_available = torch.cuda.is_available()
+                print(f"🔧 Initializing EasyOCR (GPU: {gpu_available})...")
+                self._easyocr_reader = easyocr.Reader(
+                    ["en"],
+                    gpu=gpu_available,
+                    verbose=False,
+                    model_storage_directory="data/models/easyocr",
+                )
+                self._use_easyocr = True
+                if gpu_available:
+                    print(
+                        f"   ✅ EasyOCR ready with GPU: {torch.cuda.get_device_name(0)}"
+                    )
+                else:
+                    print("   ✅ EasyOCR ready (CPU mode)")
+            except Exception as e:
+                print(f"   ⚠️ EasyOCR init failed: {e}, falling back to Tesseract")
+                self._use_easyocr = False
+
+        if not self._use_easyocr:
+            if TESSERACT_AVAILABLE:
+                print("🔧 Using Tesseract OCR (CPU)")
+            else:
+                print("❌ No OCR engine available! Install easyocr or pytesseract")
 
         # Elixir bar region (the purple/pink bar itself, not the number)
-        # This is the horizontal bar that fills up as elixir regenerates
-        # Format: (x1, y1, x2, y2) - the full bar region
-        self.ELIXIR_BAR_REGION = (192, 1264, 691, 1235)  # Full bar area
-        self.ELIXIR_BAR_EMPTY_X = 192  # X where bar starts (0 elixir)
-        self.ELIXIR_BAR_FULL_X = 691  # X where bar ends (10 elixir)
+        self.ELIXIR_BAR_REGION = (192, 1264, 691, 1235)
+        self.ELIXIR_BAR_EMPTY_X = 192
+        self.ELIXIR_BAR_FULL_X = 691
 
         # Purple/pink color range in HSV for detecting elixir bar fill
-        # Elixir bar is bright pink/magenta
-        self.ELIXIR_COLOR_LOW = np.array([140, 80, 100])  # HSV low
-        self.ELIXIR_COLOR_HIGH = np.array([170, 255, 255])  # HSV high
+        self.ELIXIR_COLOR_LOW = np.array([140, 80, 100])
+        self.ELIXIR_COLOR_HIGH = np.array([170, 255, 255])
 
         # Card elixir cost - tight centered region at bottom of card
-        # Adjusted to be higher and more centered on the elixir number
-        self.CARD_ELIXIR_WIDTH = 30  # Very narrow - just the number
-        self.CARD_ELIXIR_HEIGHT = 30  # Short box
-        self.CARD_ELIXIR_Y_OFFSET = (
-            -1  # Pixels up from very bottom of card slot (higher)
-        )
+        self.CARD_ELIXIR_WIDTH = 30
+        self.CARD_ELIXIR_HEIGHT = 30
+        self.CARD_ELIXIR_Y_OFFSET = -1
 
     def read_elixir(self, frame: np.ndarray) -> float:
         """
@@ -219,9 +255,10 @@ class OCRReader:
     def read_card_elixir_cost(self, frame: np.ndarray, card_slot: tuple) -> int:
         """
         Read the elixir cost from a specific card slot.
-        card_slot: (x1, y1, x2, y2) of the card slot
-        Returns int 1-10, or None if cannot read.
+        Uses EasyOCR (GPU) if available, else Tesseract.
+        Only digits 1-10 are valid elixir costs.
         """
+        print(f"[OCR] Reading elixir cost for slot {card_slot}")
         try:
             h, w = frame.shape[:2]
             elixir_x1, elixir_y1, elixir_x2, elixir_y2 = self.get_card_elixir_region(
@@ -237,28 +274,57 @@ class OCRReader:
             if elixir_region.size == 0:
                 return None
 
-            # Preprocess - elixir cost is white number on colored background
-            gray = cv2.cvtColor(elixir_region, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+            # Use EasyOCR if available (GPU accelerated, ~8x faster)
+            if self._use_easyocr and self._easyocr_reader is not None:
+                return self._read_elixir_easyocr(elixir_region)
+            elif TESSERACT_AVAILABLE:
+                return self._read_elixir_tesseract(elixir_region)
+            else:
+                return None
 
-            # Scale up for better OCR
-            scaled = cv2.resize(thresh, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-
-            # OCR - single character mode
-            config = "--psm 10 -c tessedit_char_whitelist=0123456789"
-            text = pytesseract.image_to_string(scaled, config=config).strip()
-
-            if text:
-                digits = re.findall(r"\d+", text)
-                if digits:
-                    val = int(digits[0])
-                    if 1 <= val <= 10:
-                        return val
-
+        except Exception as e:
+            print(f"[OCR] Error: {e}")
             return None
 
-        except Exception:
-            return None
+    def _read_elixir_easyocr(self, roi: np.ndarray) -> int:
+        """Read elixir cost using EasyOCR (GPU accelerated)"""
+        # EasyOCR works best with raw scaled images (no threshold)
+        scaled = cv2.resize(roi, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+
+        # Only allow digits 1-9 and 0 (for "10")
+        results = self._easyocr_reader.readtext(
+            scaled, allowlist="0123456789", detail=0
+        )
+
+        if results:
+            text = "".join(results)
+            digits = re.findall(r"\d+", text)
+            if digits:
+                val = int(digits[0])
+                if 1 <= val <= 10:
+                    return val
+        return None
+
+    def _read_elixir_tesseract(self, roi: np.ndarray) -> int:
+        """Read elixir cost using Tesseract (CPU fallback)"""
+        # Preprocess - elixir cost is white number on colored background
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+
+        # Scale up for better OCR
+        scaled = cv2.resize(thresh, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+
+        # OCR - single character mode
+        config = "--psm 10 -c tessedit_char_whitelist=0123456789"
+        text = pytesseract.image_to_string(scaled, config=config).strip()
+
+        if text:
+            digits = re.findall(r"\d+", text)
+            if digits:
+                val = int(digits[0])
+                if 1 <= val <= 10:
+                    return val
+        return None
 
     def draw_debug_regions(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -365,18 +431,154 @@ class OCRReader:
             if timer_region.size == 0:
                 return None
 
-            # Preprocess
-            gray = cv2.cvtColor(timer_region, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-            scaled = cv2.resize(thresh, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            if self._use_easyocr and self._easyocr_reader is not None:
+                scaled = cv2.resize(
+                    timer_region, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC
+                )
+                results = self._easyocr_reader.readtext(
+                    scaled, allowlist="0123456789:", detail=0
+                )
+                if results:
+                    text = "".join(results)
+                    if re.match(r"^\d{1,2}:\d{2}$", text):
+                        return text
+            elif TESSERACT_AVAILABLE:
+                gray = cv2.cvtColor(timer_region, cv2.COLOR_BGR2GRAY)
+                _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+                scaled = cv2.resize(
+                    thresh, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC
+                )
+                config = "--psm 7 -c tessedit_char_whitelist=0123456789:"
+                text = pytesseract.image_to_string(scaled, config=config).strip()
+                if re.match(r"^\d{1,2}:\d{2}$", text):
+                    return text
 
-            # OCR
-            config = "--psm 7 -c tessedit_char_whitelist=0123456789:"
-            text = pytesseract.image_to_string(scaled, config=config).strip()
+            return None
 
-            # Validate format (M:SS or MM:SS)
-            if re.match(r"^\d{1,2}:\d{2}$", text):
-                return text
+        except Exception:
+            return None
+
+    def read_tower_hp(self, frame: np.ndarray, region: tuple) -> int:
+        """
+        Read tower HP from a specific region.
+        Uses EasyOCR (GPU) if available.
+
+        Args:
+            frame: Full game frame
+            region: (x1, y1, x2, y2) tuple for HP region
+
+        Returns:
+            HP value (1000-8000 range) or None if failed
+        """
+        try:
+            x1, y1, x2, y2 = region
+            h, w = frame.shape[:2]
+
+            # Bounds check
+            if x1 >= w or y1 >= h or x2 > w or y2 > h or x1 >= x2 or y1 >= y2:
+                return None
+
+            hp_region = frame[y1:y2, x1:x2]
+
+            if hp_region.size == 0:
+                return None
+
+            if self._use_easyocr and self._easyocr_reader is not None:
+                return self._read_hp_easyocr(hp_region)
+            elif TESSERACT_AVAILABLE:
+                return self._read_hp_tesseract(hp_region)
+            else:
+                return None
+
+        except Exception as e:
+            return None
+
+    def _read_hp_easyocr(self, roi: np.ndarray) -> int:
+        """Read tower HP using EasyOCR (GPU accelerated)"""
+        # Scale up for better accuracy
+        scaled = cv2.resize(roi, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+
+        results = self._easyocr_reader.readtext(
+            scaled, allowlist="0123456789", detail=0
+        )
+
+        if results:
+            text = "".join(results)
+            digits = "".join(filter(str.isdigit, text))
+            if digits:
+                hp = int(digits)
+                # Valid tower HP range
+                if 100 <= hp <= 8000:
+                    return hp
+        return None
+
+    def _read_hp_tesseract(self, roi: np.ndarray) -> int:
+        """Read tower HP using Tesseract (CPU fallback)"""
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
+        _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+        scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+
+        config = "--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789"
+        text = pytesseract.image_to_string(scaled, config=config).strip()
+
+        digits = "".join(filter(str.isdigit, text))
+        if digits:
+            hp = int(digits)
+            if 100 <= hp <= 8000:
+                return hp
+        return None
+
+    def read_tower_level(self, frame: np.ndarray, region: tuple) -> int:
+        """
+        Read tower level from a specific region.
+
+        Args:
+            frame: Full game frame
+            region: (x1, y1, x2, y2) tuple for level region
+
+        Returns:
+            Level (1-15 range) or None if failed
+        """
+        try:
+            x1, y1, x2, y2 = region
+            h, w = frame.shape[:2]
+
+            if x1 >= w or y1 >= h or x2 > w or y2 > h or x1 >= x2 or y1 >= y2:
+                return None
+
+            level_region = frame[y1:y2, x1:x2]
+
+            if level_region.size == 0:
+                return None
+
+            if self._use_easyocr and self._easyocr_reader is not None:
+                scaled = cv2.resize(
+                    level_region, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC
+                )
+                results = self._easyocr_reader.readtext(
+                    scaled, allowlist="0123456789", detail=0
+                )
+                if results:
+                    text = "".join(results)
+                    digits = "".join(filter(str.isdigit, text))
+                    if digits:
+                        level = int(digits)
+                        if 1 <= level <= 15:
+                            return level
+            elif TESSERACT_AVAILABLE:
+                gray = cv2.cvtColor(level_region, cv2.COLOR_BGR2GRAY)
+                _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+                scaled = cv2.resize(
+                    binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC
+                )
+                config = "--psm 10 -c tessedit_char_whitelist=0123456789"
+                text = pytesseract.image_to_string(scaled, config=config).strip()
+                digits = "".join(filter(str.isdigit, text))
+                if digits:
+                    level = int(digits)
+                    if 1 <= level <= 15:
+                        return level
 
             return None
 

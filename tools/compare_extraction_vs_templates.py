@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.game_config import CARD_SLOTS
-from detection.card_detector import CardDetector
+from detection.card_detector_simple import CardDetector
 
 
 def compare_slot_with_template(

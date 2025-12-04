@@ -3,6 +3,7 @@
 
 import cv2
 import numpy as np
+import json
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 from config.game_config import CARD_SLOTS
@@ -48,6 +49,9 @@ class CardDetectorSimple:
     HISTOGRAM_SHORTLIST_SIZE = 10  # Number of templates to check after histogram filter
     EARLY_ACCEPT_THRESHOLD = 0.85  # If score exceeds this, accept immediately
 
+    # OCR is now rarely needed due to card cost lookup table
+    # Only used as fallback when card name can't be matched to known costs
+
     def __init__(self, templates_dir="data/card_templates"):
         self.templates_dir = Path(templates_dir)
         print(
@@ -62,8 +66,12 @@ class CardDetectorSimple:
         # Initialize OCR reader
         self.ocr_reader = OCRReader()
 
+        # Load card costs from API data (eliminates need for OCR in most cases)
+        self._card_costs = self._load_card_costs()
+
         # Card persistence - remember locked cards per slot
         self._locked_cards = ["unknown", "unknown", "unknown", "unknown"]
+        self._card_confidence = [0, 0, 0, 0]  # Match confidence per slot
 
         # Track consecutive detections per slot
         self._detection_counts = [
@@ -103,20 +111,105 @@ class CardDetectorSimple:
         self.deck_confirmed: bool = False
         self.allowed_template_names: Optional[List[str]] = None
 
+        # === CARD ROTATION QUEUE ===
+        # In Clash Royale: 8 cards total, 4 in hand, 4 in queue
+        # When you play a card, it goes to back of queue, next card from queue fills slot
+        # Once we've seen all 8 cards and know the initial hand, we can predict rotations
+        self._card_queue: List[str] = []  # Next 4 cards (FIFO queue)
+        self._hand_cards: List[str] = ["unknown"] * 4  # Current 4 cards in hand
+        self._rotation_ready: bool = False  # True when we can predict next cards
+        self._last_played_slot: Optional[int] = (
+            None  # Track which slot just had waiting_for_card
+        )
+
         # Elixir tracking (fast bar detection, no OCR needed)
         self._current_elixir: Optional[float] = None
 
         # Per-slot elixir cost cache: only read OCR once per card, reset on waiting_for_card
-        # Format: {slot_idx: {"cost": int, "needs_read": bool, "pending": bool}}
+        # Format: {slot_idx: {"cost": int, "needs_read": bool, "pending": bool, "wait_frames": int}}
         self._slot_elixir_cache = [
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
         ]
 
         # Gray state is derived from: current_elixir < card_cost
         self._cached_gray_states = [False, False, False, False]
+
+    def _load_card_costs(self) -> Dict[str, int]:
+        """Load card elixir costs from the API JSON file"""
+        costs = {}
+        api_path = Path("data/decks/cards_api.json")
+
+        if not api_path.exists():
+            print("   ⚠️  Card costs file not found, will use OCR fallback")
+            return costs
+
+        try:
+            with open(api_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Process main cards
+            for item in data.get("items", []):
+                name = (
+                    item.get("name", "")
+                    .lower()
+                    .replace(" ", "_")
+                    .replace(".", "")
+                    .replace("-", "_")
+                )
+                cost = item.get("elixirCost")
+                if name and cost is not None:
+                    # Store with various possible prefixes
+                    costs[name] = cost
+                    costs[f"base/{name}"] = cost
+                    costs[f"evolution/{name}"] = cost
+                    costs[f"evolution/{name}_evo"] = cost
+
+            # Process support items (heroes)
+            for item in data.get("supportItems", []):
+                name = (
+                    item.get("name", "")
+                    .lower()
+                    .replace(" ", "_")
+                    .replace(".", "")
+                    .replace("-", "_")
+                )
+                cost = item.get("elixirCost")
+                if name and cost is not None:
+                    costs[name] = cost
+                    costs[f"hero/{name}"] = cost
+
+            print(f"   ✅ Loaded {len(data.get('items', []))} card costs from API")
+
+        except Exception as e:
+            print(f"   ⚠️  Failed to load card costs: {e}")
+
+        return costs
+
+    def _get_card_cost(self, card_name: str) -> Optional[int]:
+        """Get elixir cost for a card by name, returns None if unknown"""
+        if not card_name or card_name in ("unknown", "waiting_for_card"):
+            return None
+
+        # Try exact match first
+        if card_name in self._card_costs:
+            return self._card_costs[card_name]
+
+        # Try without prefix
+        base_name = card_name.split("/")[-1] if "/" in card_name else card_name
+        if base_name in self._card_costs:
+            return self._card_costs[base_name]
+
+        # Try normalizing the name
+        normalized = (
+            base_name.lower().replace(" ", "_").replace(".", "").replace("-", "_")
+        )
+        if normalized in self._card_costs:
+            return self._card_costs[normalized]
+
+        return None
 
     def _load_templates(self):
         """Load all card templates from subdirectories"""
@@ -337,28 +430,85 @@ class CardDetectorSimple:
                 continue
 
             slot_cache = self._slot_elixir_cache[slot_idx]
+            locked_card = self._locked_cards[slot_idx]
+            waiting_state = self._waiting_state[slot_idx]
 
-            # If we need to read elixir cost for this slot (after waiting_for_card)
-            if slot_cache["needs_read"]:
-                cost = self.ocr_reader.read_card_elixir_cost(frame, (x1, y1, x2, y2))
-                if cost is not None:
-                    slot_cache["cost"] = cost
-                    slot_cache["needs_read"] = False
-                    slot_cache["pending"] = False
+            # === FAST CHECK: Detect waiting_for_card even if locked ===
+            # This is crucial - when a card is played, we need to detect
+            # the "waiting_for_card" state to unlock the slot
+            slot_roi = frame[y1:y2, x1:x2]
+            is_waiting_visual = self._detect_waiting_for_card_fast(slot_roi)
+
+            if is_waiting_visual and locked_card != "unknown":
+                # Card was just played! Trigger waiting state
+                if not waiting_state["active"]:
+                    print(
+                        f"   ⏳ Slot {slot_idx}: Detected waiting_for_card (was {locked_card})"
+                    )
+                    waiting_state["active"] = True
+                    waiting_state["frame_count"] = 0
+                    waiting_state["detected_card"] = locked_card
+                    # Trigger rotation queue update
+                    self._on_card_played(slot_idx, locked_card)
+                    # Reset lock for this slot
+                    self._locked_cards[slot_idx] = "unknown"
+                    self._card_confidence[slot_idx] = 0
+                    self._slot_elixir_cache[slot_idx] = {
+                        "cost": None,
+                        "needs_read": False,
+                        "pending": False,
+                        "wait_frames": 0,
+                    }
+
+            # === FAST PATH: Skip detection for locked cards ===
+            # If card is locked and not in waiting state, skip expensive detection
+            if (
+                locked_card != "unknown"
+                and not self._is_waiting_for_card(locked_card)
+                and not waiting_state["active"]
+                and not is_waiting_visual
+            ):
+
+                # Use cached gray state based on elixir cost
+                card_cost = slot_cache["cost"]
+                if card_cost is not None and self._current_elixir is not None:
+                    is_gray = self._current_elixir < card_cost
                 else:
-                    # Mark as pending - we'll defer card detection until we know cost
-                    slot_cache["pending"] = True
+                    is_gray = self._cached_gray_states[slot_idx]
 
-            # Determine if card is gray based on elixir cost vs current elixir
+                self._cached_gray_states[slot_idx] = is_gray
+
+                # Return cached result immediately (skip template matching!)
+                result = {
+                    "name": locked_card,
+                    "score": 1.0,  # High confidence since locked
+                    "method": "cached_locked",
+                    "is_gray": is_gray,
+                    "current_elixir": self._current_elixir,
+                    "card_cost": card_cost,
+                }
+                detected_cards.append(result)
+
+                # Still draw debug if needed
+                if debug_frame is not None:
+                    self._draw_debug_visualization(
+                        debug_frame, frame, slot_idx, x1, y1, x2, y2, result
+                    )
+                continue
+
+            # === SLOW PATH: Full detection needed ===
+            # === PHASE 1: Determine gray state ===
+            # Use cached cost if available, otherwise use fast saturation detection
             card_cost = slot_cache["cost"]
             if card_cost is not None and self._current_elixir is not None:
                 is_gray = self._current_elixir < card_cost
             else:
-                # Fallback to saturation-based detection
+                # Fallback to saturation-based detection (fast, ~0.05ms)
                 is_gray = self.ocr_reader.detect_gray_card(frame, (x1, y1, x2, y2))
 
             self._cached_gray_states[slot_idx] = is_gray
 
+            # === PHASE 2: Detect card ===
             # Try normal position first
             result = self._detect_card_at_position(
                 frame, x1, y1, x2, y2, use_gray=is_gray
@@ -380,13 +530,42 @@ class CardDetectorSimple:
             # Apply persistence and transition validation
             result = self._apply_persistence_logic(slot_idx, result)
 
+            # === PHASE 3: Get elixir cost (lookup first, OCR only as last resort) ===
+            detected_name = result["name"]
+
+            # Try to get cost from card name lookup (instant, no OCR needed)
+            if slot_cache["cost"] is None and detected_name not in (
+                "unknown",
+                "waiting_for_card",
+            ):
+                lookup_cost = self._get_card_cost(detected_name)
+                if lookup_cost is not None:
+                    slot_cache["cost"] = lookup_cost
+                    slot_cache["needs_read"] = False
+                    slot_cache["pending"] = False
+
+            # OCR fallback: only if lookup failed and we have a confirmed card
+            # This should rarely happen since we have costs for all known cards
+            if (
+                slot_cache["needs_read"]
+                and slot_cache["cost"] is None
+                and detected_name not in ("unknown", "waiting_for_card")
+            ):
+
+                # Card detected but cost not in lookup table - use OCR
+                cost = self.ocr_reader.read_card_elixir_cost(frame, (x1, y1, x2, y2))
+                if cost is not None:
+                    slot_cache["cost"] = cost
+                    slot_cache["needs_read"] = False
+                    slot_cache["pending"] = False
+
             # Update deck inference
             self._update_deck_inference(result)
 
             # Add extra info
             result["is_gray"] = is_gray
             result["current_elixir"] = self._current_elixir
-            result["card_cost"] = card_cost
+            result["card_cost"] = slot_cache["cost"]
 
             detected_cards.append(result)
 
@@ -395,6 +574,10 @@ class CardDetectorSimple:
                 self._draw_debug_visualization(
                     debug_frame, frame, slot_idx, x1, y1, x2, y2, result
                 )
+
+        # Try to initialize rotation tracking after processing all slots
+        if not self._rotation_ready:
+            self._try_initialize_rotation()
 
         return detected_cards
 
@@ -486,7 +669,7 @@ class CardDetectorSimple:
         score = result.get("score", 0.0)
 
         # Only consider high-confidence detections of real cards
-        if name == "unknown" or self._is_waiting_for_card(name) or score < 0.6:
+        if name == "unknown" or self._is_waiting_for_card(name) or score < 0.4:
             return
 
         # Get base name without folder prefix
@@ -530,16 +713,145 @@ class CardDetectorSimple:
         # Clear caches since we'll be using fewer templates
         self._template_resize_cache.clear()
 
+        # Try to initialize rotation tracking
+        self._try_initialize_rotation()
+
         print(
             f"\n✅ Deck confirmed! Restricting to {len(self.allowed_template_names)} templates:"
         )
         print(f"   Deck: {', '.join(self.active_deck)}")
+
+    def _detect_waiting_for_card_fast(self, slot_roi: np.ndarray) -> bool:
+        """
+        Fast visual detection for 'waiting_for_card' state.
+        The waiting card has a distinctive dark blue color.
+        This is ~0.1ms vs ~6ms for full template matching.
+
+        Measured values for waiting_for_card:
+        - H=106.6 (dark blue)
+        - S=238.3 (high saturation)
+        - V=136.0 (medium brightness)
+        """
+        try:
+            if slot_roi.size == 0:
+                return False
+
+            # Sample the center region of the card (avoid borders)
+            h, w = slot_roi.shape[:2]
+            margin_x = w // 4
+            margin_y = h // 4
+            center = slot_roi[margin_y : h - margin_y, margin_x : w - margin_x]
+
+            if center.size == 0:
+                return False
+
+            # Convert to HSV for color analysis
+            hsv = cv2.cvtColor(center, cv2.COLOR_BGR2HSV)
+
+            # Waiting card characteristics (measured from actual frames):
+            # - Blue hue (around 100-115 in OpenCV HSV)
+            # - High saturation (200-255)
+            # - Medium value/brightness (100-180)
+            avg_hue = np.mean(hsv[:, :, 0])
+            avg_sat = np.mean(hsv[:, :, 1])
+            avg_val = np.mean(hsv[:, :, 2])
+
+            # Check if it matches waiting_for_card color profile
+            is_blue = 95 <= avg_hue <= 120  # Blue hue range
+            is_high_sat = 180 <= avg_sat <= 255  # High saturation (very blue)
+            is_medium_bright = 100 <= avg_val <= 180  # Medium brightness
+
+            return is_blue and is_high_sat and is_medium_bright
+
+        except Exception:
+            return False
 
     def _is_waiting_for_card(self, card_name: str) -> bool:
         """Check if the detected card is a waiting_for_card placeholder"""
         return card_name in self.WAITING_CARD_NAMES or card_name.endswith(
             "waiting_for_card"
         )
+
+    # === CARD ROTATION QUEUE METHODS ===
+
+    def _get_base_name(self, card_name: str) -> str:
+        """Get base card name without folder prefix"""
+        if not card_name or card_name in ("unknown", "waiting_for_card"):
+            return card_name
+        return card_name.split("/")[-1].replace("_evo", "")
+
+    def _on_card_played(self, slot_idx: int, played_card: str):
+        """Called when a card is played (waiting_for_card detected)"""
+        if not self._rotation_ready:
+            return
+
+        base_name = self._get_base_name(played_card)
+        if base_name in ("unknown", "waiting_for_card"):
+            return
+
+        # Card goes to back of queue
+        self._card_queue.append(base_name)
+        print(f"   🔄 Card played: {base_name} → back of queue")
+
+    def _on_card_confirmed(self, slot_idx: int, card_name: str):
+        """Called when a new card appears in a slot (confirmed detection)"""
+        base_name = self._get_base_name(card_name)
+        if base_name in ("unknown", "waiting_for_card"):
+            return
+
+        # If rotation is ready, this card should match front of queue
+        if self._rotation_ready and self._card_queue:
+            expected = self._card_queue[0]
+            if base_name == expected or expected in base_name or base_name in expected:
+                # Card arrived as expected, remove from front of queue
+                self._card_queue.pop(0)
+                print(f"   ✅ Rotation confirmed: {base_name} arrived as predicted")
+            else:
+                print(f"   ⚠️ Rotation mismatch: expected {expected}, got {base_name}")
+                # Try to recover - maybe we missed a play
+                if base_name in self._card_queue:
+                    idx = self._card_queue.index(base_name)
+                    self._card_queue = self._card_queue[idx + 1 :]
+                    print(f"   🔧 Queue adjusted, removed {idx+1} cards")
+
+    def _get_predicted_next_card(self, slot_idx: int) -> Optional[str]:
+        """Get the predicted next card for a slot based on rotation queue"""
+        if not self._rotation_ready or not self._card_queue:
+            return None
+
+        # Front of queue is the next card
+        predicted = self._card_queue[0]
+        print(f"   🔮 Predicted next card: {predicted}")
+        return predicted
+
+    def _try_initialize_rotation(self):
+        """Try to initialize rotation tracking once we have all 8 cards"""
+        if self._rotation_ready:
+            return
+
+        if not self.deck_confirmed or not self.active_deck:
+            return
+
+        # Check if all 4 hand slots are known
+        hand_known = all(
+            c not in ("unknown", "waiting_for_card") for c in self._hand_cards
+        )
+        if not hand_known:
+            return
+
+        # Build the queue: all deck cards not in hand
+        hand_base = set(self._get_base_name(c) for c in self._hand_cards)
+        deck_set = set(self.active_deck)
+        queue_cards = deck_set - hand_base
+
+        if len(queue_cards) == 4:
+            # We know the 4 cards in queue, but not their order yet
+            # Order will be determined as cards are played
+            self._card_queue = list(queue_cards)
+            self._rotation_ready = True
+            print(f"\n🎯 Rotation tracking enabled!")
+            print(f"   Hand: {', '.join(self._hand_cards)}")
+            print(f"   Queue (unordered): {', '.join(self._card_queue)}")
 
     def _apply_persistence_logic(self, slot_idx: int, result: dict) -> dict:
         """Apply persistence logic with transition validation"""
@@ -548,25 +860,46 @@ class CardDetectorSimple:
         detection_info = self._detection_counts[slot_idx]
         waiting_state = self._waiting_state[slot_idx]
 
-        # Handle waiting_for_card detection
+        # Handle waiting_for_card detection (card was played)
         if self._is_waiting_for_card(detected_name):
+            # Track which card was played for rotation queue
+            played_card = self._hand_cards[slot_idx]
+            if played_card != "unknown":
+                self._on_card_played(slot_idx, played_card)
+
             waiting_state["active"] = True
             waiting_state["frames"] = 0
             self._locked_cards[slot_idx] = "unknown"
+            self._hand_cards[slot_idx] = "unknown"  # Mark slot as empty
             detection_info["card"] = "waiting_for_card"
             detection_info["count"] = 1
 
             # Reset elixir cost cache for this slot - new card incoming
-            self._slot_elixir_cache[slot_idx] = {
-                "cost": None,
-                "needs_read": True,
-                "pending": False,
-            }
+            # But if we can predict the next card, use it immediately!
+            predicted_card = self._get_predicted_next_card(slot_idx)
+            if predicted_card:
+                # We know what card is coming - use prediction!
+                predicted_cost = self._get_card_cost(predicted_card)
+                self._slot_elixir_cache[slot_idx] = {
+                    "cost": predicted_cost,
+                    "needs_read": False,  # No OCR needed!
+                    "pending": False,
+                    "wait_frames": 0,
+                }
+            else:
+                # No prediction available, will need to detect/OCR
+                self._slot_elixir_cache[slot_idx] = {
+                    "cost": None,
+                    "needs_read": True,
+                    "pending": False,
+                    "wait_frames": 0,
+                }
 
             return {
                 "name": "waiting_for_card",
                 "score": result["score"],
                 "method": "waiting",
+                "predicted_next": predicted_card,  # Include prediction in result
             }
 
         # If in waiting state, track frames
@@ -584,6 +917,8 @@ class CardDetectorSimple:
 
                 if detection_info["count"] >= self.CONFIDENCE_THRESHOLD:
                     self._locked_cards[slot_idx] = detected_name
+                    self._hand_cards[slot_idx] = detected_name  # Update hand tracking
+                    self._on_card_confirmed(slot_idx, detected_name)
                     waiting_state["active"] = False
                     waiting_state["frames"] = 0
                     return {
@@ -603,6 +938,8 @@ class CardDetectorSimple:
                 waiting_state["frames"] = 0
                 if detected_name != "unknown":
                     self._locked_cards[slot_idx] = detected_name
+                    self._hand_cards[slot_idx] = detected_name  # Update hand tracking
+                    self._on_card_confirmed(slot_idx, detected_name)
                     detection_info["card"] = detected_name
                     detection_info["count"] = 1
                     return {
@@ -658,6 +995,7 @@ class CardDetectorSimple:
             else:
                 return {"name": locked_card, "score": 0.0, "method": "persisted"}
         else:
+            # No locked card yet - initial detection
             if detected_name != "unknown" and not self._is_waiting_for_card(
                 detected_name
             ):
@@ -669,6 +1007,8 @@ class CardDetectorSimple:
 
                 if detection_info["count"] >= self.CONFIDENCE_THRESHOLD:
                     self._locked_cards[slot_idx] = detected_name
+                    self._hand_cards[slot_idx] = detected_name  # Track initial hand
+                    self._on_card_confirmed(slot_idx, detected_name)
                     return {
                         "name": detected_name,
                         "score": result["score"],
@@ -797,10 +1137,10 @@ class CardDetectorSimple:
         ]
         # Reset elixir cost cache
         self._slot_elixir_cache = [
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
-            {"cost": None, "needs_read": True, "pending": False},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
+            {"cost": None, "needs_read": False, "pending": False, "wait_frames": 0},
         ]
         self._cached_gray_states = [False, False, False, False]
         # Also reset deck inference for new match
@@ -808,6 +1148,10 @@ class CardDetectorSimple:
         self._seen_card_set = set()
         self.active_deck = None
         self.deck_confirmed = False
+        # Reset rotation tracking
+        self._card_queue = []
+        self._hand_cards = ["unknown"] * 4
+        self._rotation_ready = False
         self.allowed_template_names = None
         self._template_resize_cache.clear()
 

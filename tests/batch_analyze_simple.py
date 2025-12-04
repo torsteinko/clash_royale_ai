@@ -146,6 +146,7 @@ def main():
         if (idx - 1) % skip != 0:
             continue
 
+        frame_start = time.perf_counter()
         frame = cv2.imread(str(frame_path))
         if frame is None:
             print(f"⚠️ Could not read frame: {frame_path.name}")
@@ -165,15 +166,19 @@ def main():
         frames_processed += 1
         cards = state.get("cards_in_hand", ["unknown"] * 4)
 
+        frame_elapsed = time.perf_counter() - frame_start
+
         # Show speed stats every 50 frames
         if frames_processed % 50 == 0:
             elapsed = time.time() - start_time
             fps = frames_processed / elapsed
             print(
-                f"   ✅ Frame {idx}/{total} → {out_name} | Cards: {', '.join(cards[:2])}... | {fps:.1f} FPS"
+                f"   ✅ Frame {idx}/{total} → {out_name} | Cards: {', '.join(cards[:2])}... | {fps:.1f} FPS | Frame time: {frame_elapsed:.3f}s"
             )
         else:
-            print(f"   ✅ Frame {idx}/{total} → {out_name} | Cards: {', '.join(cards)}")
+            print(
+                f"   ✅ Frame {idx}/{total} → {out_name} | Cards: {', '.join(cards)} | Frame time: {frame_elapsed:.3f}s"
+            )
 
     elapsed = time.time() - start_time
     fps = frames_processed / elapsed if elapsed > 0 else 0
