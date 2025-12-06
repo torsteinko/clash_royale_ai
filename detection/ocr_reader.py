@@ -201,6 +201,7 @@ class OCRReader:
         Read current elixir using OCR (slower, but more precise).
         Kept as fallback if bar detection fails.
         """
+        print("[OCR] Reading elixir via OCR... FALLBACK METHOD")
         try:
             # Use a region near the elixir number (left side of bar)
             x1, y1 = 295, 1225
@@ -288,6 +289,7 @@ class OCRReader:
 
     def _read_elixir_easyocr(self, roi: np.ndarray) -> int:
         """Read elixir cost using EasyOCR (GPU accelerated)"""
+        print("[OCR] Reading elixir via OCR... EASYOCR METHOD")
         # EasyOCR works best with raw scaled images (no threshold)
         scaled = cv2.resize(roi, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
 
@@ -302,11 +304,13 @@ class OCRReader:
             if digits:
                 val = int(digits[0])
                 if 1 <= val <= 10:
+                    print(f"[OCR] EasyOCR detected elixir cost: {val}")
                     return val
         return None
 
     def _read_elixir_tesseract(self, roi: np.ndarray) -> int:
         """Read elixir cost using Tesseract (CPU fallback)"""
+        print("[OCR] Reading elixir via OCR... FALLBACK METHOD")
         # Preprocess - elixir cost is white number on colored background
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
@@ -529,16 +533,25 @@ class OCRReader:
                 return hp
         return None
 
-    def read_tower_level(self, frame: np.ndarray, region: tuple) -> int:
+    def read_tower_level(
+        self, frame: np.ndarray, region: tuple, debug_path: str = None
+    ) -> int:
         """
-        Read tower level from a specific region.
+        Read tower level from a specific region using shape analysis.
+
+        Since OCR struggles with the game font (especially "11" -> "4"),
+        we use a hybrid approach:
+        1. Isolate the bright text pixels
+        2. Count distinct vertical strokes to detect "1" digits
+        3. Use OCR as fallback for other digits
 
         Args:
             frame: Full game frame
             region: (x1, y1, x2, y2) tuple for level region
+            debug_path: Optional path to save debug images
 
         Returns:
-            Level (1-15 range) or None if failed
+            Level (1-16 range) or None if failed
         """
         try:
             x1, y1, x2, y2 = region
@@ -552,35 +565,209 @@ class OCRReader:
             if level_region.size == 0:
                 return None
 
-            if self._use_easyocr and self._easyocr_reader is not None:
-                scaled = cv2.resize(
-                    level_region, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC
+            # Convert to grayscale
+            gray = cv2.cvtColor(level_region, cv2.COLOR_BGR2GRAY)
+
+            # Get the brightest pixels (the white/yellow text)
+            # Use adaptive threshold or find bright regions
+            _, bright_mask = cv2.threshold(
+                gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
+
+            # Also try with a fixed high threshold for very bright text
+            _, high_thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+
+            # Use whichever has more white pixels (more likely to capture text)
+            if cv2.countNonZero(high_thresh) > 10:
+                binary = high_thresh
+            else:
+                binary = bright_mask
+
+            # Save debug images if requested
+            if debug_path:
+                cv2.imwrite(f"{debug_path}_original.png", level_region)
+                cv2.imwrite(f"{debug_path}_gray.png", gray)
+                cv2.imwrite(f"{debug_path}_binary.png", binary)
+
+            # Analyze the binary image to detect digits
+            result_level = self._analyze_level_digits(binary, debug_path)
+
+            # If shape analysis failed, try OCR as fallback
+            if result_level is None:
+                result_level = self._ocr_level_fallback(
+                    level_region, binary, debug_path
                 )
+
+            # Write result to debug file
+            if debug_path:
+                with open(f"{debug_path}_result.txt", "w") as f:
+                    f.write(f"Parsed level: {result_level}\n")
+                    f.write(f"Region: {region}\n")
+                    f.write(f"Method: shape_analysis + ocr_fallback\n")
+
+            return result_level
+
+        except Exception as e:
+            if debug_path:
+                with open(f"{debug_path}_error.txt", "w") as f:
+                    f.write(f"Error: {e}\n")
+            return None
+
+    def _analyze_level_digits(self, binary: np.ndarray, debug_path: str = None) -> int:
+        """
+        Analyze binary image to detect level digits using shape analysis.
+
+        Key insight: "1" digits are thin vertical strokes, while other digits are wider.
+        - Single "1": one thin vertical region
+        - "11": two thin vertical regions
+        - "10"-"16": one thin "1" + one wider digit
+        - "2"-"9": one wider digit
+        """
+        h, w = binary.shape
+
+        # Find vertical projection (sum of white pixels per column)
+        v_proj = np.sum(binary, axis=0) / 255
+
+        # Find regions with significant white pixels
+        threshold = (
+            h * 0.15
+        )  # At least 15% of height should be white (lowered for small images)
+
+        # Find connected regions in the projection
+        raw_regions = []
+        in_region = False
+        start = 0
+
+        for i, val in enumerate(v_proj):
+            if val > threshold and not in_region:
+                in_region = True
+                start = i
+            elif val <= threshold and in_region:
+                in_region = False
+                raw_regions.append((start, i, i - start))  # (start, end, width)
+
+        if in_region:
+            raw_regions.append((start, w, w - start))
+
+        # Filter out noise - remove very small regions (width < 2 pixels)
+        regions = [r for r in raw_regions if r[2] >= 2]
+
+        if debug_path:
+            with open(f"{debug_path}_analysis.txt", "w") as f:
+                f.write(f"Image size: {w}x{h}\n")
+                f.write(f"Vertical projection: {v_proj.tolist()}\n")
+                f.write(f"Raw regions: {raw_regions}\n")
+                f.write(f"Filtered regions (width>=2): {regions}\n")
+
+        if not regions:
+            return None
+
+        # Filter out edge noise - remove regions that touch the left or right edge
+        # These are often tower icon artifacts bleeding into the capture region
+        center_regions = [r for r in regions if r[0] > 2 and r[1] < w - 2]
+
+        # If filtering removed everything, use all regions
+        if not center_regions:
+            center_regions = regions
+
+        if debug_path:
+            with open(f"{debug_path}_analysis.txt", "a") as f:
+                f.write(f"Center regions (not at edges): {center_regions}\n")
+
+        # Classify regions as "thin" (likely 1) or "wide" (other digits)
+        # A "1" digit is typically 2-7 pixels wide, other digits are 7+ pixels
+        thin_threshold = 7  # pixels - reduced for better "1" detection
+
+        thin_count = sum(1 for r in center_regions if r[2] < thin_threshold)
+        wide_count = sum(1 for r in center_regions if r[2] >= thin_threshold)
+
+        if debug_path:
+            with open(f"{debug_path}_analysis.txt", "a") as f:
+                f.write(f"Thin regions (<{thin_threshold}px): {thin_count}\n")
+                f.write(f"Wide regions (>={thin_threshold}px): {wide_count}\n")
+
+        # Decision logic based on filtered center regions
+        if len(center_regions) == 1:
+            if center_regions[0][2] < thin_threshold:
+                return 1  # Single thin stroke = "1"
+            # Single wide region could be 2-9, need OCR
+            return None
+
+        elif len(center_regions) == 2:
+            widths = [r[2] for r in center_regions]
+            if all(rw < thin_threshold for rw in widths):
+                return 11  # Two thin strokes = "11"
+            elif widths[0] < thin_threshold and widths[1] >= thin_threshold:
+                # "1" followed by wider digit = 10, 12, 13, 14, 15, 16
+                # Need OCR to determine which
+                return None
+            elif widths[0] >= thin_threshold and widths[1] < thin_threshold:
+                # Unlikely for levels 1-16, but could happen
+                return None
+
+        # More than 2 regions or ambiguous - use OCR
+        return None
+
+    def _ocr_level_fallback(
+        self, level_region: np.ndarray, binary: np.ndarray, debug_path: str = None
+    ) -> int:
+        """Use OCR as fallback for level detection."""
+
+        # Scale up for better OCR
+        scaled = cv2.resize(binary, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
+
+        # Invert if needed (OCR often works better with black text on white)
+        inverted = cv2.bitwise_not(scaled)
+
+        if debug_path:
+            cv2.imwrite(f"{debug_path}_scaled.png", scaled)
+            cv2.imwrite(f"{debug_path}_inverted.png", inverted)
+
+        result_level = None
+
+        if self._use_easyocr and self._easyocr_reader is not None:
+            # Try inverted (black on white)
+            for img in [inverted, scaled]:
                 results = self._easyocr_reader.readtext(
-                    scaled, allowlist="0123456789", detail=0
+                    img, allowlist="0123456789", detail=0
                 )
                 if results:
                     text = "".join(results)
                     digits = "".join(filter(str.isdigit, text))
                     if digits:
                         level = int(digits)
-                        if 1 <= level <= 15:
+                        if 1 <= level <= 16:
+                            if debug_path:
+                                with open(f"{debug_path}_analysis.txt", "a") as f:
+                                    f.write(f"OCR result: '{text}' -> {level}\n")
                             return level
-            elif TESSERACT_AVAILABLE:
-                gray = cv2.cvtColor(level_region, cv2.COLOR_BGR2GRAY)
-                _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
-                scaled = cv2.resize(
-                    binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC
-                )
-                config = "--psm 10 -c tessedit_char_whitelist=0123456789"
-                text = pytesseract.image_to_string(scaled, config=config).strip()
+
+            # Also try with color image
+            color_scaled = cv2.resize(
+                level_region, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC
+            )
+            results = self._easyocr_reader.readtext(
+                color_scaled, allowlist="0123456789", detail=0
+            )
+            if results:
+                text = "".join(results)
                 digits = "".join(filter(str.isdigit, text))
                 if digits:
                     level = int(digits)
-                    if 1 <= level <= 15:
+                    if 1 <= level <= 16:
+                        if debug_path:
+                            with open(f"{debug_path}_analysis.txt", "a") as f:
+                                f.write(f"OCR color result: '{text}' -> {level}\n")
                         return level
 
-            return None
+        elif TESSERACT_AVAILABLE:
+            config = "--psm 7 -c tessedit_char_whitelist=0123456789"
+            for img in [inverted, scaled]:
+                text = pytesseract.image_to_string(img, config=config).strip()
+                digits = "".join(filter(str.isdigit, text))
+                if digits:
+                    level = int(digits)
+                    if 1 <= level <= 16:
+                        return level
 
-        except Exception:
-            return None
+        return None

@@ -5,3 +5,5 @@ venv/
 env/
 MERGED_NEW_SAMETEAM-1/
 runs/
+dataset/
+recordings/

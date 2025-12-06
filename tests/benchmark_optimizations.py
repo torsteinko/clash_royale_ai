@@ -43,7 +43,9 @@ def load_test_frame():
         return None
 
     # Use frame from middle (more likely to have cards)
-    frame_path = frames[len(frames) // 2]
+    # frame_path = frames[len(frames) // 2]
+    # Use frame 212
+    frame_path = recording / "frame_00212.jpg"
     return cv2.imread(str(frame_path))
 
 

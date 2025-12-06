@@ -4,6 +4,7 @@
 import cv2
 import numpy as np
 import json
+import time
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 from config.game_config import CARD_SLOTS
@@ -39,11 +40,20 @@ class CardDetectorSimple:
     CARD_LIFT_OFFSET = 21
 
     # Persistence settings
-    CONFIDENCE_THRESHOLD = 5  # Frames before we lock in a card
-    MAX_WAITING_FRAMES = 25  # Maximum frames waiting_for_card can appear
+    CONFIDENCE_THRESHOLD = 1  # Frames before we lock in a card (Was 5, changed to 1 for faster locking since we rotate cards fast)
+    MAX_WAITING_FRAMES = 40  # Maximum frames waiting_for_card can appear
 
     # Special card names (can be with or without folder prefix)
-    WAITING_CARD_NAMES = ["waiting_for_card", "other/waiting_for_card"]
+    WAITING_CARD_NAMES = [
+        "waiting_for_card_1",
+        "waiting_for_card_2",
+        "waiting_for_card_3",
+        "waiting_for_card_4",
+        "other/waiting_for_card_1",
+        "other/waiting_for_card_2",
+        "other/waiting_for_card_3",
+        "other/waiting_for_card_4",
+    ]
 
     # Speed optimization settings
     HISTOGRAM_SHORTLIST_SIZE = 10  # Number of templates to check after histogram filter
@@ -82,11 +92,12 @@ class CardDetectorSimple:
         ]
 
         # Track waiting_for_card state per slot
+        # play_recorded: True if we've already added this play to the rotation queue
         self._waiting_state = [
-            {"active": False, "frames": 0},
-            {"active": False, "frames": 0},
-            {"active": False, "frames": 0},
-            {"active": False, "frames": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
         ]
 
         # === SPEED OPTIMIZATION STATE ===
@@ -113,11 +124,27 @@ class CardDetectorSimple:
 
         # === CARD ROTATION QUEUE ===
         # In Clash Royale: 8 cards total, 4 in hand, 4 in queue
-        # When you play a card, it goes to back of queue, next card from queue fills slot
-        # Once we've seen all 8 cards and know the initial hand, we can predict rotations
-        self._card_queue: List[str] = []  # Next 4 cards (FIFO queue)
+        # After you play a card, it goes to position 4 of the queue.
+        # The card at position 1 of the queue comes to your hand.
+        #
+        # To predict the NEXT card, we need to know what card is currently
+        # at position 1 of the queue. Since we start with unknown queue,
+        # we need to track 5 card plays to know position 1:
+        #
+        # Initial: Hand=[A,B,C,D], Queue=[?,?,?,?] (unknown)
+        # Play A: Queue=[?,?,?,A], next=? (still unknown)
+        # Play B: Queue=[?,?,A,B], next=?
+        # Play C: Queue=[?,A,B,C], next=?
+        # Play D: Queue=[A,B,C,D], next=? (A went to hand, but we didn't know queue[1])
+        # Play E: Queue=[B,C,D,E], next=B (NOW we know! B is coming next)
+        #
+        # So we need 5 plays before we can predict.
+        #
+        self._card_queue: List[str] = []  # Last 5 cards played (max length 5)
         self._hand_cards: List[str] = ["unknown"] * 4  # Current 4 cards in hand
-        self._rotation_ready: bool = False  # True when we can predict next cards
+        self._rotation_ready: bool = (
+            False  # True when queue has 5 cards (we know next card)
+        )
         self._last_played_slot: Optional[int] = (
             None  # Track which slot just had waiting_for_card
         )
@@ -246,12 +273,23 @@ class CardDetectorSimple:
                     template, cv2.COLOR_BGR2GRAY
                 )
 
-        # Alias waiting_for_card
-        for name in list(self.templates.keys()):
-            if "waiting_for_card" in name and "waiting_for_card" not in self.templates:
-                self.templates["waiting_for_card"] = self.templates[name]
-                self.templates_gray["waiting_for_card"] = self.templates_gray[name]
-                print(f"   ✓ Aliased '{name}' as 'waiting_for_card'")
+        # Create slot-specific waiting_for_card aliases
+        # Templates are named waiting_for_card_1, waiting_for_card_2, etc.
+        for slot_num in range(1, 5):
+            slot_template_name = f"waiting_for_card_{slot_num}"
+            # Check both with and without 'other/' prefix
+            for prefix in ["", "other/"]:
+                full_name = f"{prefix}{slot_template_name}"
+                if (
+                    full_name in self.templates
+                    and slot_template_name not in self.templates
+                ):
+                    self.templates[slot_template_name] = self.templates[full_name]
+                    self.templates_gray[slot_template_name] = self.templates_gray[
+                        full_name
+                    ]
+                    print(f"   ✓ Aliased '{full_name}' as '{slot_template_name}'")
+                    break
 
         print(f"   ✅ Loaded {len(self.templates)} templates")
 
@@ -314,7 +352,27 @@ class CardDetectorSimple:
         if self.deck_confirmed and self.allowed_template_names:
             candidates = self.allowed_template_names
         else:
-            candidates = list(self.templates.keys())
+            # During initial detection (before deck is confirmed) we should
+            # avoid matching against evolution variants. These only appear
+            # after at least one evolution cycle and including them early
+            # causes false positives (e.g. `electro_dragon_evo`). Limit the
+            # candidate set to `base/` and `hero/` templates plus any
+            # waiting_for_card templates and root templates.
+            candidates = []
+            for name in self.templates.keys():
+                # Always allow waiting templates (they can be in other/)
+                if name in self.WAITING_CARD_NAMES or "waiting_for_card" in name:
+                    candidates.append(name)
+                    continue
+
+                # If template has no folder prefix, allow it
+                if "/" not in name:
+                    candidates.append(name)
+                    continue
+
+                prefix = name.split("/")[0].lower()
+                if prefix in ("base", "hero"):
+                    candidates.append(name)
 
         # Score by histogram similarity (dot product of normalized histograms)
         scores = []
@@ -433,23 +491,40 @@ class CardDetectorSimple:
             locked_card = self._locked_cards[slot_idx]
             waiting_state = self._waiting_state[slot_idx]
 
+            # Decrement cooldown if active (prevents re-triggering right after confirmation)
+            if waiting_state.get("cooldown", 0) > 0:
+                waiting_state["cooldown"] -= 1
+
             # === FAST CHECK: Detect waiting_for_card even if locked ===
             # This is crucial - when a card is played, we need to detect
             # the "waiting_for_card" state to unlock the slot
             slot_roi = frame[y1:y2, x1:x2]
-            is_waiting_visual = self._detect_waiting_for_card_fast(slot_roi)
+            is_waiting_visual = self._detect_waiting_for_card_fast(slot_roi, slot_idx)
 
             if is_waiting_visual and locked_card != "unknown":
                 # Card was just played! Trigger waiting state
-                if not waiting_state["active"]:
+                # But only if not in cooldown (prevents false re-trigger after confirmation)
+                if (
+                    not waiting_state["active"]
+                    and waiting_state.get("cooldown", 0) == 0
+                ):
                     print(
                         f"   ⏳ Slot {slot_idx}: Detected waiting_for_card (was {locked_card})"
                     )
                     waiting_state["active"] = True
                     waiting_state["frame_count"] = 0
                     waiting_state["detected_card"] = locked_card
-                    # Trigger rotation queue update
-                    self._on_card_played(slot_idx, locked_card)
+                    # Record wall-clock time so we can assign predicted
+                    # cards after a short delay (e.g. 300ms) when deck is
+                    # confirmed and rotation inference is active.
+                    waiting_state["started_at"] = time.time()
+                    waiting_state["predicted_assigned"] = False
+
+                    # Only record the play ONCE
+                    if not waiting_state.get("play_recorded", False):
+                        self._on_card_played(slot_idx, locked_card)
+                        waiting_state["play_recorded"] = True
+
                     # Reset lock for this slot
                     self._locked_cards[slot_idx] = "unknown"
                     self._card_confidence[slot_idx] = 0
@@ -507,6 +582,41 @@ class CardDetectorSimple:
                 is_gray = self.ocr_reader.detect_gray_card(frame, (x1, y1, x2, y2))
 
             self._cached_gray_states[slot_idx] = is_gray
+
+            # If the deck is confirmed and rotation tracking is ready,
+            # we can avoid expensive template matching entirely. Instead
+            # we infer the slot contents from our rotation/queue state and
+            # only keep looking for the `waiting_for_card` visual to know
+            # when a card was played and a new one arrives.
+            if self.deck_confirmed and self._rotation_ready:
+                # If the slot visually shows waiting_for_card, report that
+                if is_waiting_visual:
+                    predicted = self._get_predicted_next_card(slot_idx)
+                    result = {
+                        "name": "waiting_for_card",
+                        "score": 0.0,
+                        "method": "waiting",
+                        "predicted_next": predicted,
+                    }
+                else:
+                    # Otherwise, infer the current card from our hand tracking
+                    inferred = self._hand_cards[slot_idx]
+                    result = {
+                        "name": inferred if inferred is not None else "unknown",
+                        "score": 1.0,
+                        "method": "inferred_rotation",
+                    }
+
+                # Apply the same persistence/confirmation logic as usual
+                result = self._apply_persistence_logic(slot_idx, result)
+
+                # Append and draw debug as usual
+                detected_cards.append(result)
+                if debug_frame is not None:
+                    self._draw_debug_visualization(
+                        debug_frame, frame, slot_idx, x1, y1, x2, y2, result
+                    )
+                continue
 
             # === PHASE 2: Detect card ===
             # Try normal position first
@@ -620,6 +730,18 @@ class CardDetectorSimple:
         # Find best match
         best_name, best_score = self._find_best_match(card_to_match, use_gray=use_gray)
 
+        # SAFETY CHECK: If deck is confirmed, validate that matched card is in deck
+        # This shouldn't happen if histogram shortlist is working correctly, but acts as failsafe
+        # Skip check for waiting_for_card variants (they're not real cards)
+        is_waiting = best_name == "unknown" or "waiting_for_card" in best_name
+        if self.deck_confirmed and not is_waiting:
+            base_name = best_name.split("/")[-1].replace("_evo", "")
+            if self.active_deck and base_name not in self.active_deck:
+                # Card not in deck - this is a detection error, return unknown
+                print(f"   ⚠️ SAFETY: Rejected {best_name} (not in locked deck)")
+                best_name = "unknown"
+                best_score = 0.0
+
         method = "gray" if use_gray else "color"
         return {"name": best_name, "score": best_score, "method": method}
 
@@ -644,8 +766,8 @@ class CardDetectorSimple:
             if template is None:
                 continue
 
-            # Match
-            if TORCH_AVAILABLE and not use_gray:
+            # Match using GPU if available
+            if TORCH_AVAILABLE:
                 score = self._match_template_gpu(card_artwork, template)
             else:
                 score = self._match_template_cpu(card_artwork, template)
@@ -667,9 +789,13 @@ class CardDetectorSimple:
 
         name = result.get("name", "unknown")
         score = result.get("score", 0.0)
+        method = result.get("method", "")
 
-        # Only consider high-confidence detections of real cards
-        if name == "unknown" or self._is_waiting_for_card(name) or score < 0.4:
+        # Add card if it's locked/confirmed (regardless of score) OR has high confidence
+        is_locked = "locked" in method or "confirmed" in method
+        if name == "unknown" or self._is_waiting_for_card(name):
+            return
+        if not is_locked and score < 0.4:
             return
 
         # Get base name without folder prefix
@@ -678,7 +804,9 @@ class CardDetectorSimple:
         if base_name not in self._seen_card_set:
             self._seen_card_set.add(base_name)
             self._seen_card_names.append(base_name)
-            print(f"   🎴 Deck card {len(self._seen_card_names)}/8: {base_name}")
+            print(
+                f"   🎴 Deck card {len(self._seen_card_names)}/8: {base_name}, Confidence-score: {score:.2f}"
+            )
 
             # Once we have 8 unique cards, confirm deck
             if len(self._seen_card_set) >= 8:
@@ -721,47 +849,67 @@ class CardDetectorSimple:
         )
         print(f"   Deck: {', '.join(self.active_deck)}")
 
-    def _detect_waiting_for_card_fast(self, slot_roi: np.ndarray) -> bool:
+    def _detect_waiting_for_card_fast(
+        self, slot_roi: np.ndarray, slot_idx: int
+    ) -> bool:
         """
-        Fast visual detection for 'waiting_for_card' state.
-        The waiting card has a distinctive dark blue color.
-        This is ~0.1ms vs ~6ms for full template matching.
+        Detect 'waiting_for_card' state using template matching.
+        Uses slot-specific templates (waiting_for_card_1, waiting_for_card_2, etc.)
+        since each slot has slightly different lighting/appearance.
 
-        Measured values for waiting_for_card:
-        - H=106.6 (dark blue)
-        - S=238.3 (high saturation)
-        - V=136.0 (medium brightness)
+        Args:
+            slot_roi: The image region of the card slot (full slot, will be cropped)
+            slot_idx: The slot index (0-3)
+
+        Returns True only if the slot matches the waiting_for_card template
+        with high confidence.
         """
         try:
             if slot_roi.size == 0:
                 return False
 
-            # Sample the center region of the card (avoid borders)
-            h, w = slot_roi.shape[:2]
-            margin_x = w // 4
-            margin_y = h // 4
-            center = slot_roi[margin_y : h - margin_y, margin_x : w - margin_x]
+            # Crop slot_roi to artwork area (same as how templates are extracted)
+            card_height, card_width = slot_roi.shape[:2]
+            crop_top = int(card_height * self.CROP_TOP)
+            crop_bottom = int(card_height * (1 - self.CROP_BOTTOM))
+            crop_left = int(card_width * self.CROP_SIDE)
+            crop_right = int(card_width * (1 - self.CROP_SIDE))
+            card_artwork = slot_roi[crop_top:crop_bottom, crop_left:crop_right]
 
-            if center.size == 0:
+            if card_artwork.size == 0:
                 return False
 
-            # Convert to HSV for color analysis
-            hsv = cv2.cvtColor(center, cv2.COLOR_BGR2HSV)
+            # Get the slot-specific waiting_for_card template (1-indexed)
+            slot_num = slot_idx + 1
+            waiting_template = self.templates.get(f"waiting_for_card_{slot_num}")
 
-            # Waiting card characteristics (measured from actual frames):
-            # - Blue hue (around 100-115 in OpenCV HSV)
-            # - High saturation (200-255)
-            # - Medium value/brightness (100-180)
-            avg_hue = np.mean(hsv[:, :, 0])
-            avg_sat = np.mean(hsv[:, :, 1])
-            avg_val = np.mean(hsv[:, :, 2])
+            # Fallback: try generic waiting_for_card or any waiting template
+            if waiting_template is None:
+                waiting_template = self.templates.get("waiting_for_card")
+            if waiting_template is None:
+                for name in self.templates:
+                    if "waiting_for_card" in name:
+                        waiting_template = self.templates[name]
+                        break
 
-            # Check if it matches waiting_for_card color profile
-            is_blue = 95 <= avg_hue <= 120  # Blue hue range
-            is_high_sat = 180 <= avg_sat <= 255  # High saturation (very blue)
-            is_medium_bright = 100 <= avg_val <= 180  # Medium brightness
+            if waiting_template is None:
+                return False
 
-            return is_blue and is_high_sat and is_medium_bright
+            # Resize template to match artwork size (should be very close already)
+            h, w = card_artwork.shape[:2]
+            template_resized = cv2.resize(
+                waiting_template, (w, h), interpolation=cv2.INTER_AREA
+            )
+
+            # Template matching on the cropped artwork area
+            result = cv2.matchTemplate(
+                card_artwork, template_resized, cv2.TM_CCOEFF_NORMED
+            )
+            score = result[0, 0] if result.size > 0 else 0.0
+
+            # Only return True if we have a HIGH match (>0.7 means very confident)
+            # This prevents false positives from lifted/dragged cards
+            return score > 0.70
 
         except Exception:
             return False
@@ -781,77 +929,96 @@ class CardDetectorSimple:
         return card_name.split("/")[-1].replace("_evo", "")
 
     def _on_card_played(self, slot_idx: int, played_card: str):
-        """Called when a card is played (waiting_for_card detected)"""
-        if not self._rotation_ready:
-            return
+        """
+        Called when a card is played (waiting_for_card detected).
 
+        Simple queue logic:
+        1. The played card goes to the BACK of the queue
+        2. The card at the FRONT of the queue comes to hand
+        """
         base_name = self._get_base_name(played_card)
         if base_name in ("unknown", "waiting_for_card"):
             return
 
-        # Card goes to back of queue
-        self._card_queue.append(base_name)
-        print(f"   🔄 Card played: {base_name} → back of queue")
+        if self._rotation_ready and len(self._card_queue) >= 1:
+            # Queue is active - the front card will come to hand
+            next_card = self._card_queue.pop(0)  # Remove from front
+            self._card_queue.append(base_name)  # Add played card to back
+
+            # Update hand tracking - the played card leaves, next_card arrives
+            self._hand_cards[slot_idx] = next_card
+
+            queue_display = [f"[{i+1}]{c}" for i, c in enumerate(self._card_queue)]
+            print(
+                f"   🔄 Played {base_name} → {next_card} coming → Queue: {' → '.join(queue_display)}"
+            )
+        else:
+            # Queue not ready yet, just track plays
+            self._card_queue.append(base_name)
+            if len(self._card_queue) > 4:
+                self._card_queue.pop(0)
+            queue_display = [f"[{i+1}]{c}" for i, c in enumerate(self._card_queue)]
+            print(f"   🔄 Played {base_name} → Queue: {' → '.join(queue_display)}")
+            print("Queue list: " + str(self._card_queue))
 
     def _on_card_confirmed(self, slot_idx: int, card_name: str):
         """Called when a new card appears in a slot (confirmed detection)"""
         base_name = self._get_base_name(card_name)
-        if base_name in ("unknown", "waiting_for_card"):
+        if base_name in ("unknown", "waiting_for_card") or self._is_waiting_for_card(
+            card_name
+        ):
             return
 
-        # If rotation is ready, this card should match front of queue
-        if self._rotation_ready and self._card_queue:
-            expected = self._card_queue[0]
-            if base_name == expected or expected in base_name or base_name in expected:
-                # Card arrived as expected, remove from front of queue
-                self._card_queue.pop(0)
-                print(f"   ✅ Rotation confirmed: {base_name} arrived as predicted")
-            else:
-                print(f"   ⚠️ Rotation mismatch: expected {expected}, got {base_name}")
-                # Try to recover - maybe we missed a play
-                if base_name in self._card_queue:
-                    idx = self._card_queue.index(base_name)
-                    self._card_queue = self._card_queue[idx + 1 :]
-                    print(f"   🔧 Queue adjusted, removed {idx+1} cards")
+        # SAFETY CHECK: If deck is confirmed, validate card is in deck
+        if self.deck_confirmed and self.active_deck:
+            if base_name not in self.active_deck:
+                print(f"   ⚠️ SAFETY: Rejected confirmed card {base_name} (not in deck)")
+                return
 
     def _get_predicted_next_card(self, slot_idx: int) -> Optional[str]:
         """Get the predicted next card for a slot based on rotation queue"""
-        if not self._rotation_ready or not self._card_queue:
+        if not self._rotation_ready or len(self._card_queue) < 1:
             return None
 
-        # Front of queue is the next card
-        predicted = self._card_queue[0]
-        print(f"   🔮 Predicted next card: {predicted}")
-        return predicted
+        # Front of queue is the next card that will arrive
+        return self._card_queue[0]
 
     def _try_initialize_rotation(self):
-        """Try to initialize rotation tracking once we have all 8 cards"""
+        """
+        Initialize rotation tracking when the deck is confirmed.
+
+        Simply find the 4 cards NOT in hand - those are the queue.
+        """
         if self._rotation_ready:
             return
 
         if not self.deck_confirmed or not self.active_deck:
             return
 
-        # Check if all 4 hand slots are known
-        hand_known = all(
-            c not in ("unknown", "waiting_for_card") for c in self._hand_cards
-        )
-        if not hand_known:
+        # Get current hand as base names
+        hand_base = set()
+        for card in self._hand_cards:
+            if card and card != "unknown":
+                base = card.split("/")[-1].replace("_evo", "")
+                hand_base.add(base)
+
+        if len(hand_base) < 4:
             return
 
-        # Build the queue: all deck cards not in hand
-        hand_base = set(self._get_base_name(c) for c in self._hand_cards)
-        deck_set = set(self.active_deck)
-        queue_cards = deck_set - hand_base
+        # Queue = cards from deck that are NOT in hand
+        # We don't know the exact order, but we'll figure it out as cards are played
+        queue = []
+        for card in self.active_deck:
+            base = card.replace("_evo", "")
+            if base not in hand_base:
+                queue.append(base)
 
-        if len(queue_cards) == 4:
-            # We know the 4 cards in queue, but not their order yet
-            # Order will be determined as cards are played
-            self._card_queue = list(queue_cards)
+        if len(queue) == 4:
+            self._card_queue = queue
             self._rotation_ready = True
-            print(f"\n🎯 Rotation tracking enabled!")
-            print(f"   Hand: {', '.join(self._hand_cards)}")
-            print(f"   Queue (unordered): {', '.join(self._card_queue)}")
+            print(f"   🔁 Rotation initialized!")
+            print(f"      Hand: {list(hand_base)}")
+            print(f"      Queue: {self._card_queue}")
 
     def _apply_persistence_logic(self, slot_idx: int, result: dict) -> dict:
         """Apply persistence logic with transition validation"""
@@ -862,10 +1029,8 @@ class CardDetectorSimple:
 
         # Handle waiting_for_card detection (card was played)
         if self._is_waiting_for_card(detected_name):
-            # Track which card was played for rotation queue
-            played_card = self._hand_cards[slot_idx]
-            if played_card != "unknown":
-                self._on_card_played(slot_idx, played_card)
+            # Note: _on_card_played is called in detect_cards_with_debug when waiting is first detected
+            # Don't call it again here to avoid duplicates
 
             waiting_state["active"] = True
             waiting_state["frames"] = 0
@@ -904,6 +1069,34 @@ class CardDetectorSimple:
 
         # If in waiting state, track frames
         if waiting_state["active"]:
+            # If deck is confirmed and rotation is ready, assign the predicted
+            # next card to this slot after a short delay (300ms) so we don't
+            # need to run template matching to confirm the new card.
+            if (
+                waiting_state.get("started_at")
+                and self.deck_confirmed
+                and self._rotation_ready
+                and not waiting_state.get("predicted_assigned", False)
+            ):
+                if time.time() - waiting_state["started_at"] >= 0.3:
+                    predicted = self._get_predicted_next_card(slot_idx)
+                    if predicted:
+                        # Assign predicted card into slot
+                        self._locked_cards[slot_idx] = predicted
+                        self._hand_cards[slot_idx] = predicted
+                        waiting_state["predicted_assigned"] = True
+                        waiting_state["active"] = False
+                        waiting_state["frames"] = 0
+                        waiting_state["play_recorded"] = False
+                        waiting_state["cooldown"] = 5
+                        # Notify confirmation hooks
+                        self._on_card_confirmed(slot_idx, predicted)
+                        return {
+                            "name": predicted,
+                            "score": 1.0,
+                            "method": "inferred_rotation_assigned",
+                        }
+
             waiting_state["frames"] += 1
 
             if detected_name != "unknown" and not self._is_waiting_for_card(
@@ -921,6 +1114,8 @@ class CardDetectorSimple:
                     self._on_card_confirmed(slot_idx, detected_name)
                     waiting_state["active"] = False
                     waiting_state["frames"] = 0
+                    waiting_state["play_recorded"] = False  # Reset for next play
+                    waiting_state["cooldown"] = 5  # Prevent re-trigger for 5 frames
                     return {
                         "name": detected_name,
                         "score": result["score"],
@@ -936,6 +1131,8 @@ class CardDetectorSimple:
             if waiting_state["frames"] >= self.MAX_WAITING_FRAMES:
                 waiting_state["active"] = False
                 waiting_state["frames"] = 0
+                waiting_state["play_recorded"] = False  # Reset for next play
+                waiting_state["cooldown"] = 5  # Prevent re-trigger for 5 frames
                 if detected_name != "unknown":
                     self._locked_cards[slot_idx] = detected_name
                     self._hand_cards[slot_idx] = detected_name  # Update hand tracking
@@ -957,9 +1154,7 @@ class CardDetectorSimple:
         # Not in waiting state
         if locked_card != "unknown" and not self._is_waiting_for_card(locked_card):
             if detected_name == locked_card:
-                detection_info["count"] = min(
-                    detection_info["count"] + 1, self.CONFIDENCE_THRESHOLD + 5
-                )
+                detection_info["count"] = 1
                 return {
                     "name": locked_card,
                     "score": result["score"],
@@ -971,26 +1166,16 @@ class CardDetectorSimple:
                 and detected_name != locked_card
                 and not self._is_waiting_for_card(detected_name)
             ):
-                if detection_info["card"] == detected_name:
-                    detection_info["count"] += 1
-                else:
-                    detection_info["card"] = detected_name
-                    detection_info["count"] = 1
-
-                if detection_info["count"] >= self.CONFIDENCE_THRESHOLD:
-                    waiting_state["active"] = True
-                    waiting_state["frames"] = 0
-                    self._locked_cards[slot_idx] = "unknown"
-                    return {
-                        "name": "waiting_for_card",
-                        "score": 0.0,
-                        "method": "inferred_waiting",
-                    }
-
+                # Immediately lock in the new card
+                self._locked_cards[slot_idx] = detected_name
+                self._hand_cards[slot_idx] = detected_name
+                self._on_card_confirmed(slot_idx, detected_name)
+                detection_info["card"] = detected_name
+                detection_info["count"] = 1
                 return {
-                    "name": locked_card,
-                    "score": 0.0,
-                    "method": "persisted_over_" + detected_name.split("/")[-1],
+                    "name": detected_name,
+                    "score": result["score"],
+                    "method": result["method"] + "_confirmed_immediate",
                 }
             else:
                 return {"name": locked_card, "score": 0.0, "method": "persisted"}
@@ -999,27 +1184,17 @@ class CardDetectorSimple:
             if detected_name != "unknown" and not self._is_waiting_for_card(
                 detected_name
             ):
-                if detection_info["card"] == detected_name:
-                    detection_info["count"] += 1
-                else:
-                    detection_info["card"] = detected_name
-                    detection_info["count"] = 1
-
-                if detection_info["count"] >= self.CONFIDENCE_THRESHOLD:
-                    self._locked_cards[slot_idx] = detected_name
-                    self._hand_cards[slot_idx] = detected_name  # Track initial hand
-                    self._on_card_confirmed(slot_idx, detected_name)
-                    return {
-                        "name": detected_name,
-                        "score": result["score"],
-                        "method": result["method"] + "_confirmed",
-                    }
-                else:
-                    return {
-                        "name": detected_name,
-                        "score": result["score"],
-                        "method": f"building_{detection_info['count']}/{self.CONFIDENCE_THRESHOLD}",
-                    }
+                # Immediately lock in the detected card
+                self._locked_cards[slot_idx] = detected_name
+                self._hand_cards[slot_idx] = detected_name  # Track initial hand
+                self._on_card_confirmed(slot_idx, detected_name)
+                detection_info["card"] = detected_name
+                detection_info["count"] = 1
+                return {
+                    "name": detected_name,
+                    "score": result["score"],
+                    "method": result["method"] + "_confirmed_immediate",
+                }
 
             return result
 
@@ -1099,6 +1274,28 @@ class CardDetectorSimple:
             1,
         )
 
+        # Elixir cost (show below card name)
+        card_cost = result.get("card_cost", None)
+        if card_cost is not None:
+            cost_text = f"{card_cost} elixir"
+            cost_size = cv2.getTextSize(cost_text, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)[0]
+            cv2.rectangle(
+                debug_frame,
+                (x1, y2 + 18),
+                (x1 + cost_size[0] + 4, y2 + 32),
+                (0, 0, 0),
+                -1,
+            )
+            cv2.putText(
+                debug_frame,
+                cost_text,
+                (x1 + 2, y2 + 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.35,
+                (180, 120, 255),  # Light purple
+                1,
+            )
+
         # Score and method
         info_text = f"{result['score']:.2f} {method}"
         text_size2 = cv2.getTextSize(info_text, cv2.FONT_HERSHEY_SIMPLEX, 0.3, 1)[0]
@@ -1130,10 +1327,10 @@ class CardDetectorSimple:
             {"card": "unknown", "count": 0},
         ]
         self._waiting_state = [
-            {"active": False, "frames": 0},
-            {"active": False, "frames": 0},
-            {"active": False, "frames": 0},
-            {"active": False, "frames": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
+            {"active": False, "frames": 0, "play_recorded": False, "cooldown": 0},
         ]
         # Reset elixir cost cache
         self._slot_elixir_cache = [
@@ -1149,7 +1346,7 @@ class CardDetectorSimple:
         self.active_deck = None
         self.deck_confirmed = False
         # Reset rotation tracking
-        self._card_queue = []
+        self._card_queue = []  # Sliding window of last 4 cards played
         self._hand_cards = ["unknown"] * 4
         self._rotation_ready = False
         self.allowed_template_names = None
