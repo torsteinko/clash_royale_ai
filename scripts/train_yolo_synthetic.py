@@ -242,9 +242,9 @@ def train(args):
 
     # Determine device
     if args.device == "auto":
-        device = 0 if torch.cuda.is_available() else "cpu"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
     else:
-        device = args.device
+        device = str(args.device)
 
     # Determine batch size
     batch_size = args.batch
@@ -304,6 +304,11 @@ def train(args):
         "mixup": 0.1,
         "copy_paste": 0.1,
     }
+    # allow resuming/from-weights provided by CLI
+    if getattr(args, "weights", None):
+        base_train_args["weights"] = str(args.weights)
+    if getattr(args, "resume", False):
+        base_train_args["resume"] = True
 
     print("\n" + "=" * 60)
     print("🚀 TRAINING CONFIGURATION")
