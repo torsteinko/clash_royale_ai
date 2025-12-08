@@ -1,5 +1,5 @@
 # game_state/state_extractor.py
-"""Complete game state extractor with troop tracking"""
+"""Simplified game state extractor for ally/enemy prefixed model"""
 
 import cv2
 import numpy as np
@@ -10,7 +10,6 @@ import pytesseract
 from typing import Dict, List, Optional, Tuple
 
 from detection.card_detector_simple import CardDetector
-from detection.tower_detector import TowerDetector
 from config.game_config import CARD_SLOTS, ELIXIR_REGION, TIMER_REGION
 
 
@@ -31,7 +30,7 @@ class TroopTracker:
             new_detections: List of troops detected this frame
 
         Returns:
-            Updated detections with consistent team assignments
+            Updated detections with consistent IDs
         """
 
         current_time = time.time()
@@ -66,8 +65,7 @@ class TroopTracker:
             if best_match_idx is not None:
                 detection = new_detections[best_match_idx]
 
-                # Keep the tracked team (consistency)
-                detection["team"] = tracked["team"]
+                # Keep the tracked ID
                 detection["track_id"] = troop_id
 
                 # Update tracked data
@@ -101,27 +99,6 @@ class TroopTracker:
 
         return matched_detections
 
-    def get_team_for_position(
-        self, position: Tuple[float, float], troop_type: str
-    ) -> Optional[str]:
-        """
-        Get team assignment from nearby tracked troop
-
-        Useful when color detection is uncertain
-        """
-
-        min_dist = self.max_distance
-        best_team = None
-
-        for tracked in self.tracked_troops.values():
-            if tracked["type"] == troop_type:
-                dist = self._distance(position, tracked["position"])
-                if dist < min_dist:
-                    min_dist = dist
-                    best_team = tracked["team"]
-
-        return best_team
-
     def _distance(self, pos1: Tuple[float, float], pos2: Tuple[float, float]) -> float:
         """Calculate Euclidean distance"""
         return ((pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2) ** 0.5
@@ -144,29 +121,78 @@ class TroopTracker:
 
 
 class GameStateExtractor:
-    """Extract complete game state from screenshot"""
+    """Extract complete game state from screenshot using ally/enemy prefixed model"""
 
     def __init__(
-        self, yolo_model_path="runs/detect/clash_royale_FINAL_1280px/weights/best.pt"
+        self,
+        yolo_model_path="runs/synthetic/train_20251207_183426_single/weights/best.pt",
+        deck: Optional[List[str]] = None,
     ):
+        """
+        Args:
+            yolo_model_path: Path to YOLO model weights
+            deck: Optional list of 8 card names in your deck (e.g., ["knight", "archer", ...])
+                  Should be base card names WITHOUT "ally_" or "enemy_" prefix
+                  Will filter card detections and ally troops to only these cards + evolutions
+        """
         print("\n" + "=" * 80)
-        print("🎮 INITIALIZING GAME STATE EXTRACTOR")
+        print("🎮 INITIALIZING GAME STATE EXTRACTOR (SYNTHETIC MODEL)")
+        if deck:
+            print(f"🎴 Deck filtering enabled: {len(deck)} cards")
+            print(f"   Cards: {', '.join(deck)}")
+        else:
+            print("🎴 No deck filtering (all cards detected)")
         print("=" * 80)
 
-        # Load YOLO model
+        # Normalize deck names: lowercase, strip any "ally_"/"enemy_" prefix
+        if deck:
+            normalized_deck = []
+            for card in deck:
+                card_lower = card.lower()
+                # Remove team prefixes if user accidentally included them
+                card_lower = card_lower.replace("ally_", "").replace("enemy_", "")
+                normalized_deck.append(card_lower)
+            self.deck = normalized_deck
+            print(f"🎴 Deck filtering enabled: {len(self.deck)} cards")
+            print(f"   Cards: {', '.join(self.deck)}")
+        else:
+            self.deck = None  # Load YOLO model with fallback mechanism
         print("📦 Loading YOLO model...")
-        self.yolo = YOLO(yolo_model_path)
-        print(f"   ✅ YOLO loaded")
+
+        # Try to load the requested model
+        model_path = Path(yolo_model_path)
+        fallback_models = [
+            "runs/synthetic/train_20251206_111056_single/weights/last.pt",
+            "runs/synthetic/train_20251206_111056_single/weights/epoch10.pt",
+            "best.pt",  # Repo root fallback
+            "yolo11n.pt",  # Base model fallback
+        ]
+
+        model_loaded = False
+        for attempt_path in [yolo_model_path] + fallback_models:
+            try:
+                p = Path(attempt_path)
+                # Check if file exists and has reasonable size (>1MB for a trained model)
+                if p.exists() and p.stat().st_size > 1_000_000:
+                    self.yolo = YOLO(str(p))
+                    print(f"   ✅ YOLO loaded from: {p}")
+                    model_loaded = True
+                    break
+                elif p.exists():
+                    print(f"   ⚠️  Skipping {p.name} (file too small, likely corrupted)")
+            except Exception as e:
+                print(f"   ⚠️  Failed to load {attempt_path}: {e}")
+                continue
+
+        if not model_loaded:
+            print("   ⚠️  All model paths failed, loading base YOLO11n...")
+            self.yolo = YOLO("yolo11n.pt")
+            print("   ⚠️  WARNING: Using base model, not trained for Clash Royale!")
 
         # Load card detector
         print("🎴 Loading card templates...")
-        self.card_detector = CardDetector()
+        self.card_detector = CardDetector(deck=self.deck)
         print(f"   ✅ Card detector ready")
-
-        # Load tower detector
-        print("🏰 Loading tower detector...")
-        self.tower_detector = TowerDetector()
-        print(f"   ✅ Tower detector ready")
 
         # Load troop tracker
         print("🎯 Loading troop tracker...")
@@ -195,15 +221,25 @@ class GameStateExtractor:
 
         state = {}
 
-        # 1. Detect troops (with debug)
+        # 1. Detect troops (with debug) - now uses ally/enemy prefixes
         raw_troops = self._detect_troops(frame, debug=debug)
+
+        # 2. Filter ally troops by deck if specified
+        ally_troops_filtered = raw_troops["ally"]
+        if self.deck:
+            ally_troops_filtered = self._filter_troops_by_deck(ally_troops_filtered)
+            # Also update debug frame to only show filtered troops
+            if debug and "debug_frame" in raw_troops:
+                raw_troops["debug_frame"] = self._redraw_debug_frame(
+                    frame, ally_troops_filtered, raw_troops["enemy"]
+                )
 
         # Store debug frame if available
         if debug and "debug_frame" in raw_troops:
             state["debug_frame"] = raw_troops["debug_frame"]
 
-        # 2. Apply tracking
-        ally_troops = self.troop_tracker.update(raw_troops["ally"])
+        # 3. Apply tracking
+        ally_troops = self.troop_tracker.update(ally_troops_filtered)
         enemy_troops = self.troop_tracker.update(raw_troops["enemy"])
 
         state["troops"] = {
@@ -223,8 +259,8 @@ class GameStateExtractor:
         else:
             state["cards_in_hand"] = self.card_detector.detect_cards_in_hand(frame)
 
-        # 4. Detect towers (OCR-based)
-        tower_info = self.tower_detector.detect_towers(frame)
+        # 4. Detect towers from YOLO detections
+        tower_info = self._detect_towers_from_yolo(raw_troops)
         state["towers"] = tower_info
 
         # 5. OCR (optional, skip if fails)
@@ -265,7 +301,7 @@ class GameStateExtractor:
         }
 
     def _detect_troops(self, frame: np.ndarray, debug: bool = False) -> Dict:
-        """Detect troops using YOLO + color-based team detection"""
+        """Detect troops using YOLO with ally/enemy prefixed classes"""
 
         try:
             results = self.yolo.predict(frame, conf=0.5, imgsz=1280, verbose=False)
@@ -287,20 +323,62 @@ class GameStateExtractor:
                 cls = int(box.cls[0])
                 class_name = results[0].names[cls]
 
-                # Determine team (pass debug_frame)
-                side = self._detect_team_by_color(
-                    frame, int(x1), int(y1), int(x2), int(y2), class_name, debug_frame
-                )
+                # Ignore troops under y=1000 (game UI)
+                if y2 < 1000:
+                    continue
+
+                # Parse team from class name prefix
+                if class_name.startswith("ally_"):
+                    team = "ally"
+                    troop_type = class_name[5:]  # Remove "ally_" prefix
+                elif class_name.startswith("enemy_"):
+                    team = "enemy"
+                    troop_type = class_name[6:]  # Remove "enemy_" prefix
+                else:
+                    # Non-troop classes (UI elements, etc.) - skip
+                    continue
+
+                # Try to detect level using OCR (useful for enemy troops)
+                level = None
+                if not self._is_tower(troop_type):
+                    level = self._detect_level_ocr(
+                        frame, int(x1), int(y1), int(x2), int(y2)
+                    )
 
                 troop_data = {
-                    "type": class_name,
+                    "type": troop_type,
                     "position": ((x1 + x2) / 2, (y1 + y2) / 2),
                     "bbox": (int(x1), int(y1), int(x2), int(y2)),
                     "confidence": conf,
-                    "team": side,
+                    "team": team,
+                    "level": level,
                 }
 
-                if side == "ally":
+                # Draw debug box if enabled
+                if debug_frame is not None:
+                    color = (0, 255, 0) if team == "ally" else (0, 0, 255)
+                    cv2.rectangle(
+                        debug_frame,
+                        (int(x1), int(y1)),
+                        (int(x2), int(y2)),
+                        color,
+                        2,
+                    )
+                    label = f"{team[:1].upper()}: {troop_type}"
+                    if level:
+                        label += f" L{level}"
+                    label += f" {conf:.2f}"
+                    cv2.putText(
+                        debug_frame,
+                        label,
+                        (int(x1), int(y1) - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        color,
+                        1,
+                    )
+
+                if team == "ally":
                     ally_troops.append(troop_data)
                 else:
                     enemy_troops.append(troop_data)
@@ -319,202 +397,166 @@ class GameStateExtractor:
 
     def _is_tower(self, class_name: str) -> bool:
         """Check if unit is a tower"""
-        tower_keywords = ["tower", "king", "princess", "arena"]
+        tower_keywords = ["tower", "king"]
         return any(kw in class_name.lower() for kw in tower_keywords)
 
-    def _detect_team_by_color(
-        self,
-        frame: np.ndarray,
-        x1: int,
-        y1: int,
-        x2: int,
-        y2: int,
-        class_name: str = "",
-        debug_frame: np.ndarray = None,
-    ) -> str:
+    def _filter_troops_by_deck(self, troops: List[Dict]) -> List[Dict]:
         """
-        Enhanced detection - search INSIDE top of unit bbox
+        Filter ally troops to only include cards from the deck (including evolutions)
 
-        Level indicator is AT the top of the unit, not above it!
+        Note: troop["type"] already has "ally_" prefix removed by _detect_troops()
+        So we can directly compare against deck card names
         """
+        if not self.deck:
+            return troops
 
-        # Towers use position only
-        if self._is_tower(class_name):
-            center_y = (y1 + y2) / 2
-            return "ally" if center_y > frame.shape[0] / 2 else "enemy"
+        filtered = []
+        for troop in troops:
+            troop_type = troop.get("type", "").lower()
 
-        # Calculate position zones
-        center_y = (y1 + y2) / 2
-        h = frame.shape[0]
+            # Skip towers - always show them
+            if self._is_tower(troop_type):
+                filtered.append(troop)
+                continue
 
-        in_ally_zone = center_y > h * 0.60
-        in_enemy_zone = center_y < h * 0.40
-        in_middle_zone = not in_ally_zone and not in_enemy_zone
+            # Handle evolution suffix (e.g., "knight_evolution" matches "knight")
+            base_type = troop_type.replace("_evolution", "").replace("_evo", "")
 
-        # Search area: TOP PORTION of unit bbox (level is inside, not above!)
-        unit_width = x2 - x1
-        unit_height = y2 - y1
+            # Handle building prefix (e.g., "building_cannon" matches "cannon")
+            base_type_no_building = base_type.replace("building_", "")
 
-        # Search in top 25% of unit height (where level/HP indicators are)
-        search_top_portion = int(unit_height * 0.25)
+            # Check if troop matches any card in deck
+            for deck_card in self.deck:
+                deck_card_lower = deck_card.lower()
 
-        # SEARCH INSIDE THE BBOX TOP
-        search_y1 = y1  # Start at top of unit
-        search_y2 = min(y1 + search_top_portion, y2)  # Top 25% of unit
+                # Exact match or base match
+                if (
+                    troop_type == deck_card_lower
+                    or base_type == deck_card_lower
+                    or base_type_no_building == deck_card_lower
+                ):
+                    filtered.append(troop)
+                    break
 
-        # Keep search within unit width + small margin
-        search_x1 = max(0, x1 - int(unit_width * 0.1))
-        search_x2 = min(frame.shape[1], x2 + int(unit_width * 0.1))
+                # Partial match (e.g., "goblin_gang" contains "goblin")
+                if deck_card_lower in troop_type or deck_card_lower in base_type:
+                    filtered.append(troop)
+                    break
 
-        # DRAW DEBUG BOXES
-        if debug_frame is not None:
-            # Color detection area (purple)
-            cv2.rectangle(
+        return filtered
+
+    def _redraw_debug_frame(
+        self, frame: np.ndarray, ally_troops: List[Dict], enemy_troops: List[Dict]
+    ) -> np.ndarray:
+        """Redraw debug frame with only the filtered troops"""
+        debug_frame = frame.copy()
+
+        # Draw ally troops (green)
+        for troop in ally_troops:
+            bbox = troop.get("bbox", (0, 0, 0, 0))
+            x1, y1, x2, y2 = bbox
+            level = troop.get("level")
+            conf = troop.get("confidence", 0)
+            troop_type = troop.get("type", "")
+
+            cv2.rectangle(debug_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"A: {troop_type}"
+            if level:
+                label += f" L{level}"
+            label += f" {conf:.2f}"
+            cv2.putText(
                 debug_frame,
-                (search_x1, search_y1),
-                (search_x2, search_y2),
-                (255, 0, 255),
+                label,
+                (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
                 1,
             )
 
-            # Level detection area (cyan) - even smaller, centered
-            level_height = min(20, int(unit_height * 0.15))
-            level_y1 = y1
-            level_y2 = y1 + level_height
-            level_x1 = x1 + int(unit_width * 0.25)
-            level_x2 = x2 - int(unit_width * 0.25)
-            cv2.rectangle(
+        # Draw enemy troops (red)
+        for troop in enemy_troops:
+            bbox = troop.get("bbox", (0, 0, 0, 0))
+            x1, y1, x2, y2 = bbox
+            level = troop.get("level")
+            conf = troop.get("confidence", 0)
+            troop_type = troop.get("type", "")
+
+            cv2.rectangle(debug_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            label = f"E: {troop_type}"
+            if level:
+                label += f" L{level}"
+            label += f" {conf:.2f}"
+            cv2.putText(
                 debug_frame,
-                (level_x1, level_y1),
-                (level_x2, level_y2),
-                (0, 255, 255),
+                label,
+                (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
                 1,
             )
 
-        if search_y2 <= search_y1 or search_x2 <= search_x1:
-            return "ally" if in_ally_zone or not in_enemy_zone else "enemy"
+        return debug_frame
 
-        search_region = frame[search_y1:search_y2, search_x1:search_x2]
+    def _detect_towers_from_yolo(self, raw_troops: Dict) -> Dict:
+        """
+        Detect tower status from YOLO detections
 
-        if search_region.size == 0:
-            return "ally" if in_ally_zone or not in_enemy_zone else "enemy"
+        Instead of OCR, we check for presence of tower detections:
+        - ally_princess_tower (left/right based on x position)
+        - enemy_princess_tower (left/right based on x position)
+        - ally_king / enemy_king
 
-        try:
-            # === FIRST: Try OCR to detect level (enemy always has level) ===
-            level_detected = self._detect_level_ocr(frame, x1, y1, x2, y2)
+        Returns dict with tower status (alive/down) for each position
+        """
 
-            if level_detected:
-                # Level detected = ENEMY
-                if debug_frame is not None:
-                    cv2.putText(
-                        debug_frame,
-                        f"LVL:{level_detected}",
-                        (search_x1, search_y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.4,
-                        (0, 255, 255),
-                        1,
-                    )
-                return "enemy"
+        towers = {
+            "ally": {
+                "left_princess": {"status": "down", "hp": 0, "max_hp": 0, "level": 0},
+                "right_princess": {"status": "down", "hp": 0, "max_hp": 0, "level": 0},
+                "king": {"status": "down", "hp": 0, "max_hp": 0, "level": 0},
+            },
+            "enemy": {
+                "left_princess": {"status": "down", "hp": 0, "max_hp": 0, "level": 0},
+                "right_princess": {"status": "down", "hp": 0, "max_hp": 0, "level": 0},
+                "king": {"status": "down", "hp": 0, "max_hp": 0, "level": 0},
+            },
+        }
 
-            # === COLOR DETECTION ===
-            hsv = cv2.cvtColor(search_region, cv2.COLOR_BGR2HSV)
+        # Process all detections (ally + enemy combined)
+        all_detections = raw_troops.get("ally", []) + raw_troops.get("enemy", [])
 
-            # RED detection
-            red_mask1 = cv2.inRange(
-                hsv, np.array([0, 60, 70]), np.array([15, 255, 255])
-            )
-            red_mask2 = cv2.inRange(
-                hsv, np.array([165, 60, 70]), np.array([180, 255, 255])
-            )
-            red_mask = cv2.bitwise_or(red_mask1, red_mask2)
-            red_pixels_hsv = cv2.countNonZero(red_mask)
+        for detection in all_detections:
+            troop_type = detection.get("type", "")
+            team = detection.get("team", "")
+            bbox = detection.get("bbox", (0, 0, 0, 0))
+            level = detection.get("level")
 
-            # BLUE detection
-            blue_mask = cv2.inRange(
-                hsv, np.array([90, 60, 70]), np.array([130, 255, 255])
-            )
-            blue_pixels_hsv = cv2.countNonZero(blue_mask)
+            # Calculate center x position
+            x1, y1, x2, y2 = bbox
+            center_x = (x1 + x2) / 2
 
-            # BGR channel analysis
-            b, g, r = cv2.split(search_region)
+            # Check if it's a tower detection
+            if "princess_tower" in troop_type:
+                # Determine left/right based on x position
+                # Screen center is roughly 360 (720/2)
+                if center_x < 360:
+                    position = "left_princess"
+                else:
+                    position = "right_princess"
 
-            red_dominant = ((r.astype(int) - b.astype(int)) > 35) & (r > 80)
-            red_pixels_bgr = np.count_nonzero(red_dominant)
+                towers[team][position]["status"] = "alive"
+                if level:
+                    towers[team][position]["level"] = level
 
-            blue_dominant = ((b.astype(int) - r.astype(int)) > 35) & (b > 80)
-            blue_pixels_bgr = np.count_nonzero(blue_dominant)
+            elif "king" in troop_type and "tower" not in troop_type:
+                # King tower detected
+                towers[team]["king"]["status"] = "alive"
+                if level:
+                    towers[team]["king"]["level"] = level
 
-            # Pink detection
-            pink_mask = (r > 120) & (b > 60) & ((r.astype(int) - b.astype(int)) > 20)
-            pink_pixels = np.count_nonzero(pink_mask)
-
-            # Total scores
-            total_red = red_pixels_hsv + red_pixels_bgr + pink_pixels
-            total_blue = blue_pixels_hsv + blue_pixels_bgr
-
-            # DRAW DEBUG INFO
-            if debug_frame is not None:
-                cv2.putText(
-                    debug_frame,
-                    f"R:{total_red} B:{total_blue}",
-                    (search_x1, search_y1 - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (255, 0, 255),
-                    1,
-                )
-
-            # === DECISION LOGIC ===
-
-            # STRONG COLOR SIGNAL
-            if total_red > 50:
-                return "enemy"
-
-            if total_blue > 50:
-                return "ally"
-
-            # MODERATE COLOR SIGNAL
-            if total_red > 20:
-                if in_enemy_zone:
-                    return "enemy"
-                elif in_middle_zone and total_red > total_blue * 2:
-                    return "enemy"
-                elif in_ally_zone and total_red > 40:
-                    return "enemy"
-
-            if total_blue > 20:
-                if in_ally_zone:
-                    return "ally"
-                elif in_middle_zone and total_blue > total_red * 2:
-                    return "ally"
-                elif in_enemy_zone and total_blue > 40:
-                    return "ally"
-
-            # WEAK/NO SIGNAL - Check tracking
-            position = ((x1 + x2) / 2, (y1 + y2) / 2)
-            tracked_team = self.troop_tracker.get_team_for_position(
-                position, class_name
-            )
-
-            if tracked_team:
-                return tracked_team
-
-            # Final fallback: Position
-            if in_ally_zone:
-                return "ally"
-            elif in_enemy_zone:
-                return "enemy"
-            else:
-                return "ally"
-
-        except Exception as e:
-            if in_ally_zone:
-                return "ally"
-            elif in_enemy_zone:
-                return "enemy"
-            else:
-                return "ally"
+        return towers
 
     def _detect_level_ocr(
         self, frame: np.ndarray, x1: int, y1: int, x2: int, y2: int
@@ -523,6 +565,7 @@ class GameStateExtractor:
         Detect level number (1-23) at TOP of unit bbox
 
         Level badge is INSIDE the unit bbox at the top, not above it!
+        This is now used to extract level information, not for team detection.
         """
 
         if not self.ocr_enabled:
@@ -584,7 +627,7 @@ class GameStateExtractor:
                 # Parse level (1-23)
                 if text.isdigit():
                     level = int(text)
-                    if 1 <= level <= 23:
+                    if 3 <= level <= 23:
                         return level
 
             return None
@@ -673,6 +716,8 @@ class GameStateExtractor:
 
             track_id = troop.get("track_id", "?")
             label = f"{troop['type']} #{track_id}"
+            if troop.get("level"):
+                label += f" L{troop['level']}"
             cv2.putText(
                 vis_frame,
                 label,
@@ -690,6 +735,8 @@ class GameStateExtractor:
 
             track_id = troop.get("track_id", "?")
             label = f"{troop['type']} #{track_id}"
+            if troop.get("level"):
+                label += f" L{troop['level']}"
             cv2.putText(
                 vis_frame,
                 label,

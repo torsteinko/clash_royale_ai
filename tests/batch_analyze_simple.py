@@ -1,5 +1,5 @@
 # tests/batch_analyze_simple.py
-"""Batch analyze using the simple card detector (card_detector_simple.py)
+"""Batch analyze using the simplified state extractor with synthetic model (ally/enemy prefixed classes)
 + OCR debug overlay showing detected elixir and per-card elixir cost
 + Tower HP/level OCR debug overlay
 """
@@ -87,7 +87,7 @@ def _draw_ocr_debug(vis: cv2.Mat, frame: cv2.Mat, ocr: OCRReader):
 def main():
     print("\n" + "=" * 80)
     print(
-        "📊 BATCH ANALYZER (SIMPLE) - Process frames and save debug images (OCR overlay)"
+        "📊 BATCH ANALYZER - Process frames with synthetic model (ally/enemy detection)"
     )
     print("=" * 80)
 
@@ -134,31 +134,19 @@ def main():
     )
     enable_ocr_debug = ocr_debug_input == "y"
 
-    # Ask if user wants tower debug overlay
-    tower_debug_input = (
-        input("Enable tower OCR debug overlay? (y/N) [default: N]: ").strip().lower()
-    )
-    enable_tower_debug = tower_debug_input == "y"
-
-    # Create tower OCR debug directory
-    tower_ocr_debug_dir = None
-    if enable_tower_debug:
-        tower_ocr_debug_dir = selected / "tower_ocr_debug"
-        if tower_ocr_debug_dir.exists():
-            try:
-                shutil.rmtree(tower_ocr_debug_dir)
-            except Exception as e:
-                print(f"⚠️  Failed to clear tower_ocr_debug: {e}")
-        tower_ocr_debug_dir.mkdir(exist_ok=True)
-        print(f"📁 Tower OCR debug images will be saved to: {tower_ocr_debug_dir}")
+    my_deck = [
+        "archer",
+        "fireball",
+        "giant",
+        "minions",
+        "spear_goblins",
+        "arrows",
+        "ram_rider",
+        "musketeer",
+    ]
 
     extractor = GameStateExtractor()
     ocr = OCRReader() if enable_ocr_debug else None
-
-    # Use the extractor's tower detector instead of creating a separate one
-    # This avoids duplicate detection calls and duplicate messages
-    if enable_tower_debug and tower_ocr_debug_dir:
-        extractor.tower_detector.debug_dir = str(tower_ocr_debug_dir)
 
     import time
 
@@ -182,10 +170,6 @@ def main():
         # Draw OCR debug overlay (only if enabled - it's slow!)
         if enable_ocr_debug and ocr is not None:
             _draw_ocr_debug(vis, frame, ocr)
-
-        # Draw tower OCR debug overlay using the extractor's tower detector
-        if enable_tower_debug:
-            vis = extractor.tower_detector.draw_debug_overlay(vis)
 
         out_name = f"debug_simple_{idx:05d}.jpg"
         out_path = debug_dir / out_name

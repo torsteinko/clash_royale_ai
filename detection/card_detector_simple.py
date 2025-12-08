@@ -62,12 +62,37 @@ class CardDetectorSimple:
     # OCR is now rarely needed due to card cost lookup table
     # Only used as fallback when card name can't be matched to known costs
 
-    def __init__(self, templates_dir="data/card_templates"):
+    def __init__(
+        self, templates_dir="data/card_templates", deck: Optional[List[str]] = None
+    ):
+        """
+        Args:
+            templates_dir: Path to card templates directory
+            deck: Optional list of 8 card names to filter detections
+                  Should be base card names WITHOUT "ally_" or "enemy_" prefix
+                  (e.g., ["knight", "archer", "musketeer", ...])
+        """
         self.templates_dir = Path(templates_dir)
+
+        # Normalize deck names: lowercase, strip any "ally_"/"enemy_" prefix
+        if deck:
+            normalized_deck = []
+            for card in deck:
+                card_lower = card.lower()
+                # Remove team prefixes if user accidentally included them
+                card_lower = card_lower.replace("ally_", "").replace("enemy_", "")
+                normalized_deck.append(card_lower)
+            self.deck = normalized_deck
+        else:
+            self.deck = None
+
         print(
             f"🔍 Initializing CardDetectorSimple with templates from: {self.templates_dir}"
         )
         print(f"   Full path: {self.templates_dir.resolve()}")
+
+        if self.deck:
+            print(f"   🎴 Deck filter active: {len(self.deck)} cards")
 
         self.templates = {}  # Color templates
         self.templates_gray = {}  # Grayscale templates
@@ -266,6 +291,10 @@ class CardDetectorSimple:
             else:
                 card_name = template_path.stem
 
+            # Filter by deck if specified
+            if self.deck and not self._is_card_in_deck(card_name):
+                continue
+
             template = cv2.imread(str(template_path))
             if template is not None:
                 self.templates[card_name] = template
@@ -301,6 +330,35 @@ class CardDetectorSimple:
                 categories[category] = categories.get(category, 0) + 1
             for category, count in sorted(categories.items()):
                 print(f"   • {category}: {count} cards")
+
+    def _is_card_in_deck(self, card_name: str) -> bool:
+        """Check if a card template should be loaded based on deck filter"""
+        if not self.deck:
+            return True
+
+        # Always include waiting_for_card templates
+        if "waiting_for_card" in card_name.lower():
+            return True
+
+        # Get base card name without folder prefix
+        base_name = card_name.split("/")[-1].lower()
+
+        # Remove evolution suffix for matching
+        base_name_no_evo = base_name.replace("_evolution", "").replace("_evo", "")
+
+        # Check if this card is in the deck
+        for deck_card in self.deck:
+            deck_card_lower = deck_card.lower()
+            # Match exact, with evolution, or partial
+            if (
+                deck_card_lower == base_name
+                or deck_card_lower == base_name_no_evo
+                or deck_card_lower in base_name
+                or base_name_no_evo in deck_card_lower
+            ):
+                return True
+
+        return False
 
     def _precompute_template_histograms(self):
         """Compute color histograms for fast template pre-filtering"""

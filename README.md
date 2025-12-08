@@ -78,21 +78,59 @@ python .\scripts\train_yolo_synthetic.py --mode train --two-stage --model yolo11
 
 ---
 
-## TODOs / Next tasks
+## Offline Reinforcement Learning Training
 
-- [ ] Finish full synthetic generation (50k+ train images) in chunks and validate class balance.
-- [ ] Add per-class size multipliers and rarity-aware sampling in the builder.
-- [ ] Improve generator diagnostics (visual preview, sample viewer).
-- [ ] Integration: export detector to runtime model and integrate into bot pipeline (720×1280 inference).
-- [ ] Add detection post-processing (tracking, tower-health parsing, bar OCR).
-- [ ] Add CI smoke-tests for generator + a short training test.
-- [ ] Document runtime API for detectors and state extractor.
+The project now includes an offline RL training pipeline for learning a decision-making policy from recorded gameplay (adapted from KataCR).
+
+### Quick Start
+
+1. **Collect replay data** from recorded gameplay:
+```powershell
+python scripts/collect_replay_data.py --mode video --video recordings/gameplay.mp4 --deck knight archer fireball goblin
+```
+
+2. **Train the policy**:
+```powershell
+python policy/offline/train.py --replay-dir replay_data --batch-size 16 --epochs 50
+```
+
+3. **Monitor training**:
+```powershell
+tensorboard --logdir runs/policy_training
+```
+
+See `policy/README.md` for detailed documentation on:
+- Replay data format
+- Model architecture (Decision Transformer)
+- Reward structure
+- Custom configurations
+- Advanced usage
+
+### Key Components
+
+- **State Builder** (`policy/builders/state_builder.py`): Converts YOLO detections to training format
+- **Policy Transformer** (`policy/offline/models/policy_transformer.py`): Neural network that predicts card selection and placement
+- **Dataset Builder** (`policy/offline/dataset.py`): Loads and batches replay data
+- **Replay Collector** (`scripts/collect_replay_data.py`): Records gameplay for offline training
+
+The policy network learns to:
+- Select which card to play (from 4 in hand)
+- Decide where to place it (32×18 grid)
+- Maximize long-term reward (destroy enemy towers, protect yours)
 
 ---
 
-## Contact / Iteration
+## TODOs / Next tasks
 
-Open issues or request patches for:
-- different generator sizing rules per-class,
-- improved GPU-backed generation (torch compositing),
-- alternate training schedules.
+- ✅ YOLO model for troop/tower detection
+- ✅ Game state extraction pipeline
+- ✅ Deck-based filtering for ally troops
+- ✅ Offline RL training infrastructure
+- 🔄 Collect diverse training data (wins/losses, different decks)
+- 🔄 Train initial policy network
+- ⏳ Inference script for live gameplay
+- ⏳ Integration with game interaction (mouse/keyboard control)
+- ⏳ Online RL / self-play improvements
+- ⏳ Script to play on Nulls Royale
+
+---

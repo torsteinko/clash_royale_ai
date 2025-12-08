@@ -1,0 +1,23 @@
+# Additional requirements for offline RL training
+# Install with: pip install -r requirements_policy.txt
+
+# Core ML
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Utilities
+tensorboard>=2.12.0
+tqdm>=4.65.0
+
+# Data handling
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Optional: For faster data loading
+# lz4>=4.3.2
+
+# The base requirements.txt should already have:
+# - ultralytics (YOLO)
+# - opencv-python
+# - pytesseract
+# - pillow
