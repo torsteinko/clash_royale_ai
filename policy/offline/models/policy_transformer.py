@@ -82,13 +82,17 @@ class PolicyTransformer(nn.Module):
         max_seq_len: int = 50,
         dropout: float = 0.1,
         arena_grid_size: Tuple[int, int] = (32, 18),
+        state_dim: int = 6,  # Dimension of state vector (elixir, time, 4 cards)
     ):
         super().__init__()
 
         self.d_model = d_model
         self.arena_grid_size = arena_grid_size
 
-        # Embeddings
+        # State encoder: project state features to d_model
+        self.state_projection = nn.Linear(state_dim, d_model)
+
+        # Embeddings (kept for future use if needed)
         self.card_embed = nn.Embedding(
             num_cards + 1, d_model // 4
         )  # +1 for padding/empty
@@ -102,8 +106,8 @@ class PolicyTransformer(nn.Module):
 
         # Action encoder (previous actions)
         self.action_card_embed = nn.Embedding(
-            5, d_model // 2
-        )  # 0-4 (0=no action, 1-4=cards)
+            num_cards + 1, d_model // 2
+        )  # Card embeddings for actions
         self.action_pos_embed = nn.Linear(2, d_model // 2)  # Position (x, y)
         self.action_encoder = nn.Linear(d_model, d_model)
 
@@ -162,17 +166,17 @@ class PolicyTransformer(nn.Module):
 
     def forward(
         self,
-        states,  # Sequence of states
-        actions,  # Sequence of previous actions
-        rtg,  # Return-to-go values (B, T)
-        timesteps,  # Timestep indices (B, T)
+        states,  # (B, T, state_dim) - State feature vectors
+        actions,  # (B, T, 3) - Previous actions [card_id, position_x, position_y]
+        rtg,  # (B, T) - Return-to-go values
+        timesteps,  # (B, T) - Timestep indices
         attention_mask=None,
     ):
         """
         Forward pass
 
         Args:
-            states: List of state dicts, length (B, T)
+            states: State tensors (B, T, state_dim)
             actions: Previous actions (B, T, 3) - [card_id, position_x, position_y]
             rtg: Return-to-go (B, T)
             timesteps: Timestep indices (B, T)
@@ -184,9 +188,9 @@ class PolicyTransformer(nn.Module):
         """
         B, T = rtg.shape
 
-        # For this simplified version, create dummy state encodings
-        # In practice, you'd encode the actual state dictionaries
-        state_embeds = torch.randn(B, T, self.d_model, device=rtg.device)
+        # Encode states from feature vectors
+        state_embeds = self.state_projection(states)  # (B, T, d_model)
+        state_embeds = self.state_encoder(state_embeds)  # (B, T, d_model)
 
         # Encode RTG
         rtg_embeds = self.rtg_projection(rtg.unsqueeze(-1))  # (B, T, d_model//4)
@@ -196,7 +200,7 @@ class PolicyTransformer(nn.Module):
 
         # Encode previous actions
         action_card_embeds = self.action_card_embed(
-            actions[:, :, 0]
+            actions[:, :, 0].long()
         )  # (B, T, d_model//2)
         action_pos_embeds = self.action_pos_embed(
             actions[:, :, 1:].float()
