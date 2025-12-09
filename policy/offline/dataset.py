@@ -1,16 +1,16 @@
 """
 Dataset builder for offline reinforcement learning
-
 Loads replay data and creates training batches
 """
 
 import torch
 import numpy as np
 import lzma
+import random
 from io import BytesIO
 from pathlib import Path
 from tqdm import tqdm
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from typing import Dict, List, Optional
 import pickle
 
@@ -20,12 +20,10 @@ def convert_katacd_state_to_tensor(state_dict: Dict) -> np.ndarray:
     Convert KataCR state dict to fixed-size tensor
 
     KataCR state format:
-    {
         'time': float,
         'unit_infos': list of unit dicts,
         'cards': list of card ids,
         'elixir': float
-    }
 
     For now, just extract basic features that are always present
     """
@@ -45,7 +43,6 @@ def convert_katacd_state_to_tensor(state_dict: Dict) -> np.ndarray:
     cards = state_dict.get("cards", [])
     if cards is None:
         cards = []
-
     for i in range(4):
         if i < len(cards):
             card_val = cards[i]
@@ -74,15 +71,12 @@ def convert_katacd_action_to_tensor(action_dict: Dict, state_dict: Dict) -> np.n
     Convert KataCR action dict to [card_slot, pos_x, pos_y]
 
     KataCR action format:
-    {
         'card_id': int (0-4, card slot index! 0=no action, 1-4=card slots),
         'xy': [x, y] or None
-    }
 
     NOTE: card_id is ALREADY the slot index (0-4), not the card name index!
     """
     card_slot = action_dict.get("card_id", 0)  # Already 0-4
-
     # Handle None/NaN in card_slot
     if card_slot is None or (isinstance(card_slot, float) and np.isnan(card_slot)):
         card_slot = 0
@@ -104,6 +98,7 @@ def convert_katacd_action_to_tensor(action_dict: Dict, state_dict: Dict) -> np.n
                 x = 0.0
             if y is None or (isinstance(y, float) and np.isnan(y)):
                 y = 0.0
+
             result = np.array([card_slot, float(x), float(y)], dtype=np.float32)
 
             # Final safety check
@@ -130,65 +125,81 @@ class ReplayDataset(Dataset):
         self.replay_data = replay_data
         self.sequence_length = sequence_length
 
-        # Find valid sequence start indices
-        self.valid_indices = self._find_valid_indices()
+        # Find valid sequence start indices AND calculate sample weights
+        self.valid_indices, self.sample_weights = self._find_valid_indices()
 
         print(f"Loaded {len(self.valid_indices)} valid sequences")
 
-    def _find_valid_indices(self) -> List[int]:
-        """Find valid sequences with balanced action/no-action ratio"""
+    def _find_valid_indices(self) -> tuple:
+        """
+        Find sequences using KataCR's weighted sampling approach
+
+        CRITICAL FIX #1: Weight sequences by whether END frame has action
+        CRITICAL FIX #2: Aggressive reweighting with context propagation
+        """
         terminals = self.replay_data["terminals"]
         actions = self.replay_data["actions"]
-        n_frames = len(terminals)
 
-        action_sequences = []  # Sequences with actions
-        no_action_sequences = []  # Sequences without actions
+        valid_sequences = []
+        sample_weights = []
 
         episode_start = 0
+
         for i, is_terminal in enumerate(terminals):
             if is_terminal:
+                # Find all valid sequence start indices in this episode
                 for start_idx in range(episode_start, i - self.sequence_length + 2):
                     if start_idx >= 0:
-                        # Count actions in this sequence
-                        sequence_actions = actions[
-                            start_idx : start_idx + self.sequence_length
-                        ]
-                        num_actions = sum(1 for a in sequence_actions if a[0] != 0)
+                        end_idx = start_idx + self.sequence_length - 1
+                        valid_sequences.append(start_idx)
 
-                        if num_actions >= 2:
-                            # Has meaningful actions
-                            action_sequences.append(start_idx)
-                        elif num_actions == 0:
-                            # Pure waiting sequence
-                            no_action_sequences.append(start_idx)
-                        # Ignore sequences with only 1 action (mixed, less useful)
+                        # Weight = 1 if action at end frame, 0 if waiting
+                        has_action = actions[end_idx][0] > 0
+                        sample_weights.append(1.0 if has_action else 0.0)
 
                 episode_start = i + 1
 
-        # Balance: Keep all action sequences, but only sample some no-action sequences
-        # Aim for 50/50 or 70/30 ratio
-        num_action_seq = len(action_sequences)
-        num_no_action_to_keep = num_action_seq  # 50/50 balance
+        sample_weights = np.array(sample_weights, dtype=np.float32)
 
-        if len(no_action_sequences) > num_no_action_to_keep:
-            # Randomly sample no-action sequences
-            import random
-
-            no_action_sequences = random.sample(
-                no_action_sequences, num_no_action_to_keep
-            )
-
-        valid = action_sequences + no_action_sequences
-        random.shuffle(valid)  # Mix them up
-
-        print(f"   Action sequences: {len(action_sequences)}")
-        print(f"   No-action sequences: {len(no_action_sequences)}")
-        print(f"   Total balanced dataset: {len(valid)} sequences")
-        print(
-            f"   Ratio: {len(action_sequences)/len(valid)*100:.1f}% action, {len(no_action_sequences)/len(valid)*100:.1f}% waiting"
+        # Calculate action ratio
+        action_ratio = (
+            sample_weights.sum() / len(sample_weights) if len(sample_weights) > 0 else 0
         )
 
-        return valid
+        print(f"\n📊 Dataset Statistics:")
+        print(f"   Total sequences: {len(valid_sequences)}")
+        print(f"   Action sequences: {int(sample_weights.sum())}")
+        print(f"   Action ratio: {action_ratio*100:.1f}%")
+
+        if action_ratio == 0:
+            print("   ⚠️  WARNING: No action sequences found!")
+            return valid_sequences, sample_weights
+
+        # CRITICAL FIX: Reweight using KataCR's formula (aggressive)
+        reweighted = sample_weights * (1 / action_ratio) + (1 - sample_weights) * (
+            1 / (1 - action_ratio)
+        )
+
+        # CRITICAL FIX: Propagate weight to nearby frames (context matters!)
+        for i in np.where(sample_weights > 0)[0]:
+            for j in range(i, min(i + self.sequence_length, len(reweighted))):
+                if j >= len(valid_sequences):
+                    break
+
+                seq_end_idx = valid_sequences[j] + self.sequence_length - 1
+                if seq_end_idx < len(terminals) and terminals[seq_end_idx]:
+                    break
+
+                alpha = 1.0 / (j - i + 1)
+                reweighted[j] = max(reweighted[j], alpha * (1 / action_ratio))
+
+        print(
+            f"   Sampling ratio: {1/action_ratio:.1f}x actions : {1/(1-action_ratio):.1f}x waiting"
+        )
+        print(f"   Max sample weight: {reweighted.max():.2f}")
+        print(f"   Min sample weight: {reweighted.min():.2f}")
+
+        return valid_sequences, reweighted
 
     def __len__(self):
         return len(self.valid_indices)
@@ -254,7 +265,11 @@ class DatasetBuilder:
         self._load_replays()
 
     def _load_replays(self):
-        """Load all replay files and concatenate"""
+        """
+        Load all replay files and concatenate
+
+        CRITICAL FIX #3: Clip episodes to last action frame
+        """
         print(f"Loading replays from {self.replay_dir}")
 
         # Find all replay files recursively
@@ -311,6 +326,18 @@ class DatasetBuilder:
                     raw_actions = data.get("action", [])
                     raw_rewards = data.get("reward", [])
 
+                    # CRITICAL FIX: Find last action frame and clip episode
+                    last_action_idx = len(raw_actions) - 1
+                    for idx in range(len(raw_actions) - 1, -1, -1):
+                        if raw_actions[idx].get("card_id", 0) != 0:
+                            last_action_idx = idx
+                            break
+
+                    # Clip to last action + 1
+                    raw_states = raw_states[: last_action_idx + 1]
+                    raw_actions = raw_actions[: last_action_idx + 1]
+                    raw_rewards = raw_rewards[: last_action_idx + 1]
+
                     # Convert KataCR dicts to tensors
                     states = [convert_katacd_state_to_tensor(s) for s in raw_states]
                     # Pass state to action converter to map card_id to card_slot
@@ -328,7 +355,6 @@ class DatasetBuilder:
                     }
                     data = converted_data
 
-                    # In _load_replays(), after creating converted_data, ADD:
                     if files_processed == 0:  # Only print for first file
                         print(f"\n🔍 DEBUG: First replay file rewards:")
                         print(f"   File: {replay_file.name}")
@@ -341,7 +367,6 @@ class DatasetBuilder:
                         print(f"     Non-zero: {(reward_arr != 0).sum()}")
                         print(f"   First 10 rewards: {reward_arr[:10]}")
                         print(f"   Last 10 rewards: {reward_arr[-10:]}")
-
                         # Check unique values
                         unique_rewards = np.unique(reward_arr)
                         print(f"   Unique reward values: {unique_rewards}")
@@ -403,47 +428,68 @@ class DatasetBuilder:
             print(f"   Mean reward: {self.replay_data['rewards'].mean():.2f}")
             print(f"   State shape: {all_states[0].shape if all_states else 'N/A'}")
             print(f"   Action shape: {all_actions[0].shape if all_actions else 'N/A'}")
-        else:
-            print(
-                f"\n❌ WARNING: No valid replay data loaded from {len(replay_files)} files"
-            )
-            print(f"   Files processed: {files_processed}")
-            print(
-                "   Check that replay files contain 'state'/'states', 'action'/'actions', 'reward'/'rewards' keys"
-            )
+
+            # Global card usage analysis
+            print(f"\n🃏 GLOBAL CARD USAGE ANALYSIS:")
+            print("=" * 60)
+
+            # Extract all card IDs from actions (first column)
+            all_card_ids = [action[0] for action in all_actions]
+            unique_cards = sorted(set(all_card_ids))
+            print(f"   Unique cards used: {unique_cards}")
+            print(f"   Number of unique cards: {len(unique_cards)}")
+
+            # Count frequency of each card
+            from collections import Counter
+
+            card_counts = Counter(all_card_ids)
+            print(f"\n   Card frequency distribution:")
+            total_actions = len(all_card_ids)
+            for card_id in sorted(card_counts.keys()):
+                count = card_counts[card_id]
+                percentage = (count / total_actions) * 100
+                print(
+                    f"     Card {int(card_id)}: {count:6d} times ({percentage:5.1f}%)"
+                )
+
+            # Check for card 0 (no-action) dominance
+            card_0_count = card_counts.get(0, 0)
+            card_0_pct = (card_0_count / total_actions) * 100
+            print(f"\n   Card 0 (no-action) percentage: {card_0_pct:.1f}%")
+            if card_0_pct > 40:
+                print(f"   ⚠️  WARNING: Card 0 dominates dataset!")
+                print(f"   This will make card prediction trivially easy.")
+            print("=" * 60)
 
     def get_dataset(
         self, batch_size: int = 32, num_workers: int = 4, shuffle: bool = True
     ) -> DataLoader:
-        """
-        Create DataLoader for training
-
-        Args:
-            batch_size: Batch size
-            num_workers: Number of data loading workers
-            shuffle: Whether to shuffle data
-
-        Returns:
-            DataLoader instance
-        """
+        """Create DataLoader with weighted sampling"""
         if not self.replay_data["states"]:
-            print("WARNING: Empty replay data, cannot create dataset")
+            print("WARNING: Empty replay data")
             return None
 
         dataset = ReplayDataset(self.replay_data, self.sequence_length)
 
         if len(dataset) == 0:
-            print("WARNING: No valid sequences in dataset")
+            print("WARNING: No valid sequences")
             return None
+
+        # Use weighted sampler
+        sampler = WeightedRandomSampler(
+            weights=dataset.sample_weights,
+            num_samples=len(dataset.sample_weights),
+            replacement=True,
+        )
 
         return DataLoader(
             dataset,
             batch_size=batch_size,
-            shuffle=shuffle,
+            sampler=sampler,
             num_workers=num_workers,
             pin_memory=True,
             collate_fn=collate_batch,
-            drop_last=True,  # Drop incomplete batches to ensure consistent batch sizes
+            drop_last=True,
         )
 
 
@@ -452,7 +498,6 @@ def collate_batch(batch: List[Dict]) -> Dict:
     try:
         # Filter out any None items
         batch = [item for item in batch if item is not None]
-
         if len(batch) == 0:
             return None
 
@@ -470,8 +515,8 @@ def collate_batch(batch: List[Dict]) -> Dict:
                 f"Warning: Filtered batch to {len(batch)} items with seq_len={most_common_length}"
             )
 
-        if len(batch) == 0:
-            return None
+            if len(batch) == 0:
+                return None
 
         # Stack all sequences - they should all be numpy arrays of same shape
         batched = {
@@ -491,7 +536,9 @@ def collate_batch(batch: List[Dict]) -> Dict:
                 np.stack([item["timesteps"] for item in batch])
             ),  # (B, T)
         }
+
         return batched
+
     except Exception as e:
         print(f"Error in collate_batch: {e}")
         print(f"Batch length: {len(batch)}")
@@ -515,13 +562,169 @@ if __name__ == "__main__":
         dataloader = builder.get_dataset(batch_size=8, num_workers=0)
 
         if dataloader:
-            print("Testing one batch...")
+            # ===== ADD THIS BEFORE BATCH TESTING =====
+            print("\n" + "=" * 60)
+            print("FULL DATASET STATISTICS (before batching)")
+            print("=" * 60)
+
+            dataset = dataloader.dataset
+            print(f"Total sequences in dataset: {len(dataset)}")
+            print(f"Total frames: {len(dataset) * 16}")
+
+            # Sample 1000 random sequences to get action distribution
+            import random
+
+            sample_size = min(1000, len(dataset))
+            sample_indices = random.sample(range(len(dataset)), sample_size)
+
+            total_slot_0 = 0
+            total_real_actions = 0
+            total_frames_sampled = 0
+
+            print(f"\nSampling {sample_size} random sequences...")
+            for idx in sample_indices:
+                start_idx = dataset.valid_indices[idx]
+                end_idx = start_idx + dataset.sequence_length
+                seq_actions = dataset.replay_data["actions"][start_idx:end_idx]
+
+                for action in seq_actions:
+                    total_frames_sampled += 1
+                    if action[0] == 0:
+                        total_slot_0 += 1
+                    else:
+                        total_real_actions += 1
+
+            slot_0_pct = (total_slot_0 / total_frames_sampled) * 100
+            real_action_pct = (total_real_actions / total_frames_sampled) * 100
+
+            print(f"\n📊 FULL DATASET ACTION DISTRIBUTION:")
+            print(
+                f"   Slot 0 (wait): {total_slot_0}/{total_frames_sampled} ({slot_0_pct:.1f}%)"
+            )
+            print(
+                f"   Real actions: {total_real_actions}/{total_frames_sampled} ({real_action_pct:.1f}%)"
+            )
+
+            if real_action_pct < 35:
+                print(f"   ⚠️  WARNING: Real actions < 35%")
+                print(f"   Recommendation: Increase min_actions filter to 8 or 10")
+            elif real_action_pct > 45:
+                print(f"   ✅ GOOD: Real actions > 45%")
+            else:
+                print(f"   ✅ OK: Real actions in acceptable range")
+
+            print("=" * 60)
+            # ===== END NEW SECTION =====
+
+            print("\nTesting one batch...")
             for batch in dataloader:
                 print("\n✅ Batch loaded successfully!")
                 print("Batch keys:", batch.keys())
                 print("Batch shapes:")
                 for k, v in batch.items():
                     print(f"  {k}: {v.shape}")
+
+                # ===== DETAILED STATE/ACTION INSPECTION =====
+                print("\n🔍 INSPECTING ACTUAL STATE VALUES:")
+                print("=" * 60)
+                states = batch["states"][0]  # First sequence
+                actions = batch["actions"][0]  # First sequence
+
+                print(f"First 5 timesteps of first sequence:")
+                for t in range(min(5, len(states))):
+                    state = states[t]
+                    action = actions[t]
+                    elixir, time, c1, c2, c3, c4 = state.numpy()
+                    card_slot, x, y = action.numpy()
+
+                    print(f"\n  Timestep {t}:")
+                    print(f"    Elixir: {elixir:.2f}, Time: {time:.2f}")
+                    print(
+                        f"    Cards in hand: [{c1:.0f}, {c2:.0f}, {c3:.0f}, {c4:.0f}]"
+                    )
+                    print(
+                        f"    Action: Play slot {card_slot:.0f} at ({x:.1f}, {y:.1f})"
+                    )
+
+                print("\n" + "=" * 60)
+                print("❓ DIAGNOSTIC QUESTIONS:")
+                print("=" * 60)
+
+                # Check if cards are always zero
+                all_states = batch["states"].numpy()  # (B, T, 6)
+                card_values = all_states[:, :, 2:]  # (B, T, 4) - just the card columns
+
+                num_zero_cards = (card_values == 0).sum()
+                total_card_slots = card_values.size
+                zero_percentage = (num_zero_cards / total_card_slots) * 100
+
+                print(f"\n1. Card Information in States:")
+                print(f"   Total card slots: {total_card_slots}")
+                print(f"   Zero values: {num_zero_cards} ({zero_percentage:.1f}%)")
+
+                if zero_percentage > 90:
+                    print(f"   ❌ PROBLEM: Cards are mostly zeros!")
+                    print(f"   → Model doesn't know which cards are available")
+                elif zero_percentage < 10:
+                    print(f"   ✅ GOOD: Cards have meaningful values")
+                else:
+                    print(f"   ⚠️  MIXED: Some cards have values, some don't")
+
+                # Check action distribution
+                all_actions = batch["actions"].numpy()  # (B, T, 3)
+                card_slots_used = all_actions[:, :, 0]  # (B, T)
+
+                print(f"\n2. Action Distribution in This Batch:")
+                unique_slots, counts = np.unique(card_slots_used, return_counts=True)
+                for slot, count in zip(unique_slots, counts):
+                    pct = (count / card_slots_used.size) * 100
+                    print(f"   Slot {int(slot)}: {count:3d} times ({pct:4.1f}%)")
+
+                slot_0_pct = (card_slots_used == 0).sum() / card_slots_used.size * 100
+                if slot_0_pct > 50:
+                    print(
+                        f"   ⚠️  WARNING: Slot 0 (no-action) dominates this batch ({slot_0_pct:.1f}%)"
+                    )
+
+                # Check position values for actual actions
+                print(f"\n3. Position Values for Real Actions (slot > 0):")
+                # Flatten everything first to match dimensions
+                all_actions_flat = all_actions.reshape(-1, 3)  # (B*T, 3)
+                card_slots_flat = card_slots_used.flatten()  # (B*T,)
+                real_actions_mask = card_slots_flat > 0
+
+                if real_actions_mask.any():
+                    real_positions = all_actions_flat[real_actions_mask][
+                        :, 1:
+                    ]  # (N, 2) - x,y only
+                    print(f"   Number of real actions: {len(real_positions)}")
+                    print(
+                        f"   X range: [{real_positions[:, 0].min():.2f}, {real_positions[:, 0].max():.2f}]"
+                    )
+                    print(
+                        f"   Y range: [{real_positions[:, 1].min():.2f}, {real_positions[:, 1].max():.2f}]"
+                    )
+
+                    # Check if positions are diverse or always the same
+                    unique_positions = len(np.unique(real_positions, axis=0))
+                    print(f"   Unique positions: {unique_positions}")
+
+                    if unique_positions < 5:
+                        print(
+                            f"   ⚠️  WARNING: Very few unique positions! Actions might be repetitive."
+                        )
+                else:
+                    print(f"   ❌ No real actions in this batch!")
+
+                print("\n" + "=" * 60)
+                print("SUMMARY:")
+                print("=" * 60)
+                print("If you see:")
+                print("  • Cards mostly 0 → Model can't learn card strategy")
+                print("  • Slot 0 dominates → Model just learns to wait")
+                print("  • Few unique positions → Model memorizes, doesn't generalize")
+                print("=" * 60)
+
                 break
         else:
             print("❌ Failed to create dataloader")

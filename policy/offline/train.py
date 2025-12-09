@@ -1,5 +1,6 @@
 """
 Training script for offline reinforcement learning
+WITH CRITICAL FIXES FOR NO-ACTION DOMINANCE
 """
 
 import sys
@@ -14,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import argparse
 from datetime import datetime
+import numpy as np
 
 from policy.offline.models.policy_transformer import PolicyTransformer
 from policy.offline.dataset import DatasetBuilder
@@ -51,7 +53,7 @@ class TrainConfig:
         self.log_dir = (
             Path("runs") / "policy_training" / datetime.now().strftime("%Y%m%d_%H%M%S")
         )
-        self.save_freq = 2  # Save checkpoint every N epochs
+        self.save_freq = 4  # Save checkpoint every N epochs
         self.log_freq = 100  # Log to tensorboard every N steps
 
 
@@ -115,9 +117,9 @@ class Trainer:
             self.optimizer, lr_lambda=lambda step: min(1.0, step / config.warmup_steps)
         )
 
-        # Loss functions
-        self.card_criterion = nn.CrossEntropyLoss()
-        self.position_criterion = nn.CrossEntropyLoss()
+        # Loss functions (removed - we'll use functional API with masking)
+        # self.card_criterion = nn.CrossEntropyLoss()
+        # self.position_criterion = nn.CrossEntropyLoss()
 
         # Tensorboard
         self.writer = SummaryWriter(log_dir=config.log_dir)
@@ -131,8 +133,16 @@ class Trainer:
         self.epoch = 0
 
     def train_epoch(self, dataloader):
-        """Train for one epoch"""
+        """
+        Train for one epoch
+
+        CRITICAL FIXES IMPLEMENTED:
+        1. Action sequence shifting (teacher forcing)
+        2. Loss masking (only compute loss on action frames)
+        3. Proper mask handling
+        """
         self.model.train()
+
         total_loss = 0
         total_card_loss = 0
         total_pos_loss = 0
@@ -177,10 +187,46 @@ class Trainer:
                     print(
                         f"  pos_y range: [{actions[:, :, 2].min():.2f}, {actions[:, :, 2].max():.2f}]"
                     )
+
                     unique_cards = torch.unique(actions[:, :, 0].long())
                     print(f"Unique card IDs: {unique_cards.tolist()}")
                     print(f"Number of unique cards: {len(unique_cards)}")
                     print(f"{'='*60}\n")
+
+                    print("CARD DISTRIBUTION ANALYSIS")
+                    print("=" * 60)
+
+                    # Get card distribution across entire batch
+                    card_ids_flat = actions[:, :, 0].flatten().cpu().numpy()
+                    unique_cards, counts = np.unique(card_ids_flat, return_counts=True)
+                    print(f"Card ID distribution in this batch:")
+                    for card_id, count in zip(unique_cards, counts):
+                        percentage = (count / len(card_ids_flat)) * 100
+                        print(
+                            f"  Card {int(card_id)}: {count:4d} times ({percentage:5.1f}%)"
+                        )
+
+                    # Check if cards are mostly zeros (no-action)
+                    zero_actions = (card_ids_flat == 0).sum()
+                    print(
+                        f"\nZero actions (no-action): {zero_actions}/{len(card_ids_flat)} ({100*zero_actions/len(card_ids_flat):.1f}%)"
+                    )
+                    print("=" * 60 + "\n")
+
+                # ==================================================================
+                # CRITICAL FIX #1: ACTION SHIFTING FOR TEACHER FORCING
+                # Model predicts NEXT action, so shift inputs right
+                # ==================================================================
+                actions_input = torch.cat(
+                    [
+                        torch.zeros(B, 1, 3, device=self.device),  # Prepend zero action
+                        actions[:, :-1, :],  # Shift everything right
+                    ],
+                    dim=1,
+                )
+
+                # Actions are the targets (what we want to predict)
+                actions_target = actions
 
                 # ==================================================================
                 # CARD TARGET PROCESSING
@@ -188,19 +234,7 @@ class Trainer:
                 # KataCR card_id is ALREADY the slot index (0-4)
                 # 0 = no action, 1-4 = card slots
                 # We need to convert to 0-3 for model (which predicts 4 card slots)
-
-                card_slots_raw = actions[:, :, 0].long()  # 0-4
-
-                # Debug card_id values before conversion
-                # if batch_idx % 50 == 0 or batch_idx < 5:
-                #     print(f"\n[Batch {batch_idx}] Card ID Debug:")
-                #     print(
-                #         f"  card_slots_raw range: [{card_slots_raw.min()}, {card_slots_raw.max()}]"
-                #     )
-                #     print(
-                #         f"  card_slots_raw unique: {torch.unique(card_slots_raw).tolist()}"
-                #     )
-                #     print(f"  card_slots_raw shape: {card_slots_raw.shape}")
+                card_slots_raw = actions_target[:, :, 0].long()  # 0-4
 
                 # Convert card_id to valid range [0-3]:
                 # 0 (no action) -> 0 (map to first slot as placeholder)
@@ -229,9 +263,8 @@ class Trainer:
                 # POSITION TARGET PROCESSING
                 # ==================================================================
                 grid_h, grid_w = self.config.arena_grid_size  # (32, 18)
-
-                pos_x_raw = actions[:, :, 1]
-                pos_y_raw = actions[:, :, 2]
+                pos_x_raw = actions_target[:, :, 1]
+                pos_y_raw = actions_target[:, :, 2]
 
                 # Auto-detect coordinate format
                 if pos_x_raw.max() <= 1.0 and pos_y_raw.max() <= 1.0:
@@ -250,7 +283,7 @@ class Trainer:
                 # Validate
                 max_pos = grid_h * grid_w - 1
                 if target_positions.min() < 0 or target_positions.max() > max_pos:
-                    print(f"⚠️  Invalid position targets at batch {batch_idx}")
+                    print(f"⚠️ Invalid position targets at batch {batch_idx}")
                     print(
                         f"  Range: [{target_positions.min()}, {target_positions.max()}]"
                     )
@@ -263,16 +296,16 @@ class Trainer:
                 # ==================================================================
                 # Validate inputs before forward pass
                 if torch.isnan(states).any():
-                    print(f"⚠️  [Batch {batch_idx}] NaN in states, skipping")
+                    print(f"⚠️ [Batch {batch_idx}] NaN in states, skipping")
                     continue
-                if torch.isnan(actions).any():
-                    print(f"⚠️  [Batch {batch_idx}] NaN in actions, skipping")
+                if torch.isnan(actions_input).any():
+                    print(f"⚠️ [Batch {batch_idx}] NaN in actions_input, skipping")
                     continue
                 if torch.isnan(rtg).any():
-                    print(f"⚠️  [Batch {batch_idx}] NaN in rtg, skipping")
+                    print(f"⚠️ [Batch {batch_idx}] NaN in rtg, skipping")
                     continue
                 if torch.isnan(timesteps).any():
-                    print(f"⚠️  [Batch {batch_idx}] NaN in timesteps, skipping")
+                    print(f"⚠️ [Batch {batch_idx}] NaN in timesteps, skipping")
                     continue
 
                 # Check if model has NaN parameters
@@ -303,8 +336,9 @@ class Trainer:
                         "pos_acc": 0.0,
                     }
 
+                # CRITICAL: Use shifted actions as input
                 card_logits, position_logits = self.model(
-                    states, actions, rtg, timesteps
+                    states, actions_input, rtg, timesteps
                 )
 
                 # Check outputs immediately
@@ -315,7 +349,7 @@ class Trainer:
                         f"    states: [{states.min():.2f}, {states.max():.2f}], mean={states.mean():.2f}"
                     )
                     print(
-                        f"    actions: [{actions.min():.2f}, {actions.max():.2f}], mean={actions.mean():.2f}"
+                        f"    actions: [{actions_input.min():.2f}, {actions_input.max():.2f}], mean={actions_input.mean():.2f}"
                     )
                     print(
                         f"    rtg: [{rtg.min():.2f}, {rtg.max():.2f}], mean={rtg.mean():.2f}"
@@ -329,21 +363,12 @@ class Trainer:
                     continue
 
                 # ==================================================================
-                # LOSS CALCULATION
+                # LOSS CALCULATION WITH CRITICAL FIXES
                 # ==================================================================
-                # Debug shapes
-                # if batch_idx < 3 or (batch_idx >= 104 and batch_idx <= 110):
-                #     print(f"\nBatch {batch_idx} shapes:")
-                #     print(f"  card_logits: {card_logits.shape}")
-                #     print(f"  position_logits: {position_logits.shape}")
-                #     print(f"  target_cards: {target_cards.shape}")
-                #     print(f"  target_positions: {target_positions.shape}")
-                #     print(f"  states: {states.shape}")
-                #     print(f"  actions: {actions.shape}")
 
                 # Ensure shapes match before flattening
                 if len(card_logits.shape) != 3 or len(target_cards.shape) != 2:
-                    print(f"⚠️  Unexpected tensor dimensions at batch {batch_idx}")
+                    print(f"⚠️ Unexpected tensor dimensions at batch {batch_idx}")
                     print(f"  card_logits: {card_logits.shape} (expected 3D)")
                     print(f"  target_cards: {target_cards.shape} (expected 2D)")
                     print(f"  Skipping batch")
@@ -353,14 +378,14 @@ class Trainer:
                 B_targets, T_targets = target_cards.shape
 
                 if B_logits != B_targets or T_logits != T_targets:
-                    print(f"⚠️  Shape mismatch at batch {batch_idx}")
+                    print(f"⚠️ Shape mismatch at batch {batch_idx}")
                     print(
                         f"  Logits: {card_logits.shape}, Targets: {target_cards.shape}"
                     )
                     print(f"  Skipping batch")
                     continue
 
-                # Reshape using actual dimensions from tensors, not config
+                # Reshape using actual dimensions from tensors
                 num_card_classes = card_logits.shape[-1]  # Should be 4
                 card_logits_flat = card_logits.reshape(-1, num_card_classes)
                 target_cards_flat = target_cards.reshape(-1)
@@ -370,46 +395,54 @@ class Trainer:
 
                 # Final shape validation before loss
                 if card_logits_flat.shape[0] != target_cards_flat.shape[0]:
-                    print(f"⚠️  Flattened shape mismatch at batch {batch_idx}")
+                    print(f"⚠️ Flattened shape mismatch at batch {batch_idx}")
                     print(
                         f"  card_logits: {card_logits.shape} -> flat: {card_logits_flat.shape}"
                     )
                     print(
                         f"  target_cards: {target_cards.shape} -> flat: {target_cards_flat.shape}"
                     )
-                    print(f"  B_logits={B_logits}, T_logits={T_logits}")
-                    print(f"  B_targets={B_targets}, T_targets={T_targets}")
                     print(f"  Skipping batch")
                     continue
 
-                # Debug before loss calculation
-                # if batch_idx % 50 == 0 or batch_idx < 5:
-                #     print(f"\n[Batch {batch_idx}] Before loss calculation:")
-                #     print(
-                #         f"  card_logits_flat: {card_logits_flat.shape}, range: [{card_logits_flat.min():.2f}, {card_logits_flat.max():.2f}]"
-                #     )
-                #     print(
-                #         f"  target_cards_flat: {target_cards_flat.shape}, range: [{target_cards_flat.min()}, {target_cards_flat.max()}]"
-                #     )
-                #     print(
-                #         f"  target_cards_flat unique: {torch.unique(target_cards_flat).tolist()}"
-                #     )
-                #     print(
-                #         f"  card_logits has nan: {torch.isnan(card_logits_flat).any()}"
-                #     )
-                #     print(
-                #         f"  card_logits has inf: {torch.isinf(card_logits_flat).any()}"
-                #     )
+                # ==================================================================
+                # CRITICAL FIX #2: MASKED LOSS (ONLY ON ACTION FRAMES)
+                # This is the KEY fix - only compute loss where actions happen!
+                # ==================================================================
 
-                card_loss = self.card_criterion(card_logits_flat, target_cards_flat)
-                position_loss = self.position_criterion(
-                    position_logits_flat, target_positions_flat
-                )
+                # Create mask: 1 for action frames, 0 for no-action frames
+                # actions_target[:, :, 0] is card_id: 0=no action, >0=action
+                mask = (actions_target[:, :, 0] > 0).float().reshape(-1)  # (B*T,)
+
+                # Count valid actions
+                num_actions = mask.sum()
+
+                if num_actions > 0:
+                    # Card loss - ONLY on action frames
+                    card_loss_unreduced = nn.functional.cross_entropy(
+                        card_logits_flat, target_cards_flat, reduction="none"
+                    )
+                    card_loss = (card_loss_unreduced * mask).sum() / (
+                        num_actions + 1e-6
+                    )
+
+                    # Position loss - ONLY on action frames
+                    position_loss_unreduced = nn.functional.cross_entropy(
+                        position_logits_flat, target_positions_flat, reduction="none"
+                    )
+                    position_loss = (position_loss_unreduced * mask).sum() / (
+                        num_actions + 1e-6
+                    )
+                else:
+                    # No actions in this batch - zero loss
+                    card_loss = torch.tensor(0.0, device=self.device)
+                    position_loss = torch.tensor(0.0, device=self.device)
 
                 # Check for nan/inf with detailed debugging
                 if torch.isnan(card_loss) or torch.isinf(card_loss):
                     print(f"\n❌ [Batch {batch_idx}] NaN/Inf card_loss detected!")
                     print(f"  card_loss value: {card_loss}")
+                    print(f"  num_actions: {num_actions}")
                     print(f"  card_logits_flat stats:")
                     print(f"    shape: {card_logits_flat.shape}")
                     print(
@@ -418,23 +451,14 @@ class Trainer:
                     print(
                         f"    mean: {card_logits_flat.mean():.4f}, std: {card_logits_flat.std():.4f}"
                     )
-                    print(f"    has nan: {torch.isnan(card_logits_flat).any()}")
-                    print(f"    has inf: {torch.isinf(card_logits_flat).any()}")
-                    print(f"  target_cards_flat stats:")
-                    print(f"    shape: {target_cards_flat.shape}")
-                    print(
-                        f"    range: [{target_cards_flat.min()}, {target_cards_flat.max()}]"
-                    )
-                    print(
-                        f"    unique values: {torch.unique(target_cards_flat).tolist()}"
-                    )
                     print(f"  Skipping batch")
                     continue
 
                 if torch.isnan(position_loss) or torch.isinf(position_loss):
-                    print(f"⚠️  NaN/Inf position_loss at batch {batch_idx}, skipping")
+                    print(f"⚠️ NaN/Inf position_loss at batch {batch_idx}, skipping")
                     continue
 
+                # Combined loss
                 loss = card_loss + position_loss
 
                 # ==================================================================
@@ -447,14 +471,12 @@ class Trainer:
                 has_nan_grad = False
                 for name, param in self.model.named_parameters():
                     if param.grad is not None and torch.isnan(param.grad).any():
-                        print(f"⚠️  [Batch {batch_idx}] NaN gradient in '{name}'")
+                        print(f"⚠️ [Batch {batch_idx}] NaN gradient in '{name}'")
                         has_nan_grad = True
                         break
 
                 if has_nan_grad:
-                    print(
-                        f"⚠️  [Batch {batch_idx}] Skipping update due to NaN gradients"
-                    )
+                    print(f"⚠️ [Batch {batch_idx}] Skipping update due to NaN gradients")
                     self.optimizer.zero_grad()  # Clear bad gradients
                     continue
 
@@ -464,7 +486,7 @@ class Trainer:
                 )
 
                 # Log extreme gradient norms (only if very large)
-                if grad_norm > 50.0:
+                if grad_norm > 100.0:
                     print(
                         f"⚠️  [Batch {batch_idx}] Large gradient norm: {grad_norm:.2f}"
                     )
@@ -473,14 +495,24 @@ class Trainer:
                 self.scheduler.step()
 
                 # ==================================================================
-                # METRICS
+                # METRICS (computed on action frames only for accuracy)
                 # ==================================================================
                 with torch.no_grad():
-                    card_pred = card_logits.argmax(dim=-1)
-                    card_acc = (card_pred == target_cards).float().mean()
+                    if num_actions > 0:
+                        # Card accuracy on action frames only
+                        card_pred = card_logits.argmax(dim=-1).reshape(-1)
+                        card_acc = (
+                            (card_pred == target_cards_flat).float() * mask
+                        ).sum() / (num_actions + 1e-6)
 
-                    position_pred = position_logits.argmax(dim=-1)
-                    pos_acc = (position_pred == target_positions).float().mean()
+                        # Position accuracy on action frames only
+                        position_pred = position_logits.argmax(dim=-1).reshape(-1)
+                        pos_acc = (
+                            (position_pred == target_positions_flat).float() * mask
+                        ).sum() / (num_actions + 1e-6)
+                    else:
+                        card_acc = torch.tensor(0.0, device=self.device)
+                        pos_acc = torch.tensor(0.0, device=self.device)
 
                 # Update metrics
                 total_loss += loss.item()
@@ -525,7 +557,7 @@ class Trainer:
                 self.global_step += 1
 
             except Exception as e:
-                print(f"⚠️  Error in batch {batch_idx}: {e}")
+                print(f"⚠️ Error in batch {batch_idx}: {e}")
                 import traceback
 
                 traceback.print_exc()
@@ -542,12 +574,33 @@ class Trainer:
                 "pos_acc": 0.0,
             }
 
+        avg_loss = total_loss / valid_batches
+        avg_card_loss = total_card_loss / valid_batches
+        avg_pos_loss = total_pos_loss / valid_batches
+        avg_card_acc = total_card_acc / valid_batches
+        avg_pos_acc = total_pos_acc / valid_batches
+
+        # Check for NaN/Inf in metrics (training diverged)
+        if not np.isfinite(avg_loss):
+            print("❌ Training diverged (loss is NaN/Inf)")
+            print("   This usually means:")
+            print("   - Learning rate is too high")
+            print("   - Gradient explosion occurred")
+            print("   - Data has extreme outliers")
+            return {
+                "loss": float("inf"),
+                "card_loss": float("inf"),
+                "pos_loss": float("inf"),
+                "card_acc": 0.0,
+                "pos_acc": 0.0,
+            }
+
         return {
-            "loss": total_loss / valid_batches,
-            "card_loss": total_card_loss / valid_batches,
-            "pos_loss": total_pos_loss / valid_batches,
-            "card_acc": total_card_acc / valid_batches,
-            "pos_acc": total_pos_acc / valid_batches,
+            "loss": avg_loss,
+            "card_loss": avg_card_loss,
+            "pos_loss": avg_pos_loss,
+            "card_acc": avg_card_acc,
+            "pos_acc": avg_pos_acc,
         }
 
     def save_checkpoint(self, epoch):
@@ -560,14 +613,17 @@ class Trainer:
             "scheduler_state_dict": self.scheduler.state_dict(),
             "config": self.config.__dict__,
         }
-
         path = self.checkpoint_dir / f"checkpoint_epoch_{epoch}.pt"
         torch.save(checkpoint, path)
-        print(f"Saved checkpoint: {path}")
+        print(f"💾 Saved checkpoint: {path}")
 
     def train(self, dataloader):
         """Main training loop"""
         print(f"\n{colorstr('green', 'bold', 'Starting training...')}\n")
+
+        self.best_loss = float("inf")
+        patience = 10  # Stop if no improvement for 10 epochs
+        patience_counter = 0
 
         for epoch in range(self.config.num_epochs):
             self.epoch = epoch
@@ -575,17 +631,54 @@ class Trainer:
             # Train one epoch
             metrics = self.train_epoch(dataloader)
 
+            # Stop training if epoch returned inf loss (diverged)
+            if metrics["loss"] == float("inf"):
+                print(f"\n❌ Training stopped at epoch {epoch + 1} due to divergence")
+                break
+
             # Log epoch metrics
-            print(f"\nEpoch {epoch + 1}/{self.config.num_epochs} Summary:")
-            print(f"  Loss: {metrics['loss']:.4f}")
-            print(f"  Card Loss: {metrics['card_loss']:.4f}")
-            print(f"  Position Loss: {metrics['pos_loss']:.4f}")
-            print(f"  Card Accuracy: {metrics['card_acc']:.3f}")
-            print(f"  Position Accuracy: {metrics['pos_acc']:.3f}")
+            print(f"\n{'='*60}")
+            print(f"📊 Epoch {epoch + 1}/{self.config.num_epochs} Summary:")
+            print(f"{'='*60}")
+            print(f"   Loss: {metrics['loss']:.4f}")
+            print(f"   Card Loss: {metrics['card_loss']:.4f}")
+            print(f"   Position Loss: {metrics['pos_loss']:.4f}")
+            print(f"   Card Accuracy: {metrics['card_acc']:.3f}")
+            print(f"   Position Accuracy: {metrics['pos_acc']:.3f}")
+            print(f"{'='*60}\n")
 
             self.writer.add_scalar("epoch/loss", metrics["loss"], epoch)
             self.writer.add_scalar("epoch/card_accuracy", metrics["card_acc"], epoch)
             self.writer.add_scalar("epoch/position_accuracy", metrics["pos_acc"], epoch)
+
+            # Save best model
+            if metrics["loss"] < self.best_loss:
+                self.best_loss = metrics["loss"]
+                patience_counter = 0  # Reset patience
+
+                # Save best model checkpoint
+                best_checkpoint = {
+                    "epoch": epoch + 1,
+                    "global_step": self.global_step,
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "config": self.config.__dict__,
+                    "loss": self.best_loss,
+                    "metrics": metrics,
+                }
+                best_path = self.checkpoint_dir / "best_model.pt"
+                torch.save(best_checkpoint, best_path)
+                print(f"   💾 New best model saved! Loss: {self.best_loss:.4f}")
+            else:
+                patience_counter += 1
+                print(f"   📊 No improvement for {patience_counter} epoch(s)")
+
+            # Early stopping
+            if patience_counter >= patience:
+                print(f"\n⚠️  Early stopping triggered!")
+                print(f"   No improvement for {patience} consecutive epochs")
+                print(f"   Best loss: {self.best_loss:.4f}")
+                break
 
             # Save checkpoint
             if (epoch + 1) % self.config.save_freq == 0:
@@ -594,7 +687,8 @@ class Trainer:
         # Save final checkpoint
         self.save_checkpoint(self.config.num_epochs)
 
-        print(f"\n{colorstr('green', 'bold', 'Training complete!')}\n")
+        print(f"\n{colorstr('green', 'bold', '✅ Training complete!')}\n")
+        print(f"Best loss achieved: {self.best_loss:.4f}")
         self.writer.close()
 
 
@@ -616,6 +710,7 @@ def main():
     parser.add_argument(
         "--sequence-length", type=int, default=16, help="Sequence length"
     )
+
     args = parser.parse_args()
 
     # Validate replay directory
