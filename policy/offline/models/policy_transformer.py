@@ -107,7 +107,7 @@ class PolicyTransformer(nn.Module):
         # Action encoder (previous actions)
         self.action_card_embed = nn.Embedding(
             num_cards + 1, d_model // 2
-        )  # Card embeddings for actions
+        )  # Card embeddings for actions (includes padding token)
         self.action_pos_embed = nn.Linear(2, d_model // 2)  # Position (x, y)
         self.action_encoder = nn.Linear(d_model, d_model)
 
@@ -126,7 +126,7 @@ class PolicyTransformer(nn.Module):
             nn.Linear(d_model, d_model // 2),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(d_model // 2, 4),  # Predict card slot (0-3)
+            nn.Linear(d_model // 2, num_cards),  # Use num_cards parameter
         )
 
         self.position_head = nn.Sequential(

@@ -26,8 +26,9 @@ class TrainConfig:
     """Training configuration"""
 
     def __init__(self):
-        # Model - 2.6 hog cycle deck (8 cards total with evolutions)
-        self.num_cards = 8  # Changed from 108
+        # Model - WILL BE SET DYNAMICALLY from dataset
+        self.num_cards = 114  # Default (updated after loading dataset)
+
         self.num_troops = 200
         self.d_model = 256
         self.n_head = 8
@@ -35,7 +36,7 @@ class TrainConfig:
         self.d_ff = 1024
         self.dropout = 0.1
         self.sequence_length = 16
-        self.arena_grid_size = (32, 18)  # (height, width)
+        self.arena_grid_size = (32, 18)
 
         # Training
         self.batch_size = 16
@@ -53,8 +54,8 @@ class TrainConfig:
         self.log_dir = (
             Path("runs") / "policy_training" / datetime.now().strftime("%Y%m%d_%H%M%S")
         )
-        self.save_freq = 4  # Save checkpoint every N epochs
-        self.log_freq = 100  # Log to tensorboard every N steps
+        self.save_freq = 10  # How many epochs between saves
+        self.log_freq = 100
 
 
 class Trainer:
@@ -63,7 +64,7 @@ class Trainer:
     def __init__(self, config: TrainConfig):
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        # self.device = torch.device("cpu")  # Force CPU for compatibility
         print(f"\n{'='*80}")
         print(f"🎮 INITIALIZING POLICY TRAINING")
         print(f"{'='*80}")
@@ -229,35 +230,31 @@ class Trainer:
                 actions_target = actions
 
                 # ==================================================================
-                # CARD TARGET PROCESSING
+                # CARD TARGET PROCESSING - CARD NAME MODE
                 # ==================================================================
-                # KataCR card_id is ALREADY the slot index (0-4)
-                # 0 = no action, 1-4 = card slots
-                # We need to convert to 0-3 for model (which predicts 4 card slots)
-                card_slots_raw = actions_target[:, :, 0].long()  # 0-4
+                # actions_target[:, :, 0] now contains CARD NAME IDs (not slot indices!)
+                # These are the actual card IDs from the game (e.g., 5=knight, 12=arrows)
 
-                # Convert card_id to valid range [0-3]:
-                # 0 (no action) -> 0 (map to first slot as placeholder)
-                # 1-4 (actual slots) -> 0-3
-                target_cards = torch.where(
-                    card_slots_raw == 0,
-                    torch.zeros_like(card_slots_raw),  # no action -> slot 0
-                    card_slots_raw - 1,  # slots 1-4 -> 0-3
-                ).clamp(0, 3)
+                target_cards = actions_target[:, :, 0].long()  # Already card IDs
 
-                # Validate conversion
-                if target_cards.min() < 0 or target_cards.max() >= 4:
-                    print(
-                        f"❌ [Batch {batch_idx}] Invalid target_cards after conversion!"
-                    )
+                # Validate - make sure within vocabulary
+                if (
+                    target_cards.min() < 0
+                    or target_cards.max() >= self.config.num_cards
+                ):
+                    print(f"❌ [Batch {batch_idx}] Invalid target_cards!")
                     print(
                         f"  target_cards range: [{target_cards.min()}, {target_cards.max()}]"
                     )
+                    print(f"  Expected range: [0, {self.config.num_cards-1}]")
                     print(
                         f"  target_cards unique: {torch.unique(target_cards).tolist()}"
                     )
                     print(f"  Skipping batch")
                     continue
+
+                # No conversion needed! Actions already contain card name IDs
+                # The rest of the code (position processing, masking, etc.) stays the same
 
                 # ==================================================================
                 # POSITION TARGET PROCESSING
@@ -361,6 +358,24 @@ class Trainer:
                         f"❌ [Batch {batch_idx}] Model produced NaN in position_logits!"
                     )
                     continue
+
+                # ==================================================================
+                # DEBUG: Check dimensions before loss
+                # ==================================================================
+                if batch_idx == 0:
+                    print(f"\n🔍 DIMENSION CHECK:")
+                    print(f"   target_cards_flat shape: {target_cards_flat.shape}")
+                    print(
+                        f"   target_cards_flat unique: {torch.unique(target_cards_flat).tolist()}"
+                    )
+                    print(f"   target_cards_flat min: {target_cards_flat.min()}")
+                    print(f"   target_cards_flat max: {target_cards_flat.max()}")
+                    print(f"   num_card_classes: {num_card_classes}")
+                    print(f"   self.config.num_cards: {self.config.num_cards}")
+
+                # ==================================================================
+                # MASKED LOSS (ONLY ON ACTION FRAMES)
+                # ==================================================================
 
                 # ==================================================================
                 # LOSS CALCULATION WITH CRITICAL FIXES
@@ -741,6 +756,16 @@ def main():
     # Load dataset
     print(f"\n{colorstr('blue', 'bold', 'Loading dataset...')}\n")
     dataset_builder = DatasetBuilder(config.replay_dir, config.sequence_length)
+
+    # Update num_cards based on actual dataset vocabulary
+    if hasattr(dataset_builder, "card_vocab_size") and dataset_builder.card_vocab_size:
+        config.num_cards = dataset_builder.card_vocab_size
+        print(
+            f"\n✅ Updated num_cards to {config.num_cards} based on dataset vocabulary"
+        )
+    else:
+        print(f"\n⚠️  Using default num_cards={config.num_cards}")
+
     dataloader = dataset_builder.get_dataset(
         batch_size=config.batch_size, num_workers=config.num_workers
     )

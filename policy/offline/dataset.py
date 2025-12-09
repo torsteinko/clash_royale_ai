@@ -15,6 +15,75 @@ from typing import Dict, List, Optional
 import pickle
 
 
+def convert_katacd_action_to_tensor(action_dict: Dict, state_dict: Dict) -> np.ndarray:
+    """
+    Convert KataCR action dict to [card_name_id, pos_x, pos_y]
+
+    CARD NAME PREDICTION MODE (for multi-deck training):
+    - Maps slot index (1-4) to actual card ID from state['cards']
+    - card_id in action_dict is slot index: 0=no action, 1-4=slots
+    - state['cards'] contains actual card IDs (e.g., [5, 12, 23, 34] for knight, arrows, etc.)
+    """
+    card_slot = action_dict.get("card_id", 0)  # Slot index: 0-4
+
+    # Handle None/NaN in card_slot
+    if card_slot is None or (isinstance(card_slot, float) and np.isnan(card_slot)):
+        card_slot = 0
+    card_slot = int(card_slot)
+
+    # Map slot to actual card name ID
+    card_name_id = 0  # Default: no action
+
+    if card_slot > 0:  # If actually playing a card (not waiting)
+        # Get cards in hand from state
+        cards = state_dict.get("cards", [])
+        if cards is None:
+            cards = []
+
+        # card_slot is 1-indexed (1=first slot, 2=second slot, etc.)
+        # Convert to 0-indexed for array access
+        slot_idx = card_slot - 1
+
+        if 0 <= slot_idx < len(cards):
+            card_name_id = cards[slot_idx]  # Get actual card ID from hand
+
+            # Handle None/NaN in card ID
+            if card_name_id is None or (
+                isinstance(card_name_id, float) and np.isnan(card_name_id)
+            ):
+                card_name_id = 0
+            else:
+                card_name_id = int(card_name_id)
+
+    # Get position
+    xy = action_dict.get("xy", None)
+
+    if xy is None:
+        return np.array([card_name_id, 0.0, 0.0], dtype=np.float32)
+
+    if isinstance(xy, (list, np.ndarray)) and len(xy) >= 2:
+        x, y = xy[0], xy[1]
+
+        # Handle None/NaN
+        if x is None or (isinstance(x, float) and np.isnan(x)):
+            x = 0.0
+        if y is None or (isinstance(y, float) and np.isnan(y)):
+            y = 0.0
+
+        result = np.array([card_name_id, float(x), float(y)], dtype=np.float32)
+
+        # Final safety check
+        if np.isnan(result).any():
+            print(f"WARNING: NaN in action conversion!")
+            print(f"  action_dict: {action_dict}")
+            print(f"  state cards: {state_dict.get('cards', [])}")
+            result = np.nan_to_num(result, nan=0.0)
+
+        return result
+
+    return np.array([card_name_id, 0.0, 0.0], dtype=np.float32)
+
+
 def convert_katacd_state_to_tensor(state_dict: Dict) -> np.ndarray:
     """
     Convert KataCR state dict to fixed-size tensor
@@ -64,53 +133,6 @@ def convert_katacd_state_to_tensor(state_dict: Dict) -> np.ndarray:
         result = np.nan_to_num(result, nan=0.0)
 
     return result
-
-
-def convert_katacd_action_to_tensor(action_dict: Dict, state_dict: Dict) -> np.ndarray:
-    """
-    Convert KataCR action dict to [card_slot, pos_x, pos_y]
-
-    KataCR action format:
-        'card_id': int (0-4, card slot index! 0=no action, 1-4=card slots),
-        'xy': [x, y] or None
-
-    NOTE: card_id is ALREADY the slot index (0-4), not the card name index!
-    """
-    card_slot = action_dict.get("card_id", 0)  # Already 0-4
-    # Handle None/NaN in card_slot
-    if card_slot is None or (isinstance(card_slot, float) and np.isnan(card_slot)):
-        card_slot = 0
-    card_slot = float(card_slot)
-
-    xy = action_dict.get("xy", None)
-
-    # Check if xy is None or contains None values
-    if xy is None:
-        # No action / wait action
-        return np.array([card_slot, 0.0, 0.0], dtype=np.float32)
-
-    # Handle list/array case
-    if isinstance(xy, (list, np.ndarray)):
-        if len(xy) >= 2:
-            x, y = xy[0], xy[1]
-            # Handle None/NaN
-            if x is None or (isinstance(x, float) and np.isnan(x)):
-                x = 0.0
-            if y is None or (isinstance(y, float) and np.isnan(y)):
-                y = 0.0
-
-            result = np.array([card_slot, float(x), float(y)], dtype=np.float32)
-
-            # Final safety check
-            if np.isnan(result).any():
-                print(f"WARNING: NaN in action conversion!")
-                print(f"  action_dict: {action_dict}")
-                result = np.nan_to_num(result, nan=0.0)
-
-            return result
-
-    # Fallback
-    return np.array([card_slot, 0.0, 0.0], dtype=np.float32)
 
 
 class ReplayDataset(Dataset):
@@ -428,6 +450,44 @@ class DatasetBuilder:
             print(f"   Mean reward: {self.replay_data['rewards'].mean():.2f}")
             print(f"   State shape: {all_states[0].shape if all_states else 'N/A'}")
             print(f"   Action shape: {all_actions[0].shape if all_actions else 'N/A'}")
+
+            print(f"\n🎴 CARD VOCABULARY ANALYSIS:")
+            print("=" * 60)
+
+            # Extract unique card IDs from states (cards in hand)
+            cards_in_hand = set()
+            for state in all_states:
+                # state vector: [elixir, time, card1, card2, card3, card4]
+                # indices 2-5 are the 4 cards in hand
+                for card_idx in range(2, 6):
+                    card_id = int(state[card_idx])
+                    if card_id > 0:  # Skip empty slots (0)
+                        cards_in_hand.add(card_id)
+
+            # Extract unique card IDs from actions (cards played)
+            cards_played = set()
+            for action in all_actions:
+                card_id = int(action[0])  # First element is now card_name_id
+                if card_id > 0:  # Skip "no action" (0)
+                    cards_played.add(card_id)
+
+            # Combine both sets
+            all_playable_cards = cards_in_hand | cards_played
+
+            print(f"   Cards found in hand: {sorted(cards_in_hand)}")
+            print(f"   Cards found in actions: {sorted(cards_played)}")
+            print(f"   Total unique playable cards: {len(all_playable_cards)}")
+            print(f"   All card IDs: {sorted(all_playable_cards)}")
+
+            if all_playable_cards:
+                self.card_vocab_size = max(all_playable_cards) + 1
+                print(f"\n   ✅ Recommended num_cards: {self.card_vocab_size}")
+                print(f"      (max card ID {max(all_playable_cards)} + 1 for index 0)")
+            else:
+                self.card_vocab_size = 114  # Default for all CR cards
+                print(f"\n   ⚠️  No cards found, using default: {self.card_vocab_size}")
+
+            print("=" * 60)
 
             # Global card usage analysis
             print(f"\n🃏 GLOBAL CARD USAGE ANALYSIS:")
