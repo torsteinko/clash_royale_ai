@@ -27,7 +27,7 @@ class TrainConfig:
 
     def __init__(self):
         # Model - WILL BE SET DYNAMICALLY from dataset
-        self.num_cards = 114  # Default (updated after loading dataset)
+        self.num_cards = 164  # Default (updated after loading dataset)
         self.num_troops = 200
         self.d_model = 256
         self.n_head = 8
@@ -753,7 +753,7 @@ def main():
     parser.add_argument(
         "--replay-dir",
         type=str,
-        default="replay_data",
+        default="replay_data_patched",
         help="Directory with replay files",
     )
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size")

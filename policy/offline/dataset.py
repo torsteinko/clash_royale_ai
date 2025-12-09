@@ -19,51 +19,29 @@ def convert_katacd_action_to_tensor(action_dict: Dict, state_dict: Dict) -> np.n
     """
     Convert KataCR action dict to [card_name_id, pos_x, pos_y]
 
-    CARD NAME PREDICTION MODE (for multi-deck training):
-    - Maps slot index (1-4) to actual card ID from state['cards']
-    - card_id in action_dict is slot index: 0=no action, 1-4=slots
-    - state['cards'] contains actual card IDs (e.g., [5, 12, 23, 34] for knight, arrows, etc.)
+    NEW: GLOBAL CARD ID MODE
+    - action_dict["card_id"] is already the global card ID (0 = no action)
+    - state_dict["cards"] should also contain global card IDs for the 4 cards in hand
     """
-    card_slot = action_dict.get("card_id", 0)  # Slot index: 0-4
+    # Read card_id directly as global ID
+    card_id = action_dict.get("card_id", 0)
 
-    # Handle None/NaN in card_slot
-    if card_slot is None or (isinstance(card_slot, float) and np.isnan(card_slot)):
-        card_slot = 0
-    card_slot = int(card_slot)
+    # Handle None/NaN/float safely
+    if card_id is None or (isinstance(card_id, float) and np.isnan(card_id)):
+        card_id = 0
+    else:
+        card_id = int(card_id)
 
-    # Map slot to actual card name ID
-    card_name_id = 0  # Default: no action
+    # No per‑deck reindexing, 0 still means “no action”
+    card_name_id = card_id
 
-    if card_slot > 0:  # If actually playing a card (not waiting)
-        # Get cards in hand from state
-        cards = state_dict.get("cards", [])
-        if cards is None:
-            cards = []
-
-        # card_slot is 1-indexed (1=first slot, 2=second slot, etc.)
-        # Convert to 0-indexed for array access
-        slot_idx = card_slot - 1
-
-        if 0 <= slot_idx < len(cards):
-            card_name_id = cards[slot_idx]  # Get actual card ID from hand
-
-            # Handle None/NaN in card ID
-            if card_name_id is None or (
-                isinstance(card_name_id, float) and np.isnan(card_name_id)
-            ):
-                card_name_id = 0
-            else:
-                card_name_id = int(card_name_id)
-
-    # Get position
+    # Position
     xy = action_dict.get("xy", None)
-
     if xy is None:
         return np.array([card_name_id, 0.0, 0.0], dtype=np.float32)
 
     if isinstance(xy, (list, np.ndarray)) and len(xy) >= 2:
         x, y = xy[0], xy[1]
-
         # Handle None/NaN
         if x is None or (isinstance(x, float) and np.isnan(x)):
             x = 0.0
@@ -71,14 +49,11 @@ def convert_katacd_action_to_tensor(action_dict: Dict, state_dict: Dict) -> np.n
             y = 0.0
 
         result = np.array([card_name_id, float(x), float(y)], dtype=np.float32)
-
-        # Final safety check
         if np.isnan(result).any():
-            print(f"WARNING: NaN in action conversion!")
-            print(f"  action_dict: {action_dict}")
-            print(f"  state cards: {state_dict.get('cards', [])}")
+            print("WARNING: NaN in action conversion!")
+            print(f" action_dict: {action_dict}")
+            print(f" state cards: {state_dict.get('cards', [])}")
             result = np.nan_to_num(result, nan=0.0)
-
         return result
 
     return np.array([card_name_id, 0.0, 0.0], dtype=np.float32)
@@ -368,8 +343,8 @@ class DatasetBuilder:
     def _load_replays(self):
         """
         Load all replay files and concatenate
-
         CRITICAL FIX #3: Clip episodes to last action frame
+        CRITICAL FIX #4: Support Dict-based replay files (from patch_replay.py)
         """
         print(f"Loading replays from {self.replay_dir}")
 
@@ -420,78 +395,96 @@ class DatasetBuilder:
                     with open(replay_file, "rb") as f:
                         data = pickle.load(f)
 
-                # Handle KataCR format: {'state', 'action', 'reward'} -> our format
-                if "state" in data and "states" not in data:
-                    # Convert KataCR format to our format
-                    raw_states = data.get("state", [])
-                    raw_actions = data.get("action", [])
-                    raw_rewards = data.get("reward", [])
+                # ------------------------------------------------------------------
+                # CRITICAL FIX: Detect Format & Convert if needed (Dicts -> Tensors)
+                # ------------------------------------------------------------------
+                # We need conversion if:
+                # A) Data has old keys ('state')
+                # B) Data has new keys ('states') BUT the content is Dicts (patched files)
 
-                    # CRITICAL FIX: Find last action frame and clip episode
+                raw_states = []
+                raw_actions = []
+                raw_rewards = []
+                is_raw_format = False
+
+                # Check format A (KataCR Raw)
+                if "state" in data:
+                    raw_states = data["state"]
+                    raw_actions = data["action"]
+                    raw_rewards = data.get("reward", [])
+                    is_raw_format = True
+
+                # Check format B (Patched Dicts)
+                elif "states" in data:
+                    # Check first element to see if it's a dict or tensor
+                    if len(data["states"]) > 0 and isinstance(data["states"][0], dict):
+                        raw_states = data["states"]
+                        raw_actions = data["actions"]
+                        raw_rewards = data["rewards"]
+                        is_raw_format = True
+
+                if is_raw_format:
+                    # --- Perform Conversion Logic ---
+
+                    # 1. Find last action frame to clip empty tail
                     last_action_idx = len(raw_actions) - 1
                     for idx in range(len(raw_actions) - 1, -1, -1):
-                        if raw_actions[idx].get("card_id", 0) != 0:
+                        # Handle both dict access and object access
+                        if isinstance(raw_actions[idx], dict):
+                            aid = raw_actions[idx].get("card_id", 0)
+                        else:
+                            aid = getattr(raw_actions[idx], "card_id", 0)
+
+                        if aid != 0:
                             last_action_idx = idx
                             break
 
-                    # Clip to last action + 1
+                    # 2. Clip
                     raw_states = raw_states[: last_action_idx + 1]
                     raw_actions = raw_actions[: last_action_idx + 1]
                     raw_rewards = raw_rewards[: last_action_idx + 1]
 
-                    # Convert KataCR dicts to tensors
+                    # 3. Convert Dicts -> Tensors
+                    # Using the converter functions already imported
                     states = [convert_katacd_state_to_tensor(s) for s in raw_states]
-                    # Pass state to action converter to map card_id to card_slot
                     actions = [
                         convert_katacd_action_to_tensor(a, s)
                         for a, s in zip(raw_actions, raw_states)
                     ]
 
-                    converted_data = {
+                    # Update data object with converted Tensors
+                    data = {
                         "states": states,
                         "actions": actions,
                         "rewards": raw_rewards,
                         "terminals": [False] * (len(states) - 1)
-                        + [True],  # Last frame is terminal
+                        + [True],  # Last frame terminal
                     }
-                    data = converted_data
 
-                    if files_processed == 0:  # Only print for first file
-                        print(f"\n🔍 DEBUG: First replay file rewards:")
-                        print(f"   File: {replay_file.name}")
-                        print(f"   Total frames: {len(raw_rewards)}")
-                        print(f"   Reward stats:")
-                        reward_arr = np.array(raw_rewards)
-                        print(f"     Min: {reward_arr.min()}")
-                        print(f"     Max: {reward_arr.max()}")
-                        print(f"     Mean: {reward_arr.mean()}")
-                        print(f"     Non-zero: {(reward_arr != 0).sum()}")
-                        print(f"   First 10 rewards: {reward_arr[:10]}")
-                        print(f"   Last 10 rewards: {reward_arr[-10:]}")
-                        # Check unique values
-                        unique_rewards = np.unique(reward_arr)
-                        print(f"   Unique reward values: {unique_rewards}")
+                # ------------------------------------------------------------------
+                # Validation & Merging
+                # ------------------------------------------------------------------
 
-                # Validate data structure
+                # Validate required keys exist now
                 if not all(
                     k in data for k in ["states", "actions", "rewards", "terminals"]
                 ):
-                    print(
-                        f"Skipping {replay_file.name}: missing required keys (has: {list(data.keys())})"
-                    )
+                    # print(f"Skipping {replay_file.name}: missing keys after conversion attempt")
                     continue
 
                 # Skip very short episodes
                 if len(data["states"]) < self.sequence_length:
-                    # Don't print for every short episode, too noisy
                     continue
 
-                # Verify states/actions are the right type
+                # Final Type Check (Should be Tensors/Arrays now)
                 if len(data["states"]) > 0:
                     if not isinstance(data["states"][0], np.ndarray):
-                        print(f"Skipping {replay_file.name}: states not numpy arrays")
+                        print(
+                            f"Skipping {replay_file.name}: Failed to convert states to numpy (Got {type(data['states'][0])})"
+                        )
                         continue
 
+                # Aggregate
                 all_states.extend(data["states"])
                 all_actions.extend(data["actions"])
                 all_rewards.extend(data["rewards"])
@@ -500,11 +493,11 @@ class DatasetBuilder:
 
             except Exception as e:
                 print(f"Error loading {replay_file.name}: {e}")
-                import traceback
-
-                traceback.print_exc()
+                # import traceback
+                # traceback.print_exc()
                 continue
 
+        # Finalize Dataset
         self.replay_data = {
             "states": all_states,
             "actions": all_actions,
