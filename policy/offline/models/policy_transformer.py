@@ -82,7 +82,7 @@ class PolicyTransformer(nn.Module):
         max_seq_len: int = 50,
         dropout: float = 0.1,
         arena_grid_size: Tuple[int, int] = (32, 18),
-        state_dim: int = 6,  # Dimension of state vector (elixir, time, 4 cards)
+        state_dim: int = 126,  # Dimension of state vector
     ):
         super().__init__()
 

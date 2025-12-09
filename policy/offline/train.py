@@ -28,7 +28,6 @@ class TrainConfig:
     def __init__(self):
         # Model - WILL BE SET DYNAMICALLY from dataset
         self.num_cards = 114  # Default (updated after loading dataset)
-
         self.num_troops = 200
         self.d_model = 256
         self.n_head = 8
@@ -37,6 +36,9 @@ class TrainConfig:
         self.dropout = 0.1
         self.sequence_length = 16
         self.arena_grid_size = (32, 18)
+
+        # Update state dimension
+        self.state_dim = 126
 
         # Training
         self.batch_size = 16
@@ -54,7 +56,7 @@ class TrainConfig:
         self.log_dir = (
             Path("runs") / "policy_training" / datetime.now().strftime("%Y%m%d_%H%M%S")
         )
-        self.save_freq = 10  # How many epochs between saves
+        self.save_freq = 4  # How many epochs between saves
         self.log_freq = 100
 
 
@@ -87,6 +89,7 @@ class Trainer:
             max_seq_len=config.sequence_length,
             dropout=config.dropout,
             arena_grid_size=config.arena_grid_size,
+            state_dim=config.state_dim,
         ).to(self.device)
 
         print(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
@@ -360,20 +363,6 @@ class Trainer:
                     continue
 
                 # ==================================================================
-                # DEBUG: Check dimensions before loss
-                # ==================================================================
-                if batch_idx == 0:
-                    print(f"\n🔍 DIMENSION CHECK:")
-                    print(f"   target_cards_flat shape: {target_cards_flat.shape}")
-                    print(
-                        f"   target_cards_flat unique: {torch.unique(target_cards_flat).tolist()}"
-                    )
-                    print(f"   target_cards_flat min: {target_cards_flat.min()}")
-                    print(f"   target_cards_flat max: {target_cards_flat.max()}")
-                    print(f"   num_card_classes: {num_card_classes}")
-                    print(f"   self.config.num_cards: {self.config.num_cards}")
-
-                # ==================================================================
                 # MASKED LOSS (ONLY ON ACTION FRAMES)
                 # ==================================================================
 
@@ -525,6 +514,25 @@ class Trainer:
                         pos_acc = (
                             (position_pred == target_positions_flat).float() * mask
                         ).sum() / (num_actions + 1e-6)
+                        # Check prediction distribution to catch "always predict X" collapse
+                        if batch_idx % 500 == 0:  # Every 500 batches
+                            action_mask_bool = mask.bool()
+                            card_pred_on_actions = card_pred[action_mask_bool]
+                            target_cards_on_actions = target_cards_flat[
+                                action_mask_bool
+                            ]
+
+                            print(
+                                f"\n📊 [Batch {batch_idx}] Prediction Analysis on ACTION frames:"
+                            )
+                            print(
+                                f"   Target distribution: {torch.bincount(target_cards_on_actions, minlength=self.config.num_cards).tolist()}"
+                            )
+                            print(
+                                f"   Prediction distribution: {torch.bincount(card_pred_on_actions, minlength=self.config.num_cards).tolist()}"
+                            )
+                            print(f"   Card accuracy: {card_acc.item():.3f}")
+                            print(f"   Num actions in batch: {num_actions.item()}")
                     else:
                         card_acc = torch.tensor(0.0, device=self.device)
                         pos_acc = torch.tensor(0.0, device=self.device)
@@ -632,7 +640,36 @@ class Trainer:
         torch.save(checkpoint, path)
         print(f"💾 Saved checkpoint: {path}")
 
-    def train(self, dataloader):
+    def load_checkpoint(self, checkpoint_path):
+        """Load checkpoint and resume training"""
+        print(f"\n🔄 Loading checkpoint from: {checkpoint_path}")
+
+        checkpoint = torch.load(
+            checkpoint_path, map_location=self.device, weights_only=False
+        )
+
+        # Restore model
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        print(f"✓ Loaded model state")
+
+        # Restore optimizer
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        print(f"✓ Loaded optimizer state")
+
+        # Restore scheduler
+        if "scheduler_state_dict" in checkpoint:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            print(f"✓ Loaded scheduler state")
+
+        # Restore training state
+        self.global_step = checkpoint.get("global_step", 0)
+        start_epoch = checkpoint.get("epoch", 0)
+
+        print(f"✓ Resuming from epoch {start_epoch}, step {self.global_step}")
+
+        return start_epoch
+
+    def train(self, dataloader, start_epoch=0):
         """Main training loop"""
         print(f"\n{colorstr('green', 'bold', 'Starting training...')}\n")
 
@@ -640,7 +677,7 @@ class Trainer:
         patience = 10  # Stop if no improvement for 10 epochs
         patience_counter = 0
 
-        for epoch in range(self.config.num_epochs):
+        for epoch in range(start_epoch, self.config.num_epochs):
             self.epoch = epoch
 
             # Train one epoch
@@ -725,6 +762,12 @@ def main():
     parser.add_argument(
         "--sequence-length", type=int, default=16, help="Sequence length"
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume from",
+    )
 
     args = parser.parse_args()
 
@@ -777,7 +820,16 @@ def main():
 
     # Create trainer and train
     trainer = Trainer(config)
-    trainer.train(dataloader)
+    start_epoch = 0
+    if args.resume:
+        checkpoint_path = Path(args.resume)
+        if checkpoint_path.exists():
+            start_epoch = trainer.load_checkpoint(checkpoint_path)
+        else:
+            print(f"❌ ERROR: Checkpoint file not found: {checkpoint_path}")
+            print("Starting training from scratch instead.")
+
+    trainer.train(dataloader, start_epoch=start_epoch)
 
 
 if __name__ == "__main__":

@@ -1,599 +1,302 @@
-train: F:\clash_royale_ai\dataset\synthetic_dataset\train\images
-val: F:\clash_royale_ai\dataset\synthetic_dataset\val\images
-test: F:\clash_royale_ai\dataset\synthetic_dataset\test\images
-nc: 2
+path: F:\clash_royale_ai\dataset\synthetic_dataset
+train: train/images
+val: val/images
+test: test/images
+nc: 296
 names:
-  class_names:
-  - ally_archer
-  - ally_archer_evolution
-  - ally_baby_dragon
-  - ally_baby_dragon_evolution
-  - ally_baby_goblin_dagger_troop
-  - ally_balloon
-  - ally_bandit
-  - ally_barbarian
-  - ally_barbarian_evolution
-  - ally_bats
-  - ally_bats_evolution
-  - ally_battle_ram
-  - ally_battle_ram_evolution
-  - ally_berserker
-  - ally_black_knight
-  - ally_bomber
-  - ally_bomber_evolution
-  - ally_boss_bandit
-  - ally_bowler
-  - ally_building_barbarian_hut
-  - ally_building_basic_cannon
-  - ally_building_bomb_tower
-  - ally_building_cannon_evolution
-  - ally_building_elixir_collector
-  - ally_building_goblin_drill
-  - ally_building_goblin_drill_evolution
-  - ally_building_goblin_hut
-  - ally_building_inferno_tower
-  - ally_building_mega_bomb
-  - ally_building_mighty_miner_bomb_dl
-  - ally_building_mortar
-  - ally_building_mortar_evolution
-  - ally_building_rage_bottle
-  - ally_building_tesla
-  - ally_building_tesla_evolution
-  - ally_building_tombstone
-  - ally_building_tower
-  - ally_building_xbow
-  - ally_cannoneer_troop
-  - ally_dark_witch
-  - ally_electro_dragon_evolution
-  - ally_electro_wizard
-  - ally_executioner
-  - ally_executioner_evolution
-  - ally_fire_firespirit
-  - ally_firecracker_evolution
-  - ally_flying_machine
-  - ally_furnace_evolution
-  - ally_furnace_rework
-  - ally_giant
-  - ally_giant_buffing
-  - ally_giant_skeleton
-  - ally_goblin
-  - ally_goblin_archer
-  - ally_goblin_blowdart
-  - ally_goblin_blowdart_evolution
-  - ally_goblin_bush
-  - ally_goblin_cage_evolution
-  - ally_goblin_demolisher
-  - ally_goblin_giant_evolution
-  - ally_goblin_machine
-  - ally_goblin_queen_troop
-  - ally_goblinstein_doctor
-  - ally_goblinstein_monster
-  - ally_golem
-  - ally_golemite
-  - ally_hog_rider
-  - ally_hunter_evolution
-  - ally_ice_spirit_evolution
-  - ally_ice_spirits
-  - ally_ice_wizard
-  - ally_inferno_dragon_evolution
-  - ally_king
-  - ally_knight
-  - ally_knight_evolution
-  - ally_knives_thrower_troop
-  - ally_lava_hound
-  - ally_lava_pups
-  - ally_lumberjack_evolution
-  - ally_mega_knight
-  - ally_mega_knight_evolution
-  - ally_mega_minion
-  - ally_merge_maiden
-  - ally_merge_maiden_dragon
-  - ally_miner
-  - ally_mini_pekka
-  - ally_minion
-  - ally_movingcannon
-  - ally_musketeer
-  - ally_musketeer_evolution
-  - ally_pekka
-  - ally_pekka_evolution
-  - ally_prince
-  - ally_princess
-  - ally_princess_tower
-  - ally_rage_barbarian
-  - ally_royal_chef
-  - ally_royal_ghost_evolution
-  - ally_royal_giant
-  - ally_royal_hog_evolution
-  - ally_royal_recruit_evolution
-  - ally_royalgiant_evolution
-  - ally_skeleton
-  - ally_skeleton_army_evolution
-  - ally_skeleton_balloon
-  - ally_skeleton_balloon_evolution
-  - ally_skeleton_dragon
-  - ally_skeleton_evolution
-  - ally_skeleton_warrior
-  - ally_snowman
-  - ally_spell_goblin_barrel_evolution
-  - ally_spell_snowball_evolution
-  - ally_three_musketeers
-  - ally_valkyrie
-  - ally_valkyrie_evolution
-  - ally_wall_breakers_evolution
-  - ally_witch
-  - ally_witch_evolution
-  - ally_wizard
-  - ally_wizard_evolution
-  - background-items
-  - bar
-  - bar-level
-  - big-text
-  - clock
-  - dagger-duchess-tower-bar
-  - elixir
-  - emote
-  - enemy_archer
-  - enemy_archer_evolution
-  - enemy_archer_queen
-  - enemy_arrows
-  - enemy_baby_dragon
-  - enemy_baby_dragon_evolution
-  - enemy_baby_goblin_dagger_troop
-  - enemy_balloon
-  - enemy_bandit
-  - enemy_barbarian
-  - enemy_barbarian_barrel
-  - enemy_barbarian_evolution
-  - enemy_battle_healer
-  - enemy_battle_ram
-  - enemy_battle_ram_evolution
-  - enemy_berserker
-  - enemy_black_knight
-  - enemy_bomber
-  - enemy_bomber_evolution
-  - enemy_boss_bandit
-  - enemy_bowler
-  - enemy_building_barbarian_hut
-  - enemy_building_basic_cannon
-  - enemy_building_bomb_tower
-  - enemy_building_cannon_evolution
-  - enemy_building_elixir_collector
-  - enemy_building_goblin_drill
-  - enemy_building_goblin_drill_evolution
-  - enemy_building_goblin_hut
-  - enemy_building_inferno_tower
-  - enemy_building_mega_bomb
-  - enemy_building_mighty_miner_bomb_dl
-  - enemy_building_mortar
-  - enemy_building_mortar_evolution
-  - enemy_building_tesla
-  - enemy_building_tesla_evolution
-  - enemy_building_tombstone
-  - enemy_building_tower
-  - enemy_building_xbow
-  - enemy_cannoneer_troop
-  - enemy_clone
-  - enemy_dark_witch
-  - enemy_earthquake
-  - enemy_electro_dragon
-  - enemy_electro_dragon_evolution
-  - enemy_electro_giant
-  - enemy_electro_spirit
-  - enemy_electro_wizard
-  - enemy_elite_barbarian
-  - enemy_elixir_golem_big
-  - enemy_elixir_golem_mid
-  - enemy_elixir_golem_small
-  - enemy_executioner
-  - enemy_executioner_evolution
-  - enemy_fireball
-  - enemy_firecracker_evolution
-  - enemy_fisherman
-  - enemy_flying_machine
-  - enemy_freeze
-  - enemy_furnace_evolution
-  - enemy_furnace_rework
-  - enemy_giant
-  - enemy_giant_buffing
-  - enemy_giant_skeleton
-  - enemy_giant_snowball
-  - enemy_goblin
-  - enemy_goblin_archer
-  - enemy_goblin_ball
-  - enemy_goblin_barrel
-  - enemy_goblin_blowdart
-  - enemy_goblin_blowdart_evolution
-  - enemy_goblin_brawler
-  - enemy_goblin_bush
-  - enemy_goblin_cage
-  - enemy_goblin_cage_evolution
-  - enemy_goblin_demolisher
-  - enemy_goblin_giant
-  - enemy_goblin_giant_evolution
-  - enemy_goblin_machine
-  - enemy_goblin_queen_troop
-  - enemy_goblinstein_doctor
-  - enemy_goblinstein_monster
-  - enemy_golden_knight
-  - enemy_golem
-  - enemy_golemite
-  - enemy_graveyard
-  - enemy_heal_spirit
-  - enemy_hog_rider
-  - enemy_hunter_evolution
-  - enemy_ice_wizard
-  - enemy_inferno_dragon
-  - enemy_inferno_dragon_evolution
-  - enemy_king
-  - enemy_king_tower
-  - enemy_knight
-  - enemy_knight_evolution
-  - enemy_knives_thrower_troop
-  - enemy_lava_hound
-  - enemy_lightning
-  - enemy_little_prince
-  - enemy_log
-  - enemy_lumberjack_evolution
-  - enemy_magic_archer
-  - enemy_mega_knight
-  - enemy_mega_knight_evolution
-  - enemy_mega_minion
-  - enemy_merge_maiden
-  - enemy_merge_maiden_dragon
-  - enemy_mighty_miner
-  - enemy_miner
-  - enemy_mini_pekka
-  - enemy_minion
-  - enemy_monk
-  - enemy_mother_witch
-  - enemy_movingcannon
-  - enemy_musketeer
-  - enemy_musketeer_evolution
-  - enemy_pekka
-  - enemy_pekka_evolution
-  - enemy_phoenix_big
-  - enemy_phoenix_egg
-  - enemy_phoenix_small
-  - enemy_poison
-  - enemy_prince
-  - enemy_princess
-  - enemy_princess_tower
-  - enemy_rage
-  - enemy_rage_barbarian
-  - enemy_ram_rider
-  - enemy_rascal_boy
-  - enemy_rascal_girl
-  - enemy_rocket
-  - enemy_royal_chef
-  - enemy_royal_delivery
-  - enemy_royal_ghost_evolution
-  - enemy_royal_giant
-  - enemy_royal_hog
-  - enemy_royal_hog_evolution
-  - enemy_royal_recruit
-  - enemy_royal_recruit_evolution
-  - enemy_royalgiant_evolution
-  - enemy_skeleton_army_evolution
-  - enemy_skeleton_balloon
-  - enemy_skeleton_balloon_evolution
-  - enemy_skeleton_dragon
-  - enemy_skeleton_king
-  - enemy_skeleton_king_skill
-  - enemy_skeleton_warrior
-  - enemy_snowman
-  - enemy_sparky
-  - enemy_spell_goblin_barrel_evolution
-  - enemy_three_musketeers
-  - enemy_tornado
-  - enemy_valkyrie
-  - enemy_valkyrie_evolution
-  - enemy_wall_breaker
-  - enemy_wall_breakers_evolution
-  - enemy_witch
-  - enemy_witch_evolution
-  - enemy_wizard
-  - enemy_wizard_evolution
-  - enemy_zap
-  - enemy_zappy
-  - evolution_symbol
-  - king_tower_bar
-  - miner_dirt
-  - skeleton_king_bar
-  - tower_bar
-  name_to_id:
-    ally_archer: 0
-    ally_archer_evolution: 1
-    ally_baby_dragon: 2
-    ally_baby_dragon_evolution: 3
-    ally_baby_goblin_dagger_troop: 4
-    ally_balloon: 5
-    ally_bandit: 6
-    ally_barbarian: 7
-    ally_barbarian_evolution: 8
-    ally_bats: 9
-    ally_bats_evolution: 10
-    ally_battle_ram: 11
-    ally_battle_ram_evolution: 12
-    ally_berserker: 13
-    ally_black_knight: 14
-    ally_bomber: 15
-    ally_bomber_evolution: 16
-    ally_boss_bandit: 17
-    ally_bowler: 18
-    ally_building_barbarian_hut: 19
-    ally_building_basic_cannon: 20
-    ally_building_bomb_tower: 21
-    ally_building_cannon_evolution: 22
-    ally_building_elixir_collector: 23
-    ally_building_goblin_drill: 24
-    ally_building_goblin_drill_evolution: 25
-    ally_building_goblin_hut: 26
-    ally_building_inferno_tower: 27
-    ally_building_mega_bomb: 28
-    ally_building_mighty_miner_bomb_dl: 29
-    ally_building_mortar: 30
-    ally_building_mortar_evolution: 31
-    ally_building_rage_bottle: 32
-    ally_building_tesla: 33
-    ally_building_tesla_evolution: 34
-    ally_building_tombstone: 35
-    ally_building_tower: 36
-    ally_building_xbow: 37
-    ally_cannoneer_troop: 38
-    ally_dark_witch: 39
-    ally_electro_dragon_evolution: 40
-    ally_electro_wizard: 41
-    ally_executioner: 42
-    ally_executioner_evolution: 43
-    ally_fire_firespirit: 44
-    ally_firecracker_evolution: 45
-    ally_flying_machine: 46
-    ally_furnace_evolution: 47
-    ally_furnace_rework: 48
-    ally_giant: 49
-    ally_giant_buffing: 50
-    ally_giant_skeleton: 51
-    ally_goblin: 52
-    ally_goblin_archer: 53
-    ally_goblin_blowdart: 54
-    ally_goblin_blowdart_evolution: 55
-    ally_goblin_bush: 56
-    ally_goblin_cage_evolution: 57
-    ally_goblin_demolisher: 58
-    ally_goblin_giant_evolution: 59
-    ally_goblin_machine: 60
-    ally_goblin_queen_troop: 61
-    ally_goblinstein_doctor: 62
-    ally_goblinstein_monster: 63
-    ally_golem: 64
-    ally_golemite: 65
-    ally_hog_rider: 66
-    ally_hunter_evolution: 67
-    ally_ice_spirit_evolution: 68
-    ally_ice_spirits: 69
-    ally_ice_wizard: 70
-    ally_inferno_dragon_evolution: 71
-    ally_king: 72
-    ally_knight: 73
-    ally_knight_evolution: 74
-    ally_knives_thrower_troop: 75
-    ally_lava_hound: 76
-    ally_lava_pups: 77
-    ally_lumberjack_evolution: 78
-    ally_mega_knight: 79
-    ally_mega_knight_evolution: 80
-    ally_mega_minion: 81
-    ally_merge_maiden: 82
-    ally_merge_maiden_dragon: 83
-    ally_miner: 84
-    ally_mini_pekka: 85
-    ally_minion: 86
-    ally_movingcannon: 87
-    ally_musketeer: 88
-    ally_musketeer_evolution: 89
-    ally_pekka: 90
-    ally_pekka_evolution: 91
-    ally_prince: 92
-    ally_princess: 93
-    ally_princess_tower: 94
-    ally_rage_barbarian: 95
-    ally_royal_chef: 96
-    ally_royal_ghost_evolution: 97
-    ally_royal_giant: 98
-    ally_royal_hog_evolution: 99
-    ally_royal_recruit_evolution: 100
-    ally_royalgiant_evolution: 101
-    ally_skeleton: 102
-    ally_skeleton_army_evolution: 103
-    ally_skeleton_balloon: 104
-    ally_skeleton_balloon_evolution: 105
-    ally_skeleton_dragon: 106
-    ally_skeleton_evolution: 107
-    ally_skeleton_warrior: 108
-    ally_snowman: 109
-    ally_spell_goblin_barrel_evolution: 110
-    ally_spell_snowball_evolution: 111
-    ally_three_musketeers: 112
-    ally_valkyrie: 113
-    ally_valkyrie_evolution: 114
-    ally_wall_breakers_evolution: 115
-    ally_witch: 116
-    ally_witch_evolution: 117
-    ally_wizard: 118
-    ally_wizard_evolution: 119
-    background-items: 120
-    bar: 121
-    bar-level: 122
-    big-text: 123
-    clock: 124
-    dagger-duchess-tower-bar: 125
-    elixir: 126
-    emote: 127
-    enemy_archer: 128
-    enemy_archer_evolution: 129
-    enemy_archer_queen: 130
-    enemy_arrows: 131
-    enemy_baby_dragon: 132
-    enemy_baby_dragon_evolution: 133
-    enemy_baby_goblin_dagger_troop: 134
-    enemy_balloon: 135
-    enemy_bandit: 136
-    enemy_barbarian: 137
-    enemy_barbarian_barrel: 138
-    enemy_barbarian_evolution: 139
-    enemy_battle_healer: 140
-    enemy_battle_ram: 141
-    enemy_battle_ram_evolution: 142
-    enemy_berserker: 143
-    enemy_black_knight: 144
-    enemy_bomber: 145
-    enemy_bomber_evolution: 146
-    enemy_boss_bandit: 147
-    enemy_bowler: 148
-    enemy_building_barbarian_hut: 149
-    enemy_building_basic_cannon: 150
-    enemy_building_bomb_tower: 151
-    enemy_building_cannon_evolution: 152
-    enemy_building_elixir_collector: 153
-    enemy_building_goblin_drill: 154
-    enemy_building_goblin_drill_evolution: 155
-    enemy_building_goblin_hut: 156
-    enemy_building_inferno_tower: 157
-    enemy_building_mega_bomb: 158
-    enemy_building_mighty_miner_bomb_dl: 159
-    enemy_building_mortar: 160
-    enemy_building_mortar_evolution: 161
-    enemy_building_tesla: 162
-    enemy_building_tesla_evolution: 163
-    enemy_building_tombstone: 164
-    enemy_building_tower: 165
-    enemy_building_xbow: 166
-    enemy_cannoneer_troop: 167
-    enemy_clone: 168
-    enemy_dark_witch: 169
-    enemy_earthquake: 170
-    enemy_electro_dragon: 171
-    enemy_electro_dragon_evolution: 172
-    enemy_electro_giant: 173
-    enemy_electro_spirit: 174
-    enemy_electro_wizard: 175
-    enemy_elite_barbarian: 176
-    enemy_elixir_golem_big: 177
-    enemy_elixir_golem_mid: 178
-    enemy_elixir_golem_small: 179
-    enemy_executioner: 180
-    enemy_executioner_evolution: 181
-    enemy_fireball: 182
-    enemy_firecracker_evolution: 183
-    enemy_fisherman: 184
-    enemy_flying_machine: 185
-    enemy_freeze: 186
-    enemy_furnace_evolution: 187
-    enemy_furnace_rework: 188
-    enemy_giant: 189
-    enemy_giant_buffing: 190
-    enemy_giant_skeleton: 191
-    enemy_giant_snowball: 192
-    enemy_goblin: 193
-    enemy_goblin_archer: 194
-    enemy_goblin_ball: 195
-    enemy_goblin_barrel: 196
-    enemy_goblin_blowdart: 197
-    enemy_goblin_blowdart_evolution: 198
-    enemy_goblin_brawler: 199
-    enemy_goblin_bush: 200
-    enemy_goblin_cage: 201
-    enemy_goblin_cage_evolution: 202
-    enemy_goblin_demolisher: 203
-    enemy_goblin_giant: 204
-    enemy_goblin_giant_evolution: 205
-    enemy_goblin_machine: 206
-    enemy_goblin_queen_troop: 207
-    enemy_goblinstein_doctor: 208
-    enemy_goblinstein_monster: 209
-    enemy_golden_knight: 210
-    enemy_golem: 211
-    enemy_golemite: 212
-    enemy_graveyard: 213
-    enemy_heal_spirit: 214
-    enemy_hog_rider: 215
-    enemy_hunter_evolution: 216
-    enemy_ice_wizard: 217
-    enemy_inferno_dragon: 218
-    enemy_inferno_dragon_evolution: 219
-    enemy_king: 220
-    enemy_king_tower: 221
-    enemy_knight: 222
-    enemy_knight_evolution: 223
-    enemy_knives_thrower_troop: 224
-    enemy_lava_hound: 225
-    enemy_lightning: 226
-    enemy_little_prince: 227
-    enemy_log: 228
-    enemy_lumberjack_evolution: 229
-    enemy_magic_archer: 230
-    enemy_mega_knight: 231
-    enemy_mega_knight_evolution: 232
-    enemy_mega_minion: 233
-    enemy_merge_maiden: 234
-    enemy_merge_maiden_dragon: 235
-    enemy_mighty_miner: 236
-    enemy_miner: 237
-    enemy_mini_pekka: 238
-    enemy_minion: 239
-    enemy_monk: 240
-    enemy_mother_witch: 241
-    enemy_movingcannon: 242
-    enemy_musketeer: 243
-    enemy_musketeer_evolution: 244
-    enemy_pekka: 245
-    enemy_pekka_evolution: 246
-    enemy_phoenix_big: 247
-    enemy_phoenix_egg: 248
-    enemy_phoenix_small: 249
-    enemy_poison: 250
-    enemy_prince: 251
-    enemy_princess: 252
-    enemy_princess_tower: 253
-    enemy_rage: 254
-    enemy_rage_barbarian: 255
-    enemy_ram_rider: 256
-    enemy_rascal_boy: 257
-    enemy_rascal_girl: 258
-    enemy_rocket: 259
-    enemy_royal_chef: 260
-    enemy_royal_delivery: 261
-    enemy_royal_ghost_evolution: 262
-    enemy_royal_giant: 263
-    enemy_royal_hog: 264
-    enemy_royal_hog_evolution: 265
-    enemy_royal_recruit: 266
-    enemy_royal_recruit_evolution: 267
-    enemy_royalgiant_evolution: 268
-    enemy_skeleton_army_evolution: 269
-    enemy_skeleton_balloon: 270
-    enemy_skeleton_balloon_evolution: 271
-    enemy_skeleton_dragon: 272
-    enemy_skeleton_king: 273
-    enemy_skeleton_king_skill: 274
-    enemy_skeleton_warrior: 275
-    enemy_snowman: 276
-    enemy_sparky: 277
-    enemy_spell_goblin_barrel_evolution: 278
-    enemy_three_musketeers: 279
-    enemy_tornado: 280
-    enemy_valkyrie: 281
-    enemy_valkyrie_evolution: 282
-    enemy_wall_breaker: 283
-    enemy_wall_breakers_evolution: 284
-    enemy_witch: 285
-    enemy_witch_evolution: 286
-    enemy_wizard: 287
-    enemy_wizard_evolution: 288
-    enemy_zap: 289
-    enemy_zappy: 290
-    evolution_symbol: 291
-    king_tower_bar: 292
-    miner_dirt: 293
-    skeleton_king_bar: 294
-    tower_bar: 295
+- ally_archer
+- ally_archer_evolution
+- ally_baby_dragon
+- ally_baby_dragon_evolution
+- ally_baby_goblin_dagger_troop
+- ally_balloon
+- ally_bandit
+- ally_barbarian
+- ally_barbarian_evolution
+- ally_bats
+- ally_bats_evolution
+- ally_battle_ram
+- ally_battle_ram_evolution
+- ally_berserker
+- ally_black_knight
+- ally_bomber
+- ally_bomber_evolution
+- ally_boss_bandit
+- ally_bowler
+- ally_building_barbarian_hut
+- ally_building_basic_cannon
+- ally_building_bomb_tower
+- ally_building_cannon_evolution
+- ally_building_elixir_collector
+- ally_building_goblin_drill
+- ally_building_goblin_drill_evolution
+- ally_building_goblin_hut
+- ally_building_inferno_tower
+- ally_building_mega_bomb
+- ally_building_mighty_miner_bomb_dl
+- ally_building_mortar
+- ally_building_mortar_evolution
+- ally_building_rage_bottle
+- ally_building_tesla
+- ally_building_tesla_evolution
+- ally_building_tombstone
+- ally_building_tower
+- ally_building_xbow
+- ally_cannoneer_troop
+- ally_dark_witch
+- ally_electro_dragon_evolution
+- ally_electro_wizard
+- ally_executioner
+- ally_executioner_evolution
+- ally_fire_firespirit
+- ally_firecracker_evolution
+- ally_flying_machine
+- ally_furnace_evolution
+- ally_furnace_rework
+- ally_giant
+- ally_giant_buffing
+- ally_giant_skeleton
+- ally_goblin
+- ally_goblin_archer
+- ally_goblin_blowdart
+- ally_goblin_blowdart_evolution
+- ally_goblin_bush
+- ally_goblin_cage_evolution
+- ally_goblin_demolisher
+- ally_goblin_giant_evolution
+- ally_goblin_machine
+- ally_goblin_queen_troop
+- ally_goblinstein_doctor
+- ally_goblinstein_monster
+- ally_golem
+- ally_golemite
+- ally_hog_rider
+- ally_hunter_evolution
+- ally_ice_spirit_evolution
+- ally_ice_spirits
+- ally_ice_wizard
+- ally_inferno_dragon_evolution
+- ally_king
+- ally_knight
+- ally_knight_evolution
+- ally_knives_thrower_troop
+- ally_lava_hound
+- ally_lava_pups
+- ally_lumberjack_evolution
+- ally_mega_knight
+- ally_mega_knight_evolution
+- ally_mega_minion
+- ally_merge_maiden
+- ally_merge_maiden_dragon
+- ally_miner
+- ally_mini_pekka
+- ally_minion
+- ally_movingcannon
+- ally_musketeer
+- ally_musketeer_evolution
+- ally_pekka
+- ally_pekka_evolution
+- ally_prince
+- ally_princess
+- ally_princess_tower
+- ally_rage_barbarian
+- ally_royal_chef
+- ally_royal_ghost_evolution
+- ally_royal_giant
+- ally_royal_hog_evolution
+- ally_royal_recruit_evolution
+- ally_royalgiant_evolution
+- ally_skeleton
+- ally_skeleton_army_evolution
+- ally_skeleton_balloon
+- ally_skeleton_balloon_evolution
+- ally_skeleton_dragon
+- ally_skeleton_evolution
+- ally_skeleton_warrior
+- ally_snowman
+- ally_spell_goblin_barrel_evolution
+- ally_spell_snowball_evolution
+- ally_three_musketeers
+- ally_valkyrie
+- ally_valkyrie_evolution
+- ally_wall_breakers_evolution
+- ally_witch
+- ally_witch_evolution
+- ally_wizard
+- ally_wizard_evolution
+- background-items
+- bar
+- bar-level
+- big-text
+- clock
+- dagger-duchess-tower-bar
+- elixir
+- emote
+- enemy_archer
+- enemy_archer_evolution
+- enemy_archer_queen
+- enemy_arrows
+- enemy_baby_dragon
+- enemy_baby_dragon_evolution
+- enemy_baby_goblin_dagger_troop
+- enemy_balloon
+- enemy_bandit
+- enemy_barbarian
+- enemy_barbarian_barrel
+- enemy_barbarian_evolution
+- enemy_battle_healer
+- enemy_battle_ram
+- enemy_battle_ram_evolution
+- enemy_berserker
+- enemy_black_knight
+- enemy_bomber
+- enemy_bomber_evolution
+- enemy_boss_bandit
+- enemy_bowler
+- enemy_building_barbarian_hut
+- enemy_building_basic_cannon
+- enemy_building_bomb_tower
+- enemy_building_cannon_evolution
+- enemy_building_elixir_collector
+- enemy_building_goblin_drill
+- enemy_building_goblin_drill_evolution
+- enemy_building_goblin_hut
+- enemy_building_inferno_tower
+- enemy_building_mega_bomb
+- enemy_building_mighty_miner_bomb_dl
+- enemy_building_mortar
+- enemy_building_mortar_evolution
+- enemy_building_tesla
+- enemy_building_tesla_evolution
+- enemy_building_tombstone
+- enemy_building_tower
+- enemy_building_xbow
+- enemy_cannoneer_troop
+- enemy_clone
+- enemy_dark_witch
+- enemy_earthquake
+- enemy_electro_dragon
+- enemy_electro_dragon_evolution
+- enemy_electro_giant
+- enemy_electro_spirit
+- enemy_electro_wizard
+- enemy_elite_barbarian
+- enemy_elixir_golem_big
+- enemy_elixir_golem_mid
+- enemy_elixir_golem_small
+- enemy_executioner
+- enemy_executioner_evolution
+- enemy_fireball
+- enemy_firecracker_evolution
+- enemy_fisherman
+- enemy_flying_machine
+- enemy_freeze
+- enemy_furnace_evolution
+- enemy_furnace_rework
+- enemy_giant
+- enemy_giant_buffing
+- enemy_giant_skeleton
+- enemy_giant_snowball
+- enemy_goblin
+- enemy_goblin_archer
+- enemy_goblin_ball
+- enemy_goblin_barrel
+- enemy_goblin_blowdart
+- enemy_goblin_blowdart_evolution
+- enemy_goblin_brawler
+- enemy_goblin_bush
+- enemy_goblin_cage
+- enemy_goblin_cage_evolution
+- enemy_goblin_demolisher
+- enemy_goblin_giant
+- enemy_goblin_giant_evolution
+- enemy_goblin_machine
+- enemy_goblin_queen_troop
+- enemy_goblinstein_doctor
+- enemy_goblinstein_monster
+- enemy_golden_knight
+- enemy_golem
+- enemy_golemite
+- enemy_graveyard
+- enemy_heal_spirit
+- enemy_hog_rider
+- enemy_hunter_evolution
+- enemy_ice_wizard
+- enemy_inferno_dragon
+- enemy_inferno_dragon_evolution
+- enemy_king
+- enemy_king_tower
+- enemy_knight
+- enemy_knight_evolution
+- enemy_knives_thrower_troop
+- enemy_lava_hound
+- enemy_lightning
+- enemy_little_prince
+- enemy_log
+- enemy_lumberjack_evolution
+- enemy_magic_archer
+- enemy_mega_knight
+- enemy_mega_knight_evolution
+- enemy_mega_minion
+- enemy_merge_maiden
+- enemy_merge_maiden_dragon
+- enemy_mighty_miner
+- enemy_miner
+- enemy_mini_pekka
+- enemy_minion
+- enemy_monk
+- enemy_mother_witch
+- enemy_movingcannon
+- enemy_musketeer
+- enemy_musketeer_evolution
+- enemy_pekka
+- enemy_pekka_evolution
+- enemy_phoenix_big
+- enemy_phoenix_egg
+- enemy_phoenix_small
+- enemy_poison
+- enemy_prince
+- enemy_princess
+- enemy_princess_tower
+- enemy_rage
+- enemy_rage_barbarian
+- enemy_ram_rider
+- enemy_rascal_boy
+- enemy_rascal_girl
+- enemy_rocket
+- enemy_royal_chef
+- enemy_royal_delivery
+- enemy_royal_ghost_evolution
+- enemy_royal_giant
+- enemy_royal_hog
+- enemy_royal_hog_evolution
+- enemy_royal_recruit
+- enemy_royal_recruit_evolution
+- enemy_royalgiant_evolution
+- enemy_skeleton_army_evolution
+- enemy_skeleton_balloon
+- enemy_skeleton_balloon_evolution
+- enemy_skeleton_dragon
+- enemy_skeleton_king
+- enemy_skeleton_king_skill
+- enemy_skeleton_warrior
+- enemy_snowman
+- enemy_sparky
+- enemy_spell_goblin_barrel_evolution
+- enemy_three_musketeers
+- enemy_tornado
+- enemy_valkyrie
+- enemy_valkyrie_evolution
+- enemy_wall_breaker
+- enemy_wall_breakers_evolution
+- enemy_witch
+- enemy_witch_evolution
+- enemy_wizard
+- enemy_wizard_evolution
+- enemy_zap
+- enemy_zappy
+- evolution_symbol
+- king_tower_bar
+- miner_dirt
+- skeleton_king_bar
+- tower_bar

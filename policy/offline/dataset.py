@@ -86,29 +86,41 @@ def convert_katacd_action_to_tensor(action_dict: Dict, state_dict: Dict) -> np.n
 
 def convert_katacd_state_to_tensor(state_dict: Dict) -> np.ndarray:
     """
-    Convert KataCR state dict to fixed-size tensor
+    Convert KataCR state dict to fixed-size tensor WITH UNIT INFO
 
     KataCR state format:
         'time': float,
-        'unit_infos': list of unit dicts,
-        'cards': list of card ids,
-        'elixir': float
+        'elixir': float,
+        'cards': list of card ids (4 cards),
+        'unit_infos': list of unit dicts [{type, team, x, y, hp, ...}, ...]
 
-    For now, just extract basic features that are always present
+    State vector structure:
+        [elixir, time, card1, card2, card3, card4,
+         ally_unit1_type, ally_unit1_x, ally_unit1_y, ally_unit1_hp,
+         ally_unit2_type, ally_unit2_x, ally_unit2_y, ally_unit2_hp,
+         ...
+         enemy_unit1_type, enemy_unit1_x, enemy_unit1_y, enemy_unit1_hp,
+         ...]
+
+    Total: 6 + (MAX_ALLY_UNITS * 4) + (MAX_ENEMY_UNITS * 4) features
     """
-    # Start with elixir (1 feature) - handle None/NaN
+    MAX_ALLY_UNITS = 15  # Track up to 15 ally units
+    MAX_ENEMY_UNITS = 15  # Track up to 15 enemy units
+
+    features = []
+
+    # Basic features (6 total)
     elixir = state_dict.get("elixir", 0.0)
     if elixir is None or (isinstance(elixir, float) and np.isnan(elixir)):
         elixir = 0.0
-    features = [float(elixir)]
+    features.append(float(elixir))
 
-    # Add time if available - handle None/NaN
     time = state_dict.get("time", 0.0)
     if time is None or (isinstance(time, float) and np.isnan(time)):
         time = 0.0
     features.append(float(time))
 
-    # Add cards in hand (pad to 4 cards) - handle None/NaN
+    # Cards in hand (4 features)
     cards = state_dict.get("cards", [])
     if cards is None:
         cards = []
@@ -121,15 +133,82 @@ def convert_katacd_state_to_tensor(state_dict: Dict) -> np.ndarray:
         else:
             features.append(0.0)
 
-    # Total: 6 features [elixir, time, card1, card2, card3, card4]
+    # CRITICAL: Add unit information
+    unit_infos = state_dict.get("unit_infos", [])
+    if unit_infos is None:
+        unit_infos = []
+
+    # Separate ally and enemy units
+    ally_units = []
+    enemy_units = []
+
+    for unit in unit_infos:
+        if unit is None:
+            continue
+
+        team = unit.get("team", -1)
+        if team == 0:  # Ally
+            ally_units.append(unit)
+        elif team == 1:  # Enemy
+            enemy_units.append(unit)
+
+    # Sort by distance to center (prioritize units closer to action)
+    def unit_priority(unit):
+        x = unit.get("x", 0) or 0
+        y = unit.get("y", 0) or 0
+        # Distance from center bridge (approximate)
+        center_x, center_y = 9.0, 16.0
+        return (x - center_x) ** 2 + (y - center_y) ** 2
+
+    ally_units.sort(key=unit_priority)
+    enemy_units.sort(key=unit_priority)
+
+    # Encode ally units (MAX_ALLY_UNITS * 4 features)
+    for i in range(MAX_ALLY_UNITS):
+        if i < len(ally_units):
+            unit = ally_units[i]
+            unit_type = unit.get("type", 0) or 0
+            unit_x = unit.get("x", 0.0) or 0.0
+            unit_y = unit.get("y", 0.0) or 0.0
+            unit_hp = unit.get("hp", 0.0) or 0.0
+
+            # Normalize position to [0, 1]
+            unit_x = float(unit_x) / 18.0  # Max width ~18
+            unit_y = float(unit_y) / 32.0  # Max height ~32
+
+            # Normalize HP to [0, 1] (assume max ~5000)
+            unit_hp = min(float(unit_hp) / 5000.0, 1.0)
+
+            features.extend([float(unit_type), unit_x, unit_y, unit_hp])
+        else:
+            features.extend([0.0, 0.0, 0.0, 0.0])  # Padding
+
+    # Encode enemy units (MAX_ENEMY_UNITS * 4 features)
+    for i in range(MAX_ENEMY_UNITS):
+        if i < len(enemy_units):
+            unit = enemy_units[i]
+            unit_type = unit.get("type", 0) or 0
+            unit_x = unit.get("x", 0.0) or 0.0
+            unit_y = unit.get("y", 0.0) or 0.0
+            unit_hp = unit.get("hp", 0.0) or 0.0
+
+            # Normalize
+            unit_x = float(unit_x) / 18.0
+            unit_y = float(unit_y) / 32.0
+            unit_hp = min(float(unit_hp) / 5000.0, 1.0)
+
+            features.extend([float(unit_type), unit_x, unit_y, unit_hp])
+        else:
+            features.extend([0.0, 0.0, 0.0, 0.0])  # Padding
+
+    # Total features: 6 + (15*4) + (15*4) = 6 + 60 + 60 = 126
     result = np.array(features, dtype=np.float32)
 
     # Final safety check
     if np.isnan(result).any():
         print(f"WARNING: NaN detected in state conversion!")
-        print(f"  state_dict: {state_dict}")
-        print(f"  features before conversion: {features}")
-        # Replace NaN with 0
+        print(f"  state_dict keys: {state_dict.keys()}")
+        print(f"  num units: {len(unit_infos)}")
         result = np.nan_to_num(result, nan=0.0)
 
     return result
