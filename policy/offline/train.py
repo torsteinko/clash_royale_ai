@@ -26,8 +26,8 @@ class TrainConfig:
     """Training configuration"""
 
     def __init__(self):
-        # Model - WILL BE SET DYNAMICALLY from dataset
-        self.num_cards = 164  # Default (updated after loading dataset)
+        # Model
+        self.num_cards = 200  # All cards including evolutions
         self.num_troops = 200
         self.d_model = 256
         self.n_head = 8
@@ -800,14 +800,10 @@ def main():
     print(f"\n{colorstr('blue', 'bold', 'Loading dataset...')}\n")
     dataset_builder = DatasetBuilder(config.replay_dir, config.sequence_length)
 
-    # Update num_cards based on actual dataset vocabulary
-    if hasattr(dataset_builder, "card_vocab_size") and dataset_builder.card_vocab_size:
-        config.num_cards = dataset_builder.card_vocab_size
-        print(
-            f"\n✅ Updated num_cards to {config.num_cards} based on dataset vocabulary"
-        )
-    else:
-        print(f"\n⚠️  Using default num_cards={config.num_cards}")
+    # FORCE Global ID size for multi-deck compatibility
+    # Clash Royale has ~110 cards, but we use a fixed size to be safe for future updates
+    config.num_cards = 200  # 200 to be super safe even though only ~164 exist currently
+    print(f"\n🔒 Forcing num_cards={config.num_cards} (Global Mode)")
 
     dataloader = dataset_builder.get_dataset(
         batch_size=config.batch_size, num_workers=config.num_workers

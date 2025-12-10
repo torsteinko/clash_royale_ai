@@ -85,7 +85,7 @@ class ArenaEncoder(nn.Module):
 class CardEncoder(nn.Module):
     """Encode hand cards"""
 
-    def __init__(self, num_cards=164, embed_dim=64):
+    def __init__(self, num_cards=200, embed_dim=64):
         super().__init__()
         self.card_embed = nn.Embedding(num_cards + 1, embed_dim)  # +1 for padding
         self.elixir_embed = nn.Embedding(11, 16)  # 0-10 elixir

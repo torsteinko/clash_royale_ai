@@ -15,6 +15,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from detection.ocr_reader import OCRReader
 from policy.offline.models.policy_transformer import PolicyTransformer
 from policy.offline.train import TrainConfig
 from policy.offline.card_list import card2idx, idx2card
@@ -55,33 +56,53 @@ class CardClassifier:
             ]
         )
 
-    def predict(self, img_pil):
-        """Predict card from PIL image."""
+    def predict(self, img_pil, valid_cards=None):
+        """
+        Predict card from PIL image.
+        Args:
+            img_pil: PIL Image of the crop.
+            valid_cards: List of allowed card names. If provided, prediction is restricted to these.
+        """
         img_t = self.transform(img_pil).unsqueeze(0).to(self.device)
         with torch.no_grad():
             logits = self.model(img_t)
+
+            # --- DECK FILTERING ---
+            if valid_cards:
+                # Create a mask of -inf
+                mask = torch.full_like(logits, float("-inf"))
+
+                found_any = False
+                for card_name in valid_cards:
+                    if card_name in self.classes:
+                        idx = self.classes.index(card_name)
+                        mask[0, idx] = logits[0, idx]
+                        found_any = True
+
+                # Only apply mask if we actually found corresponding IDs
+                if found_any:
+                    logits = mask
+            # ----------------------
+
             pred_idx = torch.argmax(logits, dim=1).item()
         return self.classes[pred_idx]
 
-    def detect_hand(self, img_cv2):
-        """Detect 4 cards in hand from a screenshot (BGR format)."""
+    def detect_hand(self, img_cv2, valid_deck=None):
+        """
+        Detect 4 cards in hand from a screenshot (BGR format).
+        Args:
+            img_cv2: BGR image.
+            valid_deck: List of allowable card names (e.g. your deck + evos).
+        """
         h, w = img_cv2.shape[:2]
         debug_dir = Path("debug_crops")
         debug_dir.mkdir(exist_ok=True)
 
         # --- PRECISION CROP CONFIG ---
-        # Based on 720x1280 resolution & 87x81 templates
-
-        # Dimensions
-        W_PERC = 87 / 720  # ~0.1208
-        H_PERC = 81 / 1280  # ~0.0633
-
-        # Y Center: Top of slot (1069) + padding (4px) + half height (40.5)
-        # CHANGED: Reduced padding to 4px to look higher at the face
+        W_PERC = 87 / 720
+        H_PERC = 81 / 1280
         CY_PERC = (1069 + 4 + 40.5) / 1280
 
-        # X Centers: Slot Left + 13.5px padding + half width (43.5)
-        # Slots start at: 169, 305, 440, 575. Distance 136px.
         CX_1 = 226 / 720
         CX_2 = (226 + 136) / 720
         CX_3 = (226 + 136 * 2) / 720
@@ -104,10 +125,6 @@ class CardClassifier:
             # Crop card region
             card_crop = img_cv2[y1:y2, x1:x2]
 
-            # SAVE DEBUG CROP
-            if card_crop.size > 0:
-                cv2.imwrite(str(debug_dir / f"slot_{i}.jpg"), card_crop)
-
             if card_crop.size == 0:
                 detected_cards.append("unknown")
                 continue
@@ -115,9 +132,10 @@ class CardClassifier:
             # Convert to PIL RGB
             card_pil = Image.fromarray(cv2.cvtColor(card_crop, cv2.COLOR_BGR2RGB))
 
-            # Predict
-            card_name = self.predict(card_pil)
-            print(f"Slot {i}: Predicted {card_name}")
+            # Predict (Pass valid_deck here)
+            card_name = self.predict(card_pil, valid_cards=valid_deck)
+
+            # print(f"Slot {i}: Predicted {card_name}")
             detected_cards.append(card_name)
 
         return detected_cards
@@ -138,7 +156,7 @@ def load_models():
     yolo_model = YOLO(yolo_path)
 
     # 2. Policy
-    policy_checkpoint = "runs/policy_training/20251209_112531/checkpoints/best_model.pt"
+    policy_checkpoint = "runs/policy_training/20251210_005420/checkpoints/best_model.pt"
     if not Path(policy_checkpoint).exists():
         raise FileNotFoundError(f"Policy checkpoint not found at {policy_checkpoint}")
     checkpoint = torch.load(policy_checkpoint, map_location="cpu", weights_only=False)
@@ -174,18 +192,35 @@ def load_models():
         print(f"📦 Loading Card Classifier from {card_model_path}")
         card_classifier = CardClassifier(str(card_model_path))
 
-    return yolo_model, policy_model, config, card_classifier
+    # 4. OCR Reader
+    ocr_reader = OCRReader(use_gpu=torch.cuda.is_available())
+    print(f"📦 OCR Reader initialized. Using gpu = {torch.cuda.is_available()}")
+
+    return yolo_model, policy_model, config, card_classifier, ocr_reader
 
 
-def build_state(detections, hand_cards, config):
+def build_state(detections, hand_cards, config, elixir=5, time_sec=None):
     """Build 126-dim state vector."""
     state = np.zeros(config.state_dim, dtype=np.float32)
-    state[0] = 0.5  # Mock Elixir
-    state[1] = 0.5  # Mock Time
+
+    # 1. Elixir (Normalized 0-10)
+    # Ensure it's within bounds
+    state[0] = max(0.0, min(10.0, float(elixir)))
+
+    # 2. Time (Normalized 0-1 or Seconds)
+    # Usually standard games are 180s (3 min) + overtime.
+    # If the model was trained on normalized time [0, 1], we should normalize.
+    # If time_sec is None (not detected), default to 0.5 (mid-game).
+    if time_sec is not None:
+        # Normalize assuming standard 3-min game logic, or just pass seconds if training used seconds.
+        # Based on previous context, let's normalize to [0, 1] range for 3 minutes.
+        # If overtime, it might go > 1.0, which is fine for neural nets.
+        state[1] = time_sec / 180.0
+    else:
+        state[1] = 0.5  # Default fallback
 
     # --- NAME MAPPING (Classifier -> Policy) ---
     NAME_MAP = {
-        # Singular -> Plural (Policy expects Plural for troops)
         "skeleton": "skeletons",
         "skeleton-evo": "skeletons-evolution",
         "skeletons-evo": "skeletons-evolution",
@@ -197,13 +232,14 @@ def build_state(detections, hand_cards, config):
         "minion": "minions",
         "archer": "archers",
         "wall-breaker": "wall-breakers",
-        # Evolution Mismatches (Map to Base if Policy doesn't know Evo)
         "musketeer-evo": "musketeer",
     }
 
     # --- HAND ---
     cards_found = []
-    print("\n🎴 --- DETECTED HAND ---")
+    # (Print statements optional for production speed)
+    # print("\n🎴 --- DETECTED HAND ---")
+
     for card_name in hand_cards:
         norm_name = card_name.lower().replace("_", "-")
 
@@ -214,16 +250,12 @@ def build_state(detections, hand_cards, config):
         # 2. Generic Logic
         elif norm_name.endswith("-evo"):
             base = norm_name.replace("-evo", "")
-            # Try "-evolution"
             if f"{base}-evolution" in card2idx:
                 norm_name = f"{base}-evolution"
-            # Try plural base + evolution
             elif f"{base}s-evolution" in card2idx:
                 norm_name = f"{base}s-evolution"
-            # Try plural to single + evolution
             elif f"{base[:-1]}-evolution" in card2idx:
                 norm_name = f"{base[:-1]}-evolution"
-            # Fallback to base
             elif base in card2idx:
                 norm_name = base
             elif f"{base}s" in card2idx:
@@ -231,17 +263,15 @@ def build_state(detections, hand_cards, config):
 
         # 3. Handle Empty/Waiting
         if "waiting" in norm_name or "empty" in norm_name:
-            print(f"   Slot Empty ({norm_name})")
             continue
 
         # 4. Final Check
         if norm_name in card2idx:
             cards_found.append(card2idx[norm_name])
-            print(f"   {norm_name} (ID: {card2idx[norm_name]})")
-        else:
-            print(f"   ⚠️ Unknown card: {card_name} -> {norm_name}")
+        # else:
+        # print(f"   ⚠️ Unknown card: {card_name}")
 
-    print(f"👉 HAND INPUT: {[idx2card.get(c, f'ID{c}') for c in cards_found]}")
+    # print(f"👉 HAND INPUT: {[idx2card.get(c, f'ID{c}') for c in cards_found]}")
 
     for i in range(4):
         state[2 + i] = cards_found[i] if i < len(cards_found) else 0
@@ -362,10 +392,25 @@ def visualize(image_path, pos, card_id, detections, save_path="prediction.png"):
 
 
 def main(image_path):
-    yolo, policy, config, card_classifier = load_models()
+    yolo, policy, config, card_classifier, ocr_reader = load_models()
     img_pil = Image.open(image_path)
     img_cv2 = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
+    # --- OCR (Elixir) ---
+    elixir = ocr_reader.read_elixir(img_cv2)
+    if elixir is None:
+        print("⚠️ OCR failed to read elixir. Assuming 5.")
+        elixir = 5
+    print(f"💧 Elixir: {elixir}")
+
+    # Test timer detection
+    timer = ocr_reader.read_timer(img_cv2)
+    if timer is not None:
+        print(f"⏱️ Timer detected: {timer}")
+    else:
+        print("⚠️ OCR failed to read timer.")
+
+    # --- YOLO Detection ---
     results = yolo(img_pil, conf=YOLO_CONF_THRESHOLD)
     detections = []
     for r in results:
@@ -387,13 +432,41 @@ def main(image_path):
         hand_cards = ["hog-rider", "musketeer", "cannon", "ice-spirit"]
         print("⚠️ Using hardcoded hand.")
 
-    state = build_state(detections, hand_cards, config)
+    state = build_state(detections, hand_cards, config, elixir=elixir)
     state_t = torch.from_numpy(state).float().unsqueeze(0).unsqueeze(0)
 
     with torch.no_grad():
         c_logits, p_logits = policy(
             state_t, torch.zeros(1, 1, 3), torch.tensor([[10.0]]), torch.tensor([[0]])
         )
+
+    # Read timer
+    try:
+        big_text_id = YOLO_CLASS_NAMES.index("big-text")
+    except ValueError:
+        big_text_id = -1
+
+    if big_text_id != -1:
+        print(
+            f"Big Text Card Logit: {c_logits[0,0,big_text_id]:.4f} (Idx {big_text_id})"
+        )
+    else:
+        print("Big Text card not in card2idx mapping.")
+
+    for idx, name in idx2card.items():
+        if name == "big-text":
+            print("^^^ Big Text Card ^^^")
+            big_text_id = idx
+            break
+
+    big_text_boxes = [d for d in detections if d["class"] == big_text_id]
+
+    # read timer
+    timer = ocr_reader.read_timer(img_cv2, big_text_boxes)
+    if timer is None:
+        print("⚠️ OCR failed to read timer.")
+    else:
+        print(f"⏱️ Timer detected: {timer}")
 
     # --- ACTION MASKING ---
     # Retrieve the Card IDs in hand from the state vector

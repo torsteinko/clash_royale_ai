@@ -419,48 +419,95 @@ class OCRReader:
         except Exception:
             return False
 
-    def read_timer(self, frame: np.ndarray) -> str:
+    def read_timer(self, frame: np.ndarray, detections: list = None) -> str:
         """
-        Read match timer from top-right corner.
-        Returns string like "2:43" or None.
+        Reads timer.
+        Method 1: If 'detections' list is provided, searches the top-rightmost 'big-text' box.
+        Method 2: Falls back to hardcoded top-right region if detection fails or is not provided.
         """
+        # --- METHOD 1: Dynamic Detection (Resolution Independent) ---
+        if detections:
+            # Sort by X coordinate (descending) -> Rightmost box first
+            # We use x1 (the left edge) as the sorter
+            detections.sort(key=lambda x: x["bbox"][0], reverse=True)
+
+            for det in detections:
+                x1, y1, x2, y2 = map(int, det["bbox"])
+
+                # Sanity check: Timer should be in the top 20% of the screen
+                h, w = frame.shape[:2]
+                if y1 > h * 0.2:
+                    continue  # Skip boxes not at the top
+
+                # Crop with padding
+                pad = 4
+                x1, y1 = max(0, x1 - pad), max(0, y1 - pad)
+                x2, y2 = min(w, x2 + pad), min(h, y2 + pad)
+
+                roi = frame[y1:y2, x1:x2]
+                if roi.size == 0:
+                    continue
+
+                # OCR
+                text = self._read_text_any(roi, allowlist="0123456789:")
+
+                # Cleanup
+                text = text.replace(" ", "").replace("\n", "").replace(".", "").strip()
+
+                # Regex Search (Find M:SS or MM:SS anywhere in the string)
+                match = re.search(r"(\d{1,2}:\d{2})", text)
+                if match:
+                    return match.group(1)
+
+        # --- METHOD 2: Hardcoded Fallback (Fixed Region) ---
+        # Only reached if detections is None OR no valid timer found in detections
         try:
-            # Timer region (top right) - adjust based on resolution
             h, w = frame.shape[:2]
-            x1, y1 = w - 120, 20
-            x2, y2 = w - 20, 70
+
+            # Define region relative to top-right corner
+            # Assumes standard aspect ratio, adjusting for 1080p/720p roughly
+            # Region: Top-right corner, roughly 120px wide, 50px high
+            x1 = w - 150
+            y1 = 10
+            x2 = w - 10
+            y2 = 80
+
+            # Clamp bounds
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
 
             timer_region = frame[y1:y2, x1:x2]
 
-            if timer_region.size == 0:
-                return None
+            if timer_region.size > 0:
+                text = self._read_text_any(timer_region, allowlist="0123456789:")
 
-            if self._use_easyocr and self._easyocr_reader is not None:
-                scaled = cv2.resize(
-                    timer_region, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC
-                )
-                results = self._easyocr_reader.readtext(
-                    scaled, allowlist="0123456789:", detail=0
-                )
-                if results:
-                    text = "".join(results)
-                    if re.match(r"^\d{1,2}:\d{2}$", text):
-                        return text
-            elif TESSERACT_AVAILABLE:
-                gray = cv2.cvtColor(timer_region, cv2.COLOR_BGR2GRAY)
-                _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-                scaled = cv2.resize(
-                    thresh, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC
-                )
-                config = "--psm 7 -c tessedit_char_whitelist=0123456789:"
-                text = pytesseract.image_to_string(scaled, config=config).strip()
-                if re.match(r"^\d{1,2}:\d{2}$", text):
-                    return text
+                text = text.replace(" ", "").replace("\n", "").replace(".", "").strip()
+                # Regex Search (Find M:SS or MM:SS anywhere in the string)
+                match = re.search(r"(\d{1,2}:\d{2})", text)
+                if match:
+                    return match.group(1)
 
-            return None
+        except Exception as e:
+            print(f"⚠️ Timer fallback error: {e}")
 
-        except Exception:
-            return None
+        return None
+
+    def _read_text_any(self, roi, allowlist=None):
+        """Helper for EasyOCR/Tesseract"""
+        if self._use_easyocr:
+            scaled = cv2.resize(roi, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            results = self._easyocr_reader.readtext(
+                scaled, allowlist=allowlist, detail=0
+            )
+            return "".join(results) if results else ""
+        elif TESSERACT_AVAILABLE:
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+            config = "--psm 7"
+            if allowlist:
+                config += f" -c tessedit_char_whitelist={allowlist}"
+            return pytesseract.image_to_string(thresh, config=config).strip()
+        return ""
 
     def read_tower_hp(self, frame: np.ndarray, region: tuple) -> int:
         """
