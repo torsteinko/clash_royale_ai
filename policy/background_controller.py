@@ -84,67 +84,158 @@ class CardClassifier:
             pred_idx = torch.argmax(logits, dim=1).item()
         return self.classes[pred_idx]
 
-    def detect_hand(self, img_cv2, valid_deck=None, save_crops=True):
-        """Detect 4 cards in hand using small face crops."""
+    def detect_hand(self, img_cv2, valid_deck=None, save_crops=False):
+        """
+        Detect 4 cards in hand with UNIQUE CONSTRAINT.
+        Prevents duplicate cards or base+evo of same card in hand.
+        """
         h, w = img_cv2.shape[:2]
         if save_crops:
             debug_dir = Path("debug_hand")
             debug_dir.mkdir(exist_ok=True)
 
-        # --- PRECISION CROP CONFIG (Face Only) ---
+        # --- CROP COORDINATES (Adjusted as per previous turn) ---
         W_PERC = 87 / 720
         H_PERC = 81 / 1280
-        # Adjusted Y Center to focus on face (1280px reference)
-        CY_PERC = (1069 + 20 + 40.5) / 1280
+        CY_PERC = 0.89  # Adjusted down
 
-        # X Centers
-        CX_1 = 226 / 720
-        CX_2 = (226 + 136) / 720
-        CX_3 = (226 + 136 * 2) / 720
-        CX_4 = (226 + 136 * 3) / 720
+        CX_START = 232  # Adjusted right
+        CX_STEP = 136
 
-        card_positions = [
-            (CX_1, CY_PERC, W_PERC, H_PERC),
-            (CX_2, CY_PERC, W_PERC, H_PERC),
-            (CX_3, CY_PERC, W_PERC, H_PERC),
-            (CX_4, CY_PERC, W_PERC, H_PERC),
-        ]
+        cx_pixels = [CX_START + i * CX_STEP for i in range(4)]
 
-        detected_cards = []
-        for i, (cx, cy, cw, ch) in enumerate(card_positions):
-            x1 = int((cx - cw / 2) * w)
-            y1 = int((cy - ch / 2) * h)
-            x2 = int((cx + cw / 2) * w)
-            y2 = int((cy + ch / 2) * h)
+        crops = []
+        crop_images = []  # For saving debugs later
+
+        for i, center_x in enumerate(cx_pixels):
+            cx = center_x / 720
+
+            x1 = int((cx - W_PERC / 2) * w)
+            y1 = int((CY_PERC - H_PERC / 2) * h)
+            x2 = int((cx + W_PERC / 2) * w)
+            y2 = int((CY_PERC + H_PERC / 2) * h)
 
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w, x2), min(h, y2)
 
             card_crop = img_cv2[y1:y2, x1:x2]
+            crop_images.append(card_crop)
+
             if card_crop.size == 0:
-                detected_cards.append("unknown")
+                crops.append(None)
                 continue
 
             card_pil = Image.fromarray(cv2.cvtColor(card_crop, cv2.COLOR_BGR2RGB))
-            card_name = self.predict(card_pil, valid_cards=valid_deck)
-            detected_cards.append(card_name)
+            crops.append(card_pil)
 
-            if save_crops:
-                timestamp = int(time.time() * 1000)
-                debug_crop = card_crop.copy()
-                cv2.putText(
-                    debug_crop,
-                    card_name,
-                    (5, 15),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (0, 255, 0),
-                    1,
-                )
-                fname = debug_dir / f"slot{i}_{card_name}_{timestamp}.jpg"
-                cv2.imwrite(str(fname), debug_crop)
+        # --- BATCH PREDICTION WITH LOGIC ---
+        # 1. Get raw logits for all 4 slots
+        slot_logits = []
+        for i, img_pil in enumerate(crops):
+            if img_pil is None:
+                slot_logits.append(None)
+                continue
 
-        return detected_cards
+            img_t = self.transform(img_pil).unsqueeze(0).to(self.device)
+            with torch.no_grad():
+                logits = self.model(img_t)[0]  # Shape (num_classes,)
+
+                # Apply Valid Deck Mask immediately
+                if valid_deck:
+                    mask = torch.full_like(logits, float("-inf"))
+                    for card_name in valid_deck:
+                        if card_name in self.classes:
+                            idx = self.classes.index(card_name)
+                            mask[idx] = logits[idx]
+                    logits = mask
+
+            slot_logits.append(logits)
+
+        # 2. Greedy Assignment (Highest confidence first)
+        final_hand = ["unknown"] * 4
+
+        # We need a list of (confidence, slot_idx, class_idx) tuples
+        candidates = []
+        for i, logits in enumerate(slot_logits):
+            if logits is None:
+                continue
+
+            # Get softmax probabilities to compare confidence across slots
+            probs = torch.softmax(logits, dim=0)
+
+            # Add all possible cards for this slot to candidates
+            for class_idx, score in enumerate(probs):
+                if score > 0.01:  # Optimization: ignore impossible cards
+                    candidates.append(
+                        {
+                            "score": score.item(),
+                            "slot": i,
+                            "class_idx": class_idx,
+                            "name": self.classes[class_idx],
+                        }
+                    )
+
+        # Sort by confidence (highest first)
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        assigned_slots = set()
+        assigned_base_names = (
+            set()
+        )  # To track "hog_rider", "skeletons" (stripping _evo)
+
+        for cand in candidates:
+            slot = cand["slot"]
+            name = cand["name"]
+
+            if slot in assigned_slots:
+                continue
+
+            # Normalize name to base (remove _evo, -evolution)
+            base_name = (
+                name.replace("_evo", "")
+                .replace("-evolution", "")
+                .replace("_evolution", "")
+            )
+
+            # CONSTRAINT: Cannot have same base card twice
+            if base_name in assigned_base_names:
+                continue
+
+            # Assign
+            final_hand[slot] = name
+            assigned_slots.add(slot)
+            assigned_base_names.add(base_name)
+
+            if len(assigned_slots) == 4:
+                break
+
+        # Fill remaining slots (if any failed) with raw max (should rarely happen)
+        for i in range(4):
+            if final_hand[i] == "unknown" and slot_logits[i] is not None:
+                # Fallback: Just take max, ignoring constraints
+                best_idx = torch.argmax(slot_logits[i]).item()
+                final_hand[i] = self.classes[best_idx]
+
+        # --- DEBUG SAVING ---
+        if save_crops:
+            timestamp = int(time.time() * 1000)
+            for i, crop in enumerate(crop_images):
+                if crop is not None and crop.size > 0:
+                    debug_crop = crop.copy()
+                    name = final_hand[i]
+                    cv2.putText(
+                        debug_crop,
+                        name,
+                        (5, 15),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.4,
+                        (0, 255, 0),
+                        1,
+                    )
+                    fname = debug_dir / f"slot{i}_{name}_{timestamp}.jpg"
+                    cv2.imwrite(str(fname), debug_crop)
+
+        return final_hand
 
 
 class MEmuInstance:
@@ -427,19 +518,19 @@ def main():
                 img_bgr, valid_deck=MY_DECK, save_crops=True
             )
 
-            if current_elixir == 0:
-                if time.time() - last_zero_elixir_debug > 5:
-                    save_debug_action(
-                        img_bgr,
-                        "none",
-                        0,
-                        0,
-                        0,
-                        [],
-                        hand_card_names,
-                        reason="zero_elixir",
-                    )
-                    last_zero_elixir_debug = time.time()
+            # if current_elixir == 0:
+            #     if time.time() - last_zero_elixir_debug > 5:
+            #         save_debug_action(
+            #             img_bgr,
+            #             "none",
+            #             0,
+            #             0,
+            #             0,
+            #             [],
+            #             hand_card_names,
+            #             reason="zero_elixir",
+            #         )
+            #         last_zero_elixir_debug = time.time()
 
             img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
@@ -501,15 +592,15 @@ def main():
             )
             best_card_name = global_idx2card.get(best_card_id, "unknown")
 
-            save_debug_action(
-                img_bgr,
-                best_card_name,
-                grid_x,
-                grid_y,
-                current_elixir,
-                detections,
-                hand_cards=hand_card_names,
-            )
+            # save_debug_action(
+            #     img_bgr,
+            #     best_card_name,
+            #     grid_x,
+            #     grid_y,
+            #     current_elixir,
+            #     detections,
+            #     hand_cards=hand_card_names,
+            # )
             print(f"🤖 Play {best_card_name} at ({grid_x}, {grid_y})")
 
             slot_index = -1

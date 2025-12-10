@@ -10,7 +10,7 @@ Usage:
 
 Options:
     --data: Path to data.yaml file (default: auto-detect)
-    --model: Base YOLO model to use (default: yolo11n.pt)
+    --model: Base YOLO model to use (default: yolo11l.pt)
     --epochs: Number of training epochs (default: 150)
     --imgsz: Training image size (default: 640)
     --batch: Batch size (default: auto)
@@ -295,9 +295,9 @@ def train(args):
         "hsv_h": args.hsv_h,
         "hsv_s": args.hsv_s,
         "hsv_v": args.hsv_v,
-        "degrees": 0.0,
+        "degrees": 5.0,
         "translate": 0.1,
-        "scale": 0.5,
+        "scale": 0.35,
         "fliplr": 0.5,
         "flipud": 0.0,
         "mosaic": 1.0,
@@ -447,7 +447,7 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="yolo11s.pt",
+        default="yolo11l.pt",
         help="Base YOLO model (yolo11n.pt, yolo11s.pt, yolo11m.pt, etc.)",
     )
     parser.add_argument(
@@ -514,7 +514,7 @@ def main():
     parser.add_argument(
         "--rect",
         action="store_true",
-        default=True,
+        default=False,
         help="Enable rect training for final stage",
     )
     parser.add_argument(
