@@ -1,3 +1,4 @@
+from time import time
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -55,6 +56,101 @@ class CardClassifier:
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]
         )
+
+    def predict(self, img_pil, valid_cards=None):
+        img_t = self.transform(img_pil).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            logits = self.model(img_t)
+
+            # --- DECK FILTERING ---
+            if valid_cards:
+                mask = torch.full_like(logits, float("-inf"))
+                found_any = False
+                for card_name in valid_cards:
+                    if card_name in self.classes:
+                        idx = self.classes.index(card_name)
+                        mask[0, idx] = logits[0, idx]
+                        found_any = True
+                if found_any:
+                    logits = mask
+            # ----------------------
+
+            pred_idx = torch.argmax(logits, dim=1).item()
+        return self.classes[pred_idx]
+
+    def detect_hand(self, img_cv2, valid_deck=None, save_crops=True):
+        print("detect hand ran")
+        """
+        Detect 4 cards in hand.
+        Uses precise coordinates focused on card faces (87x81).
+        """
+        h, w = img_cv2.shape[:2]
+
+        if save_crops:
+            debug_dir = Path("debug_hand")
+            debug_dir.mkdir(exist_ok=True)
+
+        # --- PRECISION CROP CONFIG (From your working snippet) ---
+        W_PERC = 87 / 720
+        H_PERC = 81 / 1280
+
+        # Center Y Logic
+        CY_PERC = (1069 + 20 + 40.5) / 1280
+
+        # Center X Logic
+        CX_1 = 226 / 720
+        CX_2 = (226 + 136) / 720
+        CX_3 = (226 + 136 * 2) / 720
+        CX_4 = (226 + 136 * 3) / 720
+
+        card_positions = [
+            (CX_1, CY_PERC, W_PERC, H_PERC),
+            (CX_2, CY_PERC, W_PERC, H_PERC),
+            (CX_3, CY_PERC, W_PERC, H_PERC),
+            (CX_4, CY_PERC, W_PERC, H_PERC),
+        ]
+
+        detected_cards = []
+        for i, (cx, cy, cw, ch) in enumerate(card_positions):
+            x1 = int((cx - cw / 2) * w)
+            y1 = int((cy - ch / 2) * h)
+            x2 = int((cx + cw / 2) * w)
+            y2 = int((cy + ch / 2) * h)
+
+            # Clamp
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+
+            card_crop = img_cv2[y1:y2, x1:x2]
+
+            if card_crop.size == 0:
+                detected_cards.append("unknown")
+                continue
+
+            # Convert to PIL RGB
+            card_pil = Image.fromarray(cv2.cvtColor(card_crop, cv2.COLOR_BGR2RGB))
+
+            # Predict (with deck filter)
+            card_name = self.predict(card_pil, valid_cards=valid_deck)
+            detected_cards.append(card_name)
+
+            # Save Debug
+            if save_crops:
+                timestamp = int(time.time() * 1000)
+                debug_crop = card_crop.copy()
+                cv2.putText(
+                    debug_crop,
+                    card_name,
+                    (5, 15),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    (0, 255, 0),
+                    1,
+                )
+                fname = debug_dir / f"slot{i}_{card_name}_{timestamp}.jpg"
+                cv2.imwrite(str(fname), debug_crop)
+
+        return detected_cards
 
     def predict(self, img_pil, valid_cards=None):
         """

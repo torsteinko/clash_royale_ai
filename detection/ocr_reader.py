@@ -484,8 +484,14 @@ class OCRReader:
                 text = text.replace(" ", "").replace("\n", "").replace(".", "").strip()
                 # Regex Search (Find M:SS or MM:SS anywhere in the string)
                 match = re.search(r"(\d{1,2}:\d{2})", text)
+                # Make it so whatever is after : cant be more than 59, if it is it should be a misread
                 if match:
-                    return match.group(1)
+                    mins, secs = match.group(1).split(":")
+                    if int(secs) > 59:
+                        match = None
+                    else:
+                        return match.group(1)
+            return None
 
         except Exception as e:
             print(f"⚠️ Timer fallback error: {e}")
