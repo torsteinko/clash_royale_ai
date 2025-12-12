@@ -592,15 +592,15 @@ def main():
             )
             best_card_name = global_idx2card.get(best_card_id, "unknown")
 
-            # save_debug_action(
-            #     img_bgr,
-            #     best_card_name,
-            #     grid_x,
-            #     grid_y,
-            #     current_elixir,
-            #     detections,
-            #     hand_cards=hand_card_names,
-            # )
+            save_debug_action(
+                img_bgr,
+                best_card_name,
+                grid_x,
+                grid_y,
+                current_elixir,
+                detections,
+                hand_cards=hand_card_names,
+            )
             print(f"🤖 Play {best_card_name} at ({grid_x}, {grid_y})")
 
             slot_index = -1

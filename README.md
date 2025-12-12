@@ -42,7 +42,7 @@ python build_synthetic_dataset.py --output ..\synthetic_dataset_test --train 50 
 3. Two-stage training (recommended)
 ```powershell
 cd f:\clash_royale_ai
-python .\scripts\train_yolo_synthetic.py --mode train --two-stage --model yolo11n.pt --imgsz 1280 --epochs 150 --stage1-imgsz 640 --stage1-epochs 40 --device cuda
+python .\scripts\train_yolo_synthetic.py --mode train --two-stage --model yolo11l.pt --imgsz 960 --stage1-imgsz 640 --epochs 50 --stage1-epochs 10 --batch 16 --cache False --device 0
 ```
 - If the script selects the wrong dataset folder it will prompt; or pass `--data "F:\clash_royale_ai\dataset\synthetic_dataset\data.yaml"`.
 

@@ -194,9 +194,6 @@ def print_system_info():
 
 def calculate_batch_size(gpu_memory_gb: float, img_size: int) -> int:
     """Calculate optimal batch size based on GPU memory and image size."""
-    # Rough estimates for YOLO11n
-    # At 640px: ~4GB for batch 16
-    # At 1280px: ~8GB for batch 8
 
     if img_size <= 640:
         base_batch = 16
@@ -284,7 +281,7 @@ def train(args):
         "amp": True,
         "cache": args.cache,
         # augmentation/loss/optim params
-        "optimizer": "AdamW",
+        "optimizer": "SGD",
         "lr0": args.lr0,
         "lrf": args.lrf,
         "momentum": args.momentum,
@@ -305,8 +302,6 @@ def train(args):
         "copy_paste": 0.1,
     }
     # allow resuming/from-weights provided by CLI
-    if getattr(args, "weights", None):
-        base_train_args["weights"] = str(args.weights)
     if getattr(args, "resume", False):
         base_train_args["resume"] = True
 
@@ -357,7 +352,6 @@ def train(args):
         stage2_args["epochs"] = max(1, args.epochs - stage1_epochs)
         stage2_args["name"] = f"{stage2_args['name']}_stage2"
         stage2_args["rect"] = True  # enable rect mode for final fine-tune
-        stage2_args["weights"] = str(best_w)
         print("▶️ Starting stage 2 (fine-tune)...")
         # load weights into model
         model = YOLO(str(best_w))
@@ -448,7 +442,7 @@ def main():
         "--model",
         type=str,
         default="yolo11l.pt",
-        help="Base YOLO model (yolo11n.pt, yolo11s.pt, yolo11m.pt, etc.)",
+        help="Base YOLO model (yolo11s.pt, yolo11m.pt, etc.)",
     )
     parser.add_argument(
         "--weights",
@@ -468,7 +462,7 @@ def main():
         help="Number of training epochs (final total)",
     )
     parser.add_argument(
-        "--imgsz", type=int, default=1280, help="Training image long-edge size (px)"
+        "--imgsz", type=int, default=640, help="Training image long-edge size (px)"
     )
     parser.add_argument(
         "--batch", type=int, default=-1, help="Batch size (-1 for auto)"
@@ -507,7 +501,7 @@ def main():
         "--exist_ok", action="store_true", help="Overwrite existing run"
     )
     parser.add_argument(
-        "--save_period", type=int, default=10, help="Save period (epochs)"
+        "--save_period", type=int, default=3, help="Save period (epochs)"
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--deterministic", action="store_true")
