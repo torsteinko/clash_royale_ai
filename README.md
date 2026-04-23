@@ -1,136 +1,214 @@
-# Clash Royale AI — Synthetic Dataset & YOLO Training
+# Clash Royale AI
 
-Repository to build a synthetic Clash Royale object-detection dataset and train YOLO detectors for game-state perception (troops, buildings, spells, UI elements). This README summarizes the real project layout, how to reproduce dataset generation and training, and next tasks.
+Computer-vision and offline-RL research project for Clash Royale.  
+The repo currently focuses on three parts:
 
----
+- YOLO-based detection and game-state extraction
+- Synthetic dataset generation and YOLO training workflows
+- Offline policy learning from replay data (Decision Transformer style)
 
-## Quick summary
+## Status
 
-- Dataset builder: `dataset/sprites_dataset/build_synthetic_dataset.py`  
-  - Generates images at native background size (568×896). Arena rectangle: top-left (0,80) → bottom-right (565,825).
-  - Supports `--use-cuda` (PyTorch/CUDA) fast compositing and threaded CPU fallback.
-  - Outputs `dataset/<output_dir>/` with `train/ val/ test/`, `classes.json`, `data.yaml`.
+This repository is in active development and is not a finished autonomous bot.
 
-- Training scripts:
-  - `scripts/train_yolo_synthetic.py` — Ultralytics YOLO training (supports two-stage pretrain→fine tune, rect mode, auto device).
-  - `scripts/train_yolo.py` — minimal entry point.
-  - Trained runs saved under `runs/` (see `runs/synthetic` and `runs/detect`).
+- Detection and state extraction are implemented and usable.
+- Dataset generation and YOLO training pipelines are implemented.
+- Offline RL training pipeline is implemented.
+- Experimental automated play/control loop exists for Windows emulator workflows.
+- End-to-end live inference plus robust action execution is still in progress.
 
-- Detection / game-state code:
-  - `detection/` — troop/tower/card detectors and OCR.
-  - `game_state/` — state extractor, elixir & deck trackers.
-  - `utils/` — screen capture, mouse control helpers.
-  - `tools/`, `tests/`, `scripts/` — helpers, benchmarks and test utilities.
+## Important Notice
 
----
+This is a personal/research project.
 
-## Getting started (assumes Windows, venv)
+- It is not affiliated with, endorsed by, or associated with Supercell.
+- Clash Royale assets and trademarks belong to their respective owners.
+- Use this project responsibly and in accordance with game/platform terms.
 
-1. Create & activate venv, install dependencies (adjust CUDA wheel as needed):
-   - Example:
-     pip install -r requirements.txt
-     pip install ultralytics
-   - For CUDA PyTorch (recommended for training & builder `--use-cuda`):
-     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+## Repository Overview
 
-2. Quick smoke dataset generation (verify output)
+Core directories:
+
+- `detection/`: YOLO wrappers, tower OCR helpers, card classifier tooling.
+- `game_state/`: high-level game-state extraction (troops, cards, towers, OCR).
+- `dataset/sprites_dataset/`: synthetic dataset builder and source assets structure.
+- `scripts/`: training/data utilities (YOLO training, replay collection, dataset checks).
+- `policy/`: offline RL pipeline (state/action/reward builders + model + training).
+- `tests/`: live detection tests, profiling scripts, setup checks.
+
+Model/data artifacts commonly present in this repo:
+
+- `best.pt`, `yolo11*.pt`: YOLO checkpoints.
+- `dataset/*`: synthetic/real dataset variants and YAML metadata.
+- `replay_data/`: offline RL replay files (`.xz`, `.pkl`, `.npy`).
+- `runs/`: YOLO and policy training outputs.
+
+## Key Features
+
+### 1) Game-State Extraction
+
+`game_state/state_extractor.py` combines:
+
+- YOLO detections for ally/enemy troops/buildings
+- Card-in-hand detection via template matching (`detection/card_detector_simple.py`)
+- Optional OCR for elixir/timer (Tesseract)
+- Troop tracking for temporal consistency
+- Optional deck-based filtering
+
+### 2) Synthetic Dataset Builder
+
+`dataset/sprites_dataset/build_synthetic_dataset.py`:
+
+- Composites sprite assets on Clash Royale arena backgrounds
+- Supports ally/enemy class variants
+- Outputs YOLO-format `train/`, `val/`, `test/` splits + `data.yaml`
+- Supports optional CUDA-accelerated compositing with `--use-cuda`
+
+### 3) YOLO Training Pipeline
+
+Primary script: `scripts/train_yolo_synthetic.py`
+
+- Auto dataset detection (or explicit `--data` path)
+- Two-stage training option (`--two-stage`) for low-res pretrain then high-res fine-tune
+- GPU/CPU auto device selection
+- Validation mode support
+
+### 4) Offline RL Training Pipeline
+
+Policy stack under `policy/`:
+
+- Replay collection from video/live capture (`scripts/collect_replay_data.py`)
+- State/action/reward builders (`policy/builders/`)
+- Replay dataset loader (`policy/offline/dataset.py`)
+- Transformer-based policy model (`policy/offline/models/policy_transformer.py`)
+- Training entry point (`policy/offline/train.py`)
+
+### 5) Experimental Live Control Loop
+
+There is an experimental runtime controller at `policy/background_controller.py` that:
+
+- Captures emulator frames in real time
+- Runs detection plus card recognition
+- Selects an action from the policy model
+- Sends tap commands through ADB
+
+This is currently an advanced/experimental path and is not yet a polished production bot.
+
+## Visual Examples
+
+Detection and decision overlay:
+
+![Prediction Overlay](prediction.png)
+
+Live detection frame:
+
+![Live Detection Frame](screenshots/frame_00031.jpg)
+
+## Quick Start (Windows + venv)
+
+### 1) Install dependencies
+
 ```powershell
-cd f:\clash_royale_ai\dataset\sprites_dataset
-python build_synthetic_dataset.py --output ..\synthetic_dataset_test --train 50 --val 10 --test 10 --min-sprites 5 --max-sprites 12 --seed 42 --use-cuda
+pip install -r requirements.txt
+pip install -r requirements_policy.txt
 ```
 
-3. Two-stage training (recommended)
+If you need CUDA-enabled PyTorch, install the correct wheel for your CUDA version from PyTorch official instructions.
+
+### 2) Smoke-test live detection
+
 ```powershell
-cd f:\clash_royale_ai
-python .\scripts\train_yolo_synthetic.py --mode train --two-stage --model yolo11l.pt --imgsz 960 --stage1-imgsz 640 --epochs 50 --stage1-epochs 10 --batch 16 --cache False --device 0
+python tests/test_live_detection.py
 ```
-- If the script selects the wrong dataset folder it will prompt; or pass `--data "F:\clash_royale_ai\dataset\synthetic_dataset\data.yaml"`.
 
----
+This opens the live detection loop and prints extracted state summaries.
 
-## Important file locations
+### 3) Train YOLO on synthetic dataset
 
-- Dataset builder: `dataset/sprites_dataset/build_synthetic_dataset.py`
-- Backgrounds & sprite sources: `dataset/sprites_dataset/backgrounds`, `dataset/sprites_dataset/github_dataset`, `dataset/sprites_dataset/sprites_dataset/`
-- Generated dataset: `dataset/synthetic_dataset/` (contains `train/`, `val/`, `test/`, `classes.json`, `data.yaml`)
-- Training: `scripts/train_yolo_synthetic.py`
-- Runs: `runs/synthetic/` and `runs/detect/`
-- Detection runtime: `detection/` (troop_detector.py, tower_detector.py, ocr_reader.py)
-- Game state extraction: `game_state/` (state_extractor.py, elixir_manager.py, deck_tracker.py)
-- Utilities: `utils/` (screen capture, mouse control)
+```powershell
+python scripts/train_yolo_synthetic.py --mode train --two-stage --model yolo11l.pt --stage1-imgsz 640 --imgsz 960 --stage1-epochs 10 --epochs 50 --batch 16 --device 0
+```
 
----
+If dataset auto-detection picks the wrong folder, pass:
 
-## Notes & recommendations
+```powershell
+python scripts/train_yolo_synthetic.py --data dataset/synthetic_dataset/data.yaml
+```
 
-- Keep generator output at native background resolution (568×896). Use rect training to preserve aspect for portrait inference (720×1280) or resize later.
-- Recommended dataset scale: generate in stages (10k → inspect → 50k+) to validate annotation quality.
-- Average sprites/image and sprites-per-image control data density; default ranges are configurable in the builder.
-- Training strategy: pretrain at 640 then fine-tune at 1280 (rect True) on your RTX 5070 Ti.
+### 4) Collect replay data for policy training
 
----
+From video:
 
-## Troubleshooting
-
-- "Could not find data.yaml": point `--data` to the correct YAML or run `scripts/fix_data_yaml_synthetic.py`.
-- "images not found" / wrong dataset: the trainer lists dataset folders and can prompt to pick one; pass `--data` to disambiguate.
-- Malformed `data.yaml` (nested keys): run `scripts/fix_data_yaml_synthetic.py` to rewrite a compatible YAML from `classes.json`.
-
----
-
-## Offline Reinforcement Learning Training
-
-The project now includes an offline RL training pipeline for learning a decision-making policy from recorded gameplay (adapted from KataCR).
-
-### Quick Start
-
-1. **Collect replay data** from recorded gameplay:
 ```powershell
 python scripts/collect_replay_data.py --mode video --video recordings/gameplay.mp4 --deck knight archer fireball goblin
 ```
 
-2. **Train the policy**:
+From live capture:
+
 ```powershell
-python policy/offline/train.py --replay-dir replay_data --batch-size 16 --epochs 50
+python scripts/collect_replay_data.py --mode live --duration 180 --fps 5 --deck knight archer fireball goblin
 ```
 
-3. **Monitor training**:
+### 5) Train policy model
+
+```powershell
+python policy/offline/train.py --replay-dir replay_data --batch-size 16 --epochs 50 --lr 1e-4
+```
+
+Monitor with TensorBoard:
+
 ```powershell
 tensorboard --logdir runs/policy_training
 ```
 
-See `policy/README.md` for detailed documentation on:
-- Replay data format
-- Model architecture (Decision Transformer)
-- Reward structure
-- Custom configurations
-- Advanced usage
+## Main Scripts
 
-### Key Components
+- `scripts/train_yolo_synthetic.py`: configurable YOLO training/validation workflow.
+- `scripts/train_yolo.py`: fixed high-resolution YOLO training profile.
+- `scripts/collect_replay_data.py`: record replay trajectories from video/live gameplay.
+- `scripts/train_policy_quickstart.py`: guided offline-RL quickstart helper.
+- `tests/test_live_detection.py`: live capture + state extraction sanity test.
+- `policy/background_controller.py`: experimental emulator control loop (ADB + policy).
 
-- **State Builder** (`policy/builders/state_builder.py`): Converts YOLO detections to training format
-- **Policy Transformer** (`policy/offline/models/policy_transformer.py`): Neural network that predicts card selection and placement
-- **Dataset Builder** (`policy/offline/dataset.py`): Loads and batches replay data
-- **Replay Collector** (`scripts/collect_replay_data.py`): Records gameplay for offline training
+## Configuration Notes
 
-The policy network learns to:
-- Select which card to play (from 4 in hand)
-- Decide where to place it (32×18 grid)
-- Maximize long-term reward (destroy enemy towers, protect yours)
+- Primary training metadata is in dataset YAML files (for example `dataset/synthetic_dataset/data.yaml`).
+- Runtime/game constants live under `config/`.
+- If OCR is used, ensure Tesseract is installed and available on your system.
 
----
+## Current Limitations
 
-## TODOs / Next tasks
+- No polished end-to-end "play a full match autonomously" script yet.
+- Replay action labels are currently simplified in collection scripts.
+- Model quality is sensitive to dataset quality/class balance.
+- Some scripts are tuned for Windows emulator workflows (MEmu/desktop capture).
 
-- ✅ YOLO model for troop/tower detection
-- ✅ Game state extraction pipeline
-- ✅ Deck-based filtering for ally troops
-- ✅ Offline RL training infrastructure
-- 🔄 Collect diverse training data (wins/losses, different decks)
-- 🔄 Train initial policy network
-- ⏳ Inference script for live gameplay
-- ⏳ Integration with game interaction (mouse/keyboard control)
-- ⏳ Online RL / self-play improvements
-- ⏳ Script to play on Nulls Royale
+## Experimental Play Command
 
----
+If you want to test the current playable loop:
+
+```powershell
+python policy/background_controller.py
+```
+
+Notes:
+
+- Requires Windows, MEmu window capture, and ADB connectivity.
+- Assumes compatible model/checkpoint files are available locally.
+- Intended for experimentation and debugging, not stable unattended play.
+
+## Roadmap (High Level)
+
+- Improve replay action annotation quality and dataset diversity.
+- Add robust policy inference loop with safety checks.
+- Integrate decision output with reliable in-game action execution.
+- Expand evaluation harnesses for detection + policy performance.
+
+## Additional Documentation
+
+- Offline RL details: `policy/README.md`
+- Integration background: `INTEGRATION_SUMMARY.md`
+
+## Acknowledgment
+
+Offline RL integration was inspired by/adapted from KataCR.
