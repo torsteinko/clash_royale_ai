@@ -147,7 +147,9 @@ def test_model_creation():
         rtg = torch.randn(B, T)
         timesteps = torch.arange(T).unsqueeze(0).expand(B, -1)
         actions = torch.zeros(B, T, 3, dtype=torch.long)  # card_id, pos_x, pos_y
-        states = [None] * (B * T)
+        # States are (B, T, state_dim) tensors — matches policy/offline/train.py
+        # (`states = batch["states"].to(device)`); state_dim defaults to 126.
+        states = torch.randn(B, T, 126)
 
         card_logits, pos_logits = model(states, actions, rtg, timesteps)
         print(f"  ✅ Forward pass successful")
