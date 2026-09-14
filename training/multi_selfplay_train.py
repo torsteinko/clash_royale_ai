@@ -190,7 +190,8 @@ def launch_servers(script: str, base_port: int, n: int, max_restarts: int = 3):
 # Worker-side env + reloading self-play opponent
 # ---------------------------------------------------------------------------
 
-def make_worker(port: int, blue_deck: list, red_deck: list, snapshot_path: str):
+def make_worker(port: int, blue_deck: list, red_deck: list, snapshot_path: str,
+                opponent_mode: str = "selfplay"):
     """Env factory (executed inside each SubprocVecEnv worker process)."""
 
     def _init():
@@ -235,10 +236,15 @@ def make_worker(port: int, blue_deck: list, red_deck: list, snapshot_path: str):
                     return None
                 return super().act(obs_raw, player=player, obs_flat=obs_flat)
 
+        if opponent_mode == "selfplay":
+            opponent = ReloadingSelfPlayOpponent()
+        else:
+            opponent = opponent_mode  # built-in opponent name: "rule_based" / "random"
+
         env = CRForgeEnv(
             endpoint=f"tcp://localhost:{port}",
             ticks_per_step=15,
-            opponent=ReloadingSelfPlayOpponent(),
+            opponent=opponent,
             binary_obs=True,
             blue_deck=blue_deck,
             red_deck=red_deck,
@@ -321,6 +327,8 @@ def main():
     parser.add_argument("--blue-deck", choices=["hog", "default"], default="hog")
     parser.add_argument("--red-pool", choices=["all", "hog"], default="all",
                         help="all = six archetypes (worker i gets RED_POOL[i%%6]); hog = mirror only")
+    parser.add_argument("--opponent", choices=["selfplay", "rule_based", "random"], default="selfplay",
+                        help="selfplay = snapshot-reloading self-play (default); rule_based/random = fixed opponents")
     parser.add_argument("--save", default="models/ppo_multi")
     parser.add_argument("--logdir", default="logs/ppo_multi")
     parser.add_argument("--snapshot-interval", type=int, default=20000)
@@ -349,7 +357,7 @@ def main():
     launch_servers(script, args.base_port, args.num_envs)
 
     env_fns = [
-        make_worker(args.base_port + i, blue, pool[i % len(pool)], snapshot_path)
+        make_worker(args.base_port + i, blue, pool[i % len(pool)], snapshot_path, args.opponent)
         for i in range(args.num_envs)
     ]
     env = SubprocVecEnv(env_fns)
@@ -364,7 +372,7 @@ def main():
 
     print(f"\nTraining {args.steps} steps on {args.num_envs} parallel simulators "
           f"(blue: {'Hog 2.6' if args.blue_deck == 'hog' else 'default'}; "
-          f"red pool: {len(pool)} deck(s))...")
+          f"opponent: {args.opponent}; red pool: {len(pool)} deck(s))...")
     t0 = time.time()
     model.learn(total_timesteps=args.steps,
                 callback=CallbackList(build_callbacks(snapshot_path, args.snapshot_interval, args.steps)))

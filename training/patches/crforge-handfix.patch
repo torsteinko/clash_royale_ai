@@ -1,0 +1,241 @@
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java b/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
+index dae6c93..ea7aea3 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
+@@ -23,7 +23,7 @@ import org.crforge.data.card.CardRegistry;
+  * Encodes observations as a flat float32 array sent as raw bytes. Pre-allocates buffers and writes
+  * directly from entity/player/state fields with no DTO allocations.
+  *
+- * <p>Float layout (1079 values):
++ * <p>Float layout (1094 values):
+  *
+  * <pre>
+  * Offset  Count  Field
+@@ -42,6 +42,9 @@ import org.crforge.data.card.CardRegistry;
+  * 46      1024   entities (64 x 16 features, zero-padded)
+  * 1070    1      num_entities
+  * 1071    8      lane_summary
++ * 1079    15     red hand (costs 4, types 4, ids 4, next 3) -- same layout as the blue
++ *                 hand block at 7; lets the Python mirror give red ITS OWN hand in
++ *                 binary self-play (each side zeroes the other's block before use).
+  * </pre>
+  */
+ public class BinaryObservationEncoder {
+@@ -56,7 +59,7 @@ public class BinaryObservationEncoder {
+   private static final int ENTITY_FEATURES = 16;
+ 
+   // Total floats in the observation
+-  public static final int OBS_FLOATS = 1079;
++  public static final int OBS_FLOATS = 1094;
+   public static final int OBS_BYTES = OBS_FLOATS * 4;
+ 
+   // Lane summary normalization
+@@ -120,7 +123,7 @@ public class BinaryObservationEncoder {
+    * 9       byte       truncated (0/1)
+    * 10      byte       blueActionFailed (0/1)
+    * 11      byte       redActionFailed (0/1)
+-   * 12      float32[]  observation (1079 floats)
++   * 12      float32[]  observation (1094 floats)
+    * </pre>
+    */
+   public byte[] encodeStepResult(
+@@ -378,6 +381,34 @@ public class BinaryObservationEncoder {
+     obs[laneIdx + 5] = Math.min(rightFriendlyHp / MAX_LANE_HP, 1f);
+     obs[laneIdx + 6] = (blueElixir - redElixir) / 10f;
+     obs[laneIdx + 7] = (float) (friendlyCount - enemyCount) / MAX_ENTITIES;
++
++    // Red hand block at offset 1079 (costs 4, types 4, ids 4, next 3). Mirrors the blue
++    // hand layout at offset 7 so the Python side can give red its own hand in binary
++    // self-play. Consumers must zero the block they should not see (see env.py).
++    int redIdx = 1079;
++    Hand redHand = redPlayer.getHand();
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? card.getCost() / 10f : 0f;
++    }
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? cardTypeToFloat(card.getType()) : 0f;
++    }
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? CardRegistry.getIndex(card.getId()) : -1f;
++    }
++    Card redNext = redHand.getNextCard();
++    if (redNext != null) {
++      obs[redIdx++] = redNext.getCost() / 10f;
++      obs[redIdx++] = cardTypeToFloat(redNext.getType());
++      obs[redIdx] = CardRegistry.getIndex(redNext.getId());
++    } else {
++      obs[redIdx++] = 0f;
++      obs[redIdx++] = 0f;
++      obs[redIdx] = -1f;
++    }
+   }
+ 
+   /** Encodes up to 3 towers for a team into the obs buffer. Returns the updated index. */
+diff --git a/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java b/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
+index e7e49e7..8665058 100644
+--- a/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
++++ b/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
+@@ -213,6 +213,26 @@ class BinaryObservationEncoderTest {
+     assertThat(obs1.length).isEqualTo(obs2.length);
+   }
+ 
++  @Test
++  void redHandBlockMatchesJsonObservation() {
++    ObservationDTO json = ObservationBuilder.build(engine, bluePlayer, redPlayer);
++    float[] obs = decodeObs(encoder.encodeObservation(engine, bluePlayer, redPlayer));
++
++    // Red hand block at 1079: costs (4) / types (4) / ids (4) / next card (3)
++    PlayerObsDTO redObs = json.redPlayer();
++    List<HandCardDTO> hand = redObs.hand();
++    for (int i = 0; i < hand.size(); i++) {
++      HandCardDTO card = hand.get(i);
++      assertThat(obs[1079 + i]).isCloseTo(card.cost() / 10f, offset(0.01f));
++      assertThat(obs[1079 + 8 + i]).isCloseTo(card.cardIndex(), offset(0.01f));
++    }
++    HandCardDTO next = redObs.nextCard();
++    if (next != null) {
++      assertThat(obs[1091]).isCloseTo(next.cost() / 10f, offset(0.01f));
++      assertThat(obs[1093]).isCloseTo(next.cardIndex(), offset(0.01f));
++    }
++  }
++
+   private float[] decodeObs(byte[] bytes) {
+     ByteBuffer buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+     float[] result = new float[BinaryObservationEncoder.OBS_FLOATS];
+diff --git a/python/crforge_gym/bridge.py b/python/crforge_gym/bridge.py
+index 8bb4297..9a8253c 100644
+--- a/python/crforge_gym/bridge.py
++++ b/python/crforge_gym/bridge.py
+@@ -74,7 +74,8 @@ class BridgeClient:
+             seed: optional seed override for deterministic deck shuffling
+ 
+         Returns:
+-            In binary mode: flat float32 numpy array (1079 values).
++            In binary mode: flat float32 numpy array (1094 values:
++                1079 base floats + a 15-float red-hand block appended at 1079).
+             In JSON mode: raw observation dict from server.
+         """
+         data = {}
+diff --git a/python/crforge_gym/env.py b/python/crforge_gym/env.py
+index b953a5a..c71254f 100644
+--- a/python/crforge_gym/env.py
++++ b/python/crforge_gym/env.py
+@@ -22,7 +22,8 @@ Placement zones (blue's perspective):
+     9: SPELL_CENTER  (9.0, 20.5)  - spell on enemy center
+ 
+ Observation space:
+-  Binary mode (default): flat Box(shape=(1079,)) float32 vector.
++  Binary mode (default): flat Box(shape=(1094,)) float32 vector.
++  (1079 base floats + a 15-float red-hand block appended at offset 1079.)
+   JSON mode: Dict with structured game state arrays (all float32 for SB3 compatibility).
+ 
+ Default ticks_per_step=6 gives ~5 decisions/second (~900 steps per 3-min game).
+@@ -58,7 +59,13 @@ INVALID_ACTION_PENALTY = -0.01
+ MAX_CARD_INDEX = 200
+ 
+ # Total size of the flat observation vector
+-OBS_SIZE = 1079
++OBS_SIZE = 1094
++
++# Appended red-hand block (offset 1079, same 15-float layout as the blue hand block
++# at offset 7): costs 4, types 4, ids 4, next card 3. The learner's obs zeroes this
++# block (it must not see red's hand); the self-play mirror reads it for red's view.
++IDX_OPPONENT_HAND_START = 1079
++IDX_OPPONENT_HAND_END = 1094
+ 
+ # Strategic placement zones: (x, y) in arena coordinates.
+ # Zones 0-6 are on blue's own half (troops/buildings).
+@@ -431,7 +438,11 @@ class CRForgeEnv(gym.Env):
+         if self.binary_obs:
+             self._last_obs_flat = result
+             self._last_obs_raw = None
+-            return result, {}
++            # The learner must not see the opponent-hand block appended by the server
++            # (offset 1079+); the self-play mirror reads it from _last_obs_flat.
++            learner_obs = result.copy()
++            learner_obs[IDX_OPPONENT_HAND_START:] = 0.0
++            return learner_obs, {}
+         else:
+             self._last_obs_raw = result
+             self._last_obs_flat = None
+@@ -455,6 +466,10 @@ class CRForgeEnv(gym.Env):
+             self._last_obs_flat = obs
+             self._last_obs_raw = None
+ 
++            # Zero the opponent-hand block for the learner (see reset()).
++            learner_obs = obs.copy()
++            learner_obs[IDX_OPPONENT_HAND_START:] = 0.0
++
+             reward = blue_reward
+             if blue_action_failed:
+                 reward += self.invalid_action_penalty
+@@ -463,7 +478,7 @@ class CRForgeEnv(gym.Env):
+             if blue_action_failed:
+                 info["action_failed"] = True
+ 
+-            return obs, reward, terminated, truncated, info
++            return learner_obs, reward, terminated, truncated, info
+         else:
+             # JSON mode (original path)
+             result = self._client.step(
+@@ -547,7 +562,7 @@ class CRForgeEnv(gym.Env):
+ 
+         if self._rule_based_opponent is None:
+             self._rule_based_opponent = RuleBasedOpponent(rng=self._rng)
+-        return self._rule_based_opponent.act(self._last_obs_raw, player="red")
++        return self._rule_based_opponent.act(self._last_obs_raw, player="red", obs_flat=self._last_obs_flat)
+ 
+     def _parse_observation(self, obs_raw: dict) -> dict[str, np.ndarray]:
+         return parse_observation(obs_raw)
+diff --git a/python/crforge_gym/opponents.py b/python/crforge_gym/opponents.py
+index 25b838e..0707867 100644
+--- a/python/crforge_gym/opponents.py
++++ b/python/crforge_gym/opponents.py
+@@ -7,7 +7,16 @@ C2: Self-play opponent that mirrors observations and runs a trained model as red
+ 
+ import numpy as np
+ 
+-from crforge_gym.env import ARENA_WIDTH, ARENA_HEIGHT, NUM_ZONES, NUM_OWN_HALF_ZONES, OBS_SIZE, parse_observation
++from crforge_gym.env import (
++    ARENA_HEIGHT,
++    ARENA_WIDTH,
++    IDX_OPPONENT_HAND_END,
++    IDX_OPPONENT_HAND_START,
++    NUM_OWN_HALF_ZONES,
++    NUM_ZONES,
++    OBS_SIZE,
++    parse_observation,
++)
+ 
+ 
+ class RuleBasedOpponent:
+@@ -309,19 +318,13 @@ class SelfPlayOpponent:
+         # Swap crowns (indices 5, 6)
+         m[5], m[6] = flat_obs[6], flat_obs[5]
+ 
+-        # Hand data (indices 7-21): replace with red player's hand
+-        # In binary mode, only blue's hand is encoded, so red's hand is unknown.
+-        # We zero out the hand to indicate "no hand info" for red-as-blue.
+-        # The model will learn to play without perfect hand knowledge of the
+-        # mirrored perspective. This is a known limitation of binary self-play.
+-        # For proper self-play with binary mode, the server would need to encode
+-        # both players' hands. For now, keep the hand as-is (it's blue's hand,
+-        # which becomes "our" hand from red's perspective in self-play the model
+-        # doesn't get red's actual hand... but this matches what the model sees
+-        # during training where it always plays as blue).
+-        # Actually -- in self-play, we need red's hand to be visible to the model.
+-        # Since binary mode only includes blue's hand, self-play should use JSON mode
+-        # or the model should be trained to handle this. Leave hand as-is for now.
++        # Hand data (indices 7-21): give red ITS OWN hand from the appended block
++        # (offset 1079, same 15-float layout: costs 4, types 4, ids 4, next 3), and
++        # hide the opponent's hand (zero the block) -- both sides see only their own
++        # hand, symmetrically, regardless of which deck they play.
++        if flat_obs.shape[0] >= IDX_OPPONENT_HAND_END:
++            m[7:22] = flat_obs[IDX_OPPONENT_HAND_START:IDX_OPPONENT_HAND_END]
++        m[IDX_OPPONENT_HAND_START:] = 0.0
+ 
+         # Swap tower blocks: blue towers [22:34] <-> red towers [34:46]
+         # Also flip y coordinates (index 2 within each 4-float tower block)

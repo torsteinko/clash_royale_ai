@@ -93,7 +93,8 @@ python multi_selfplay_train.py --num-envs 5 --steps 2000000
   `RED_POOL[i % 6]`: Hog / Giant beatdown / Log bait / X-Bow / LavaLoon / Splashyard
   (all card ids verified against cards.json) — i.e. "learn 2.6 Hog against the field".
 - Ports default to 9890+ (does not touch the usual 9876 bridge). `--red-pool hog` for
-  mirror-only self-play.
+  mirror-only self-play. `--opponent rule_based|random` switches to fixed opponents
+  (non-degenerate signal while self-play validation is in progress).
 - Validated end to end on the 2-vCPU VM (2 envs: servers up → snapshots reloaded in both
   workers → training → eval → clean shutdown). Expect roughly 1/3 core per env: on the
   5600X, N=5 should land near **5 × single-env fps**.
@@ -110,6 +111,35 @@ reset" and then nothing). This script instead TCP-polls the port first, does one
 handshake with a 12 s timeout, and restarts that server (max 3×) if the handshake
 fails. Upstream issue candidate.
 
+## Self-play role asymmetry + red-hand fix (round 3, Sept 14 2026)
+
+**Symptom:** multi-proc self-play win-rate collapsed to ~9-12% (reproduced on the VM,
+flat from episode 1), while the same policy evaluated fine against bots (+80 vs random,
++26 vs rule_based). Binary-mode self-play with mirror decks: ~20-26% blue. Self-play
+role problem, not a PPO problem.
+
+**Root cause (per-step traces):** the binary observation omitted red's hand entirely
+(only blue's 15 hand floats at offsets 7-21). The mirrored view fed red **blue's hand
+as "its own"** — red's slot picks landed on whatever card sat in that slot, making it a
+quasi-random card launcher aimed by policy-chosen zones (observed: relentless cheap
+troop streams down the lanes) while blue — with correct hand info — played passively.
+Snapshot opponents reinherited the same behavior every 20k steps, pinning blue at a
+structural ~75-90% loss regardless of skill.
+
+**Fix (`patches/crforge-handfix.patch`):** the bridge's `BinaryObservationEncoder` now
+appends a 15-float red-hand block (offset 1079; obs 1079 → 1094, same layout as the
+blue hand block). The Python mirror gives red its own hand from that block; both sides
+zero the opponent-hand block before use (symmetric, no info leak). Java test added
+(`redHandBlockMatchesJsonObservation`). **Models trained on the old 1079-float obs are
+incompatible — retrain required** (spell-zone extension lands in the same retrain
+cycle).
+
+**Status:** bridge rebuilt; probe verified on the VM (raw obs 1094, real red-hand
+values, learner block zeroed); fresh-vs-fresh symmetry test (N=24, expected ~50/50)
+running. If symmetry still skews afterwards, next suspects: the mirror's lane-summary
+`front_y` transform (`1 - x` is not a valid mirror of that field — flagged, unproven)
+and action-application-order effects.
+
 ## POC runs (started Sept 14 2026)
 
 - Run A: default decks, self-play, 1M steps (`train_ppo.py --opponent self_play`) — running
@@ -119,6 +149,8 @@ fails. Upstream issue candidate.
 - Run B: two different decks — Hog cycle vs Giant beatdown — self-play, 400k steps,
   then eval vs `rule_based` and `noop` (`poc_decks.py`)
 - Run C (`multi_selfplay_train.py`): N-process self-play with the deck pool — the main
-  throughput path; supersedes jpype for multi-env (see above).
+  throughput path; supersedes jpype for multi-env (see above). Pool run collapsed to
+  ~9-12% blue (role-asymmetry, see round 3 above); mirror-deck run: ~20-26% pre-fix.
+  Post-fix fresh runs pending symmetry validation.
 
 Logs on the VM: `/tmp/crforge_poc/poc_chain.log`. Results summarized here when done.
