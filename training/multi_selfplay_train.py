@@ -62,13 +62,19 @@ def build_bridge_dist(project_root: str) -> str:
     # date, and this guarantees the servers match the current Java sources (a stale
     # install/ directory otherwise silently keeps an old build alive).
     print("Building gym-bridge distribution...")
+    build_ok = False
     try:
         result = subprocess.run([gradlew, ":gym-bridge:installDist", "-q"],
                                 cwd=project_root, capture_output=True, text=True, timeout=600)
-        if result.returncode != 0:
+        build_ok = result.returncode == 0
+        if not build_ok:
+            print(f"!! gradle refresh FAILED (exit {result.returncode}):")
             print(result.stderr[-2000:])
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"gradle refresh failed ({exc}); falling back to any existing build")
+        print(f"!! gradle refresh failed ({exc})")
+    if not build_ok:
+        print("!! Continuing with the EXISTING build -- if it is stale, the startup check")
+        print("!! below will abort with a clear error (no silent mid-training crash).")
 
     if os.path.isfile(script):
         return script
@@ -140,6 +146,45 @@ def wait_for_server(port: int, timeout: float = 60.0) -> bool:
         return False
     time.sleep(0.3)
     return _handshake(port)
+
+
+def probe_obs_size(port: int):
+    """Init + reset against a server and return the observation length (binary mode).
+
+    Used at startup to catch a STALE bridge build: the python code's OBS_SIZE and the
+    running server must agree, otherwise training dies mid-rollout with a confusing
+    mat1/mat2 shape error.
+    """
+    import json
+
+    import numpy as np
+    import zmq
+
+    ctx = zmq.Context()
+    sock = ctx.socket(zmq.PAIR)
+    sock.setsockopt(zmq.RCVTIMEO, 15000)
+    sock.setsockopt(zmq.SNDTIMEO, 5000)
+    try:
+        sock.connect(f"tcp://localhost:{port}")
+        sock.send_string(json.dumps({
+            "type": "init",
+            "data": {"blueDeck": HOG, "redDeck": HOG, "level": 11, "ticksPerStep": 15,
+                     "binaryObs": True},
+        }))
+        if "init_ok" not in sock.recv_string():
+            return None
+        sock.send_string(json.dumps({"type": "reset"}))
+        raw = sock.recv()
+        return int(len(np.frombuffer(raw, dtype=np.float32)))
+    except Exception:
+        return None
+    finally:
+        try:
+            sock.send_string(json.dumps({"type": "close"}))
+        except Exception:
+            pass
+        sock.close()
+        ctx.term()
 
 
 def launch_servers(script: str, base_port: int, n: int, max_restarts: int = 3):
@@ -362,6 +407,20 @@ def main():
     project_root = find_project_root()
     script = build_bridge_dist(project_root)
     launch_servers(script, args.base_port, args.num_envs)
+
+    # Startup guard: the running bridge must serve THIS code's observation size.
+    # (A stale bridge build otherwise crashes mid-rollout with mat1/mat2 shape errors.)
+    from crforge_gym.env import OBS_SIZE as expected_obs
+
+    got = probe_obs_size(args.base_port)
+    if got is not None and got != expected_obs:
+        print(f"\n!! ERROR: the bridge on port {args.base_port} serves {got}-float observations, "
+              f"but this code expects {expected_obs}.")
+        print("!! The bridge build is STALE. Rebuild it manually and watch for errors:")
+        print("!!   gradlew.bat :gym-bridge:installDist")
+        sys.exit(1)
+    print(f"Obs check: bridge serves {got if got is not None else '?'} floats "
+          f"(expected {expected_obs}) — OK")
 
     env_fns = [
         make_worker(args.base_port + i, blue, pool[i % len(pool)], snapshot_path, args.opponent)
