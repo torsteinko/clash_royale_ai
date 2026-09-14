@@ -190,6 +190,17 @@ def probe_obs_size(port: int):
 def launch_servers(script: str, base_port: int, n: int, max_restarts: int = 3):
     import tempfile
 
+    # Refuse to start on top of orphaned servers: a crashed previous run can leave
+    # JVMs holding the ports (on Windows, killing the cmd wrapper does NOT kill the
+    # java child), and the startup health check would then silently "validate" the
+    # OLD server instead of the freshly launched one.
+    busy = [p for p in range(base_port, base_port + n) if _tcp_up(p)]
+    if busy:
+        print(f"!! Ports already in use: {busy}")
+        print("!! Orphaned bridge server(s) from a previous run are still running.")
+        print("!! Kill them first:   taskkill /IM java.exe /F   (Linux: pkill -f gym-bridge)")
+        sys.exit(1)
+
     procs = {}
 
     def _start(port: int):
@@ -202,6 +213,11 @@ def launch_servers(script: str, base_port: int, n: int, max_restarts: int = 3):
     def _stop(port: int):
         p = procs.pop(port, None)
         if p is None:
+            return
+        if os.name == "nt":
+            # Kill the whole process tree: terminating the cmd.exe wrapper alone
+            # leaves the java child alive (the orphaned-server trap).
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True)
             return
         try:
             p.terminate()
@@ -416,8 +432,10 @@ def main():
     if got is not None and got != expected_obs:
         print(f"\n!! ERROR: the bridge on port {args.base_port} serves {got}-float observations, "
               f"but this code expects {expected_obs}.")
-        print("!! The bridge build is STALE. Rebuild it manually and watch for errors:")
-        print("!!   gradlew.bat :gym-bridge:installDist")
+        print("!! Two known causes: orphaned servers from an earlier crash, or a stale build.")
+        print("!!   1) kill stray servers:  taskkill /IM java.exe /F")
+        print("!!   2) rebuild manually:    ./gradlew.bat :gym-bridge:installDist")
+        print("!!   3) then rerun this script")
         sys.exit(1)
     print(f"Obs check: bridge serves {got if got is not None else '?'} floats "
           f"(expected {expected_obs}) — OK")
