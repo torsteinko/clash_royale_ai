@@ -248,7 +248,13 @@ class ReplayDataset(Dataset):
         print(f"   Action ratio: {action_ratio*100:.1f}%")
 
         if action_ratio == 0:
-            print("   ⚠️  WARNING: No action sequences found!")
+            print(
+                "   ⚠️  WARNING: No action sequences found — falling back to "
+                "uniform sampling. If this is unexpected, the replay data has "
+                "no real action labels (see scripts/analyze_recording.py and "
+                "the Sept 2026 state-extraction fixes)."
+            )
+            sample_weights = np.ones_like(sample_weights)
             return valid_sequences, sample_weights
 
         # CRITICAL FIX: Reweight using KataCR's formula (aggressive)

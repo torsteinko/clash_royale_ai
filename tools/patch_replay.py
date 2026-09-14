@@ -25,7 +25,10 @@ deck_mapping = {
 
 def patch_and_save():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    files = glob.glob(os.path.join(INPUT_DIR, "*.npy"))
+    files = sorted(
+        glob.glob(os.path.join(INPUT_DIR, "*.npy"))
+        + glob.glob(os.path.join(INPUT_DIR, "*.npy.xz"))
+    )
 
     if not files:
         print("❌ No files found.")
@@ -34,8 +37,14 @@ def patch_and_save():
     count = 0
     for fpath in files:
         try:
-            # Load
-            data = np.load(fpath, allow_pickle=True)
+            # Load (.npy or lzma-compressed .npy.xz)
+            if fpath.endswith(".xz"):
+                import lzma
+
+                with lzma.open(fpath, "rb") as fh:
+                    data = np.load(fh, allow_pickle=True)
+            else:
+                data = np.load(fpath, allow_pickle=True)
             if data.shape == ():
                 data = data.item()
 
@@ -95,7 +104,9 @@ def patch_and_save():
                 new_data["terminals"][-1] = True
 
             # Save
-            fname = os.path.basename(fpath).replace(".npy", ".pkl")
+            fname = (
+                os.path.basename(fpath).replace(".npy.xz", ".pkl").replace(".npy", ".pkl")
+            )
             with open(os.path.join(OUTPUT_DIR, fname), "wb") as f:
                 pickle.dump(new_data, f)
             count += 1

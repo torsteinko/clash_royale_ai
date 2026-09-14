@@ -32,6 +32,7 @@ class ReplayCollector:
         deck=None,
         save_dir="replay_data",
         compress=True,
+        serial=None,
     ):
         """
         Args:
@@ -57,8 +58,8 @@ class ReplayCollector:
         self.action_builder = ActionBuilder()
         self.reward_builder = RewardBuilder()
 
-        # Screen capture
-        self.screen_capture = ScreenCapture()
+        # Screen capture (ADB device if reachable, else desktop fallback)
+        self.screen_capture = ScreenCapture(serial=serial)
 
         # Episode data
         self.current_episode = {
@@ -287,6 +288,13 @@ def main():
     parser.add_argument(
         "--no-compress", action="store_true", help="Disable compression"
     )
+    parser.add_argument(
+        "--serial",
+        type=str,
+        default=None,
+        help="ADB device serial for live capture (e.g. emulator-5554 or "
+        "<tailscale-ip>:5555). Default: $ADB_SERIAL or first attached device.",
+    )
     args = parser.parse_args()
 
     # Create collector
@@ -295,6 +303,7 @@ def main():
         deck=args.deck,
         save_dir=args.save_dir,
         compress=not args.no_compress,
+        serial=args.serial,
     )
 
     # Collect data
