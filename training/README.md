@@ -1,6 +1,7 @@
 # RL training in the CRForge simulator (POC)
 
-Status: **in progress** (started Sept 14 2026, agent-studio-01 VM, CPU-only).
+Status: **moved to Olsen's Windows desktop (RTX 5070 Ti)** on Sept 14 2026 — the VM run was
+stopped on request. Starter pack for the local run: `STARTER_PACK_WINDOWS.md`.
 
 ## Why
 
