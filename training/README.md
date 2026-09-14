@@ -66,6 +66,14 @@ git apply poc_fixes.patch
 gradlew.bat build
 ```
 
+
+Patch 3: `patches/crforge-windows-fix.patch` — Windows support for `train_ppo.py`
+(uses `gradlew.bat`, resolves `gym-bridge.bat`, launches via `cmd /c`, JAVA_HOME only when
+set). Without it, jpype / `--num-envs` modes crash on Windows with WinError 193
+(the script runs the Unix `gradlew` shell script via CreateProcess).
+Workaround without patching: run `gradlew.bat :gym-bridge:installDist` once — the
+start-script check then passes and jpype mode works.
+
 ## POC runs (started Sept 14 2026)
 
 - Run A: default decks, self-play, 1M steps (`train_ppo.py --opponent self_play`) — running
