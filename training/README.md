@@ -46,6 +46,26 @@ Probe scripts + raw reports: `fidelity_probe.py` (scripted knight/elixir check �
 note: probe 1's elixir slope analysis was flawed; see probe 2), `fidelity_probe2.py`,
 `fidelity_probe3.py`, `fidelity_report_probe1.txt`, `fidelity_report_probe2.txt`.
 
+
+## Local fixes applied to crforge (patch: `patches/crforge-poc-fixes.patch`)
+
+1. `python/crforge_gym/env.py` — `_rule_based_action` now passes `obs_flat`, so the
+   rule-based opponent actually plays in binary mode (it silently no-opped before).
+2. `core/.../GameEngine.java` + `GameState.java` — time-limit decisions (crowns at
+   3:00, overtime crowns, overtime tower-health tiebreaker) now propagate the winner
+   to the GameState, so the reward calculator reports win/loss instead of always
+   "draw". Verified: chip scenario +29.98 (was -0.02); random-vs-random 3/7/0
+   (was 10/10/0 draws); self-play run at 6k steps: win/loss ~50/50, draws 0%
+   (was 93% draws).
+
+Apply on the Windows box (from the crforge root):
+
+```bat
+curl -L -o poc_fixes.patch "https://raw.githubusercontent.com/torsteinko/clash_royale_ai/meidell/linux-state-pipeline/training/patches/crforge-poc-fixes.patch"
+git apply poc_fixes.patch
+gradlew.bat build
+```
+
 ## POC runs (started Sept 14 2026)
 
 - Run A: default decks, self-play, 1M steps (`train_ppo.py --opponent self_play`) — running
