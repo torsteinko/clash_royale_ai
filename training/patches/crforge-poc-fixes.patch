@@ -13,7 +13,7 @@ index d8a06c0..0eb41cb 100644
  
    /** Spawn an entity into the game. */
 diff --git a/core/src/main/java/org/crforge/core/engine/GameState.java b/core/src/main/java/org/crforge/core/engine/GameState.java
-index 3f2f85a..003727a 100644
+index 3f2f85a..e649dea 100644
 --- a/core/src/main/java/org/crforge/core/engine/GameState.java
 +++ b/core/src/main/java/org/crforge/core/engine/GameState.java
 @@ -165,6 +165,17 @@ public class GameState {
@@ -21,10 +21,10 @@ index 3f2f85a..003727a 100644
    }
  
 +  /**
-+   * Marks the game as finished with the given winner (null = draw). Used for time-limit
-+   * decisions (regular-time crowns, overtime crowns, overtime tower-health tiebreaker),
-+   * which previously only marked the Match — making the bridge reward/telemetry report
-+   * them as draws even though a winner was decided.
++   * Marks the game as finished with the given winner (null = draw). Used for time-limit decisions
++   * (regular-time crowns, overtime crowns, overtime tower-health tiebreaker), which previously only
++   * marked the Match — making the bridge reward/telemetry report them as draws even though a winner
++   * was decided.
 +   */
 +  public void markFinished(Team winner) {
 +    this.gameOver = true;
