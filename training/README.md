@@ -74,12 +74,51 @@ set). Without it, jpype / `--num-envs` modes crash on Windows with WinError 193
 Workaround without patching: run `gradlew.bat :gym-bridge:installDist` once — the
 start-script check then passes and jpype mode works.
 
+## Multi-process self-play (`multi_selfplay_train.py`)
+
+One trainer + N worker processes, **each with its own bridge server and its own
+self-play opponent**. Each worker's opponent reloads the trainer's latest snapshot
+(atomic tmp+rename save, mtime check) so self-play keeps improving while N simulators
+run in parallel — the combination `train_ppo.py` blocks in subprocess mode (it only
+supports `self_play` on the single-env / jpype path).
+
+Run from the crforge repo root (launches and cleans up its own servers):
+
+```bat
+curl -L -o multi_selfplay_train.py "https://raw.githubusercontent.com/torsteinko/clash_royale_ai/meidell/linux-state-pipeline/training/multi_selfplay_train.py"
+python multi_selfplay_train.py --num-envs 5 --steps 2000000
+```
+
+- Blue plays a fixed deck (default **2.6 Hog cycle**); worker i's opponent plays
+  `RED_POOL[i % 6]`: Hog / Giant beatdown / Log bait / X-Bow / LavaLoon / Splashyard
+  (all card ids verified against cards.json) — i.e. "learn 2.6 Hog against the field".
+- Ports default to 9890+ (does not touch the usual 9876 bridge). `--red-pool hog` for
+  mirror-only self-play.
+- Validated end to end on the 2-vCPU VM (2 envs: servers up → snapshots reloaded in both
+  workers → training → eval → clean shutdown). Expect roughly 1/3 core per env: on the
+  5600X, N=5 should land near **5 × single-env fps**.
+
+**jpype does not scale** (measured on the 5600X, Sept 14): 5 envs via jpype = 350 fps
+total vs 318 fps single-env ZMQ — i.e. ~70 fps per env (~0.2×). Use jpype only for
+single-env convenience; use this script for throughput.
+
+**Bridge startup robustness:** upstream `_wait_for_server` re-tries the ZMQ init every
+second with a 2 s timeout *while the JVM is still booting*. If an attempt is abandoned
+mid-handshake under load, the PAIR server can be left holding a dead peer and stop
+accepting new handshakes (observed on the VM: the server log shows one "Game session
+reset" and then nothing). This script instead TCP-polls the port first, does one
+handshake with a 12 s timeout, and restarts that server (max 3×) if the handshake
+fails. Upstream issue candidate.
+
 ## POC runs (started Sept 14 2026)
 
 - Run A: default decks, self-play, 1M steps (`train_ppo.py --opponent self_play`) — running
   locally on Olsen's machine (Ryzen 5 5600X): first smoke green at **450–540 steps/s**
-  single-env (vs ~120–170 on the 2-vCPU VM).
+  single-env (vs ~120–170 on the 2-vCPU VM). Self-play with the draw fix: win=66% /
+  loss=34% / draw=0% (was 93% draws before the fix).
 - Run B: two different decks — Hog cycle vs Giant beatdown — self-play, 400k steps,
   then eval vs `rule_based` and `noop` (`poc_decks.py`)
+- Run C (`multi_selfplay_train.py`): N-process self-play with the deck pool — the main
+  throughput path; supersedes jpype for multi-env (see above).
 
 Logs on the VM: `/tmp/crforge_poc/poc_chain.log`. Results summarized here when done.
