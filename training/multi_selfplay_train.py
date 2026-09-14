@@ -328,7 +328,8 @@ def make_worker(port: int, blue_deck: list, red_deck: list, snapshot_path: str,
 # Callbacks
 # ---------------------------------------------------------------------------
 
-def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int):
+def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int,
+                    worker_decks: list[str] | None = None):
     from stable_baselines3.common.callbacks import BaseCallback
 
     class SnapshotCallback(BaseCallback):
@@ -360,16 +361,22 @@ def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int
             self.win = self.loss = self.draw = 0
             self.rewards = deque(maxlen=100)
             self._last_log = 0
+            self.deck_names = worker_decks or []
+            self.per_env = [[0, 0, 0] for _ in range(len(self.deck_names))]
 
         def _on_step(self):
             infos = self.locals.get("infos", [])
-            for info in infos:
+            for i, info in enumerate(infos):
                 if "episode" in info:
                     outcome = info.get("game_outcome", "unknown")
                     self.win += outcome == "win"
                     self.loss += outcome == "loss"
                     self.draw += outcome == "draw"
                     self.rewards.append(info["episode"]["r"])
+                    if i < len(self.per_env):
+                        self.per_env[i][0] += outcome == "win"
+                        self.per_env[i][1] += outcome == "loss"
+                        self.per_env[i][2] += outcome == "draw"
             done = self.win + self.loss + self.draw
             if done - self._last_log >= 25:
                 self._last_log = done
@@ -378,6 +385,14 @@ def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int
                 print(f"[{self.num_timesteps}/{total_steps} ({pct:.0f}%) | ep {done}] "
                       f"win={100.0 * self.win / done:.0f}% loss={100.0 * self.loss / done:.0f}% "
                       f"draw={100.0 * self.draw / done:.0f}% | reward={avg_r:.1f}", flush=True)
+                if self.per_env:
+                    parts = []
+                    for name, cnt in zip(self.deck_names, self.per_env):
+                        n = cnt[0] + cnt[1] + cnt[2]
+                        if n:
+                            parts.append(f"{name} {100.0 * cnt[0] / n:.0f}%({n})")
+                    if parts:
+                        print("    per-deck (worker 0..N-1): " + " | ".join(parts), flush=True)
             return True
 
     return [SnapshotCallback(), LogCallback()]
@@ -393,14 +408,20 @@ def main():
     parser.add_argument("--steps", type=int, default=2_000_000)
     parser.add_argument("--base-port", type=int, default=9890)
     parser.add_argument("--blue-deck", choices=["hog", "default"], default="hog")
-    parser.add_argument("--red-pool", choices=["all", "hog"], default="all",
-                        help="all = six archetypes (worker i gets RED_POOL[i%%6]); hog = mirror only")
+    parser.add_argument("--red-pool", default="all",
+                        help="all = six archetypes (worker i gets RED_POOL[i%%6]); hog/giant/logb/"
+                             "xbow/lava/yard = single deck only (useful for debugging one matchup)")
     parser.add_argument("--opponent", choices=["selfplay", "rule_based", "random"], default="selfplay",
                         help="selfplay = snapshot-reloading self-play (default); rule_based/random = fixed opponents")
     parser.add_argument("--save", default="models/ppo_multi")
     parser.add_argument("--logdir", default="logs/ppo_multi")
     parser.add_argument("--snapshot-interval", type=int, default=20000)
     parser.add_argument("--eval-episodes", type=int, default=10)
+    parser.add_argument("--ent-coef", type=float, default=0.005,
+                        help="PPO entropy bonus (higher = more exploration; default 0.005)")
+    parser.add_argument("--resume", action="store_true",
+                        help="resume from --save checkpoint (or latest snapshot); "
+                             "--steps is treated as the TOTAL step target")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -413,7 +434,15 @@ def main():
     from crforge_gym.wrappers import ActionMaskedWrapper, EpisodeStatsWrapper
 
     blue = HOG if args.blue_deck == "hog" else DEFAULT_DECK
-    pool = RED_POOL if args.red_pool == "all" else [HOG]
+    deck_by_name = {"hog": HOG, "giant": GIANT, "logb": LOGB,
+                    "xbow": XBOW, "lava": LAVA, "yard": YARD}
+    if args.red_pool == "all":
+        pool = RED_POOL
+    elif args.red_pool in deck_by_name:
+        pool = [deck_by_name[args.red_pool]]
+    else:
+        print(f"Error: unknown --red-pool '{args.red_pool}'.")
+        sys.exit(1)
 
     snapshot_dir = os.path.dirname(args.save) or "."
     os.makedirs(snapshot_dir, exist_ok=True)
@@ -440,28 +469,57 @@ def main():
     print(f"Obs check: bridge serves {got if got is not None else '?'} floats "
           f"(expected {expected_obs}) — OK")
 
+    deck_name_by_tuple = {tuple(d): n for n, d in
+                          (("hog", HOG), ("giant", GIANT), ("logb", LOGB),
+                           ("xbow", XBOW), ("lava", LAVA), ("yard", YARD))}
+    worker_decks = [deck_name_by_tuple.get(tuple(pool[i % len(pool)]), f"w{i}")
+                    for i in range(args.num_envs)]
+
     env_fns = [
         make_worker(args.base_port + i, blue, pool[i % len(pool)], snapshot_path, args.opponent)
         for i in range(args.num_envs)
     ]
     env = SubprocVecEnv(env_fns)
 
-    model = MaskablePPO(
-        "MlpPolicy", env, policy_kwargs={"net_arch": [512, 256]},
-        learning_rate=3e-4, n_steps=2048, batch_size=512, n_epochs=10,
-        gamma=0.99, gae_lambda=0.95, clip_range=0.2, ent_coef=0.005,
-        vf_coef=0.5, max_grad_norm=0.5, seed=args.seed, verbose=1,
-        tensorboard_log=args.logdir,
-    )
+    resume_path = None
+    if args.resume:
+        for cand in (args.save + ".zip", snapshot_path):
+            if os.path.isfile(cand):
+                resume_path = cand
+                break
 
-    print(f"\nTraining {args.steps} steps on {args.num_envs} parallel simulators "
+    if resume_path:
+        model = MaskablePPO.load(resume_path, env=env, device="cpu")
+        done = int(model.num_timesteps)
+        remaining = max(0, args.steps - done)
+        print(f"Resuming from {resume_path} at {done} steps -- training {remaining} more "
+              f"(total target {args.steps}).")
+        if remaining == 0:
+            print("Target already reached; nothing to do.")
+            env.close()
+            sys.exit(0)
+        train_steps = remaining
+    else:
+        if args.resume:
+            print("--resume given but no checkpoint found; starting fresh.")
+        model = MaskablePPO(
+            "MlpPolicy", env, policy_kwargs={"net_arch": [512, 256]},
+            learning_rate=3e-4, n_steps=2048, batch_size=512, n_epochs=10,
+            gamma=0.99, gae_lambda=0.95, clip_range=0.2, ent_coef=args.ent_coef,
+            vf_coef=0.5, max_grad_norm=0.5, seed=args.seed, verbose=1,
+            tensorboard_log=args.logdir,
+        )
+        train_steps = args.steps
+
+    print(f"\nTraining {train_steps} steps on {args.num_envs} parallel simulators "
           f"(blue: {'Hog 2.6' if args.blue_deck == 'hog' else 'default'}; "
           f"opponent: {args.opponent}; red pool: {len(pool)} deck(s))...")
     t0 = time.time()
-    model.learn(total_timesteps=args.steps,
-                callback=CallbackList(build_callbacks(snapshot_path, args.snapshot_interval, args.steps)))
+    model.learn(total_timesteps=train_steps,
+                callback=CallbackList(build_callbacks(snapshot_path, args.snapshot_interval,
+                                                      args.steps, worker_decks)))
     dt = time.time() - t0
-    print(f"\nTraining done in {dt:.0f}s ({args.steps / dt:.0f} steps/s overall)")
+    print(f"\nTraining done in {dt:.0f}s ({train_steps / dt:.0f} steps/s overall)")
     model.save(args.save)
     print(f"Model saved to {args.save}")
 
