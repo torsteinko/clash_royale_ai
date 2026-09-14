@@ -111,7 +111,7 @@ reset" and then nothing). This script instead TCP-polls the port first, does one
 handshake with a 12 s timeout, and restarts that server (max 3×) if the handshake
 fails. Upstream issue candidate.
 
-## Self-play role asymmetry + red-hand fix (round 3, Sept 14 2026)
+## Self-play role asymmetry fix + spell zones (round 3, Sept 14 2026)
 
 **Symptom:** multi-proc self-play win-rate collapsed to ~9-12% (reproduced on the VM,
 flat from episode 1), while the same policy evaluated fine against bots (+80 vs random,
@@ -126,19 +126,41 @@ troop streams down the lanes) while blue — with correct hand info — played p
 Snapshot opponents reinherited the same behavior every 20k steps, pinning blue at a
 structural ~75-90% loss regardless of skill.
 
-**Fix (`patches/crforge-handfix.patch`):** the bridge's `BinaryObservationEncoder` now
-appends a 15-float red-hand block (offset 1079; obs 1079 → 1094, same layout as the
-blue hand block). The Python mirror gives red its own hand from that block; both sides
-zero the opponent-hand block before use (symmetric, no info leak). Java test added
-(`redHandBlockMatchesJsonObservation`). **Models trained on the old 1079-float obs are
-incompatible — retrain required** (spell-zone extension lands in the same retrain
-cycle).
+**Fix (`patches/crforge-round3-fixes.patch`):**
+1. The bridge's `BinaryObservationEncoder` now appends a 15-float red-hand block
+   (offset 1079; obs 1079 → 1094, same layout as the blue hand block). The Python
+   mirror gives red its own hand from that block; both sides zero the opponent-hand
+   block before use (symmetric, no info leak). Java test added
+   (`redHandBlockMatchesJsonObservation`).
+2. **Spell zones extended** (action space `MultiDiscrete([2,4,10])` → `[2,4,15]`):
+   zones 10/11 = just past each bridge; zones 12/13/14 = ON the princess/king towers.
+   Verified live: fireball at zone 12 deals **206 dmg to a princess tower**
+   (0.30 × 689 = the engine's crown-tower factor); the old mid-field zones dealt 0
+   (they sat ~3.6 tiles out, outside the 2.5 radius). Card placement rules
+   (`spellAsDeploy`-type spells like The Log stay own-side; `Match.java`) are
+   enforced server-side.
 
-**Status:** bridge rebuilt; probe verified on the VM (raw obs 1094, real red-hand
-values, learner block zeroed); fresh-vs-fresh symmetry test (N=24, expected ~50/50)
-running. If symmetry still skews afterwards, next suspects: the mirror's lane-summary
-`front_y` transform (`1 - x` is not a valid mirror of that field — flagged, unproven)
-and action-application-order effects.
+**Validation (VM):** fresh-vs-fresh symmetry — an untrained net playing itself, the
+cleanest role-asymmetry probe: **45.8% blue over N=24** (11-13) and **66.7% over
+N=12** (8-4, post spell-zones) — both within noise of 50/50, versus 9-26% pre-fix.
+Obs probe: raw obs 1094, real red-hand values, learner block zeroed.
+
+**BREAKING (retrain required):** obs 1079 → 1094 floats and the zone count grew, so
+every existing model is incompatible — all runs from here are fresh runs.
+
+**Apply on the Windows box (from the crforge root):**
+
+```bat
+curl -L -o round3_fixes.patch "https://raw.githubusercontent.com/torsteinko/clash_royale_ai/meidell/linux-state-pipeline/training/patches/crforge-round3-fixes.patch"
+git apply round3_fixes.patch
+```
+
+Then run `multi_selfplay_train.py` — it now always refreshes the bridge build itself
+(fallback: `gradlew.bat :gym-bridge:installDist`).
+
+Remaining polish (not blocking): the mirror's lane-summary `front_y` transform
+(`1 - x` is not a valid mirror of those two fields; recompute from mirrored entities
+if it ever matters) — flagged, no measurable asymmetry impact.
 
 ## POC runs (started Sept 14 2026)
 
@@ -151,6 +173,6 @@ and action-application-order effects.
 - Run C (`multi_selfplay_train.py`): N-process self-play with the deck pool — the main
   throughput path; supersedes jpype for multi-env (see above). Pool run collapsed to
   ~9-12% blue (role-asymmetry, see round 3 above); mirror-deck run: ~20-26% pre-fix.
-  Post-fix fresh runs pending symmetry validation.
+  Post-fix symmetry validated (see round 3); fresh training runs pending.
 
 Logs on the VM: `/tmp/crforge_poc/poc_chain.log`. Results summarized here when done.

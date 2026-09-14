@@ -120,11 +120,34 @@ index 8bb4297..9a8253c 100644
          """
          data = {}
 diff --git a/python/crforge_gym/env.py b/python/crforge_gym/env.py
-index b953a5a..c71254f 100644
+index b953a5a..5ac9f9d 100644
 --- a/python/crforge_gym/env.py
 +++ b/python/crforge_gym/env.py
-@@ -22,7 +22,8 @@ Placement zones (blue's perspective):
+@@ -2,10 +2,10 @@
+ Gymnasium environment for CRForge.
+ 
+ Action space:
+-  MultiDiscrete([2, 4, 10])
++  MultiDiscrete([2, 4, 15])
+   - action_type: 0 = no-op, 1 = play card
+   - hand_index: 0-3 (which card slot)
+-  - zone: 0-9 (strategic placement zone)
++  - zone: 0-14 (strategic placement zone)
+ 
+ Placement zones (blue's perspective):
+   Own half (troops/buildings):
+@@ -20,9 +20,18 @@ Placement zones (blue's perspective):
+     7: SPELL_LEFT    (5.5, 22.5)  - spell on enemy left lane
+     8: SPELL_RIGHT   (12.5, 22.5) - spell on enemy right lane
      9: SPELL_CENTER  (9.0, 20.5)  - spell on enemy center
++    10: SPELL_BRIDGE_LEFT  (5.5, 17.5)  - right past the left bridge (troop kill)
++    11: SPELL_BRIDGE_RIGHT (12.5, 17.5) - right past the right bridge
++    12: SPELL_PRINCESS_LEFT  (3.5, 25.5)  - ON the left princess tower
++    13: SPELL_PRINCESS_RIGHT (14.5, 25.5) - ON the right princess tower
++    14: SPELL_KING  (9.0, 29.0)  - ON the king tower
++
++  (Zones 12-14 sit on the towers so spells with radius >= 0.5 can damage them;
++  card-specific placement rules, e.g. Royal Delivery, are enforced server-side.)
  
  Observation space:
 -  Binary mode (default): flat Box(shape=(1079,)) float32 vector.
@@ -133,7 +156,7 @@ index b953a5a..c71254f 100644
    JSON mode: Dict with structured game state arrays (all float32 for SB3 compatibility).
  
  Default ticks_per_step=6 gives ~5 decisions/second (~900 steps per 3-min game).
-@@ -58,7 +59,13 @@ INVALID_ACTION_PENALTY = -0.01
+@@ -58,11 +67,17 @@ INVALID_ACTION_PENALTY = -0.01
  MAX_CARD_INDEX = 200
  
  # Total size of the flat observation vector
@@ -148,7 +171,24 @@ index b953a5a..c71254f 100644
  
  # Strategic placement zones: (x, y) in arena coordinates.
  # Zones 0-6 are on blue's own half (troops/buildings).
-@@ -431,7 +438,11 @@ class CRForgeEnv(gym.Env):
+-# Zones 7-9 are on the enemy half (spells only).
++# Zones 7-14 are on the enemy half (spells only); 12-14 sit on the towers.
+ PLACEMENT_ZONES = [
+     (5.5, 14.5),   # 0: LEFT_BRIDGE
+     (12.5, 14.5),  # 1: RIGHT_BRIDGE
+@@ -74,6 +89,11 @@ PLACEMENT_ZONES = [
+     (5.5, 22.5),   # 7: SPELL_LEFT
+     (12.5, 22.5),  # 8: SPELL_RIGHT
+     (9.0, 20.5),   # 9: SPELL_CENTER
++    (5.5, 17.5),   # 10: SPELL_BRIDGE_LEFT (just past the left bridge)
++    (12.5, 17.5),  # 11: SPELL_BRIDGE_RIGHT
++    (3.5, 25.5),   # 12: SPELL_PRINCESS_LEFT (on the tower)
++    (14.5, 25.5),  # 13: SPELL_PRINCESS_RIGHT (on the tower)
++    (9.0, 29.0),   # 14: SPELL_KING (on the tower)
+ ]
+ NUM_ZONES = len(PLACEMENT_ZONES)
+ # Zones on own half (valid for troops/buildings/spells)
+@@ -431,7 +451,11 @@ class CRForgeEnv(gym.Env):
          if self.binary_obs:
              self._last_obs_flat = result
              self._last_obs_raw = None
@@ -161,7 +201,7 @@ index b953a5a..c71254f 100644
          else:
              self._last_obs_raw = result
              self._last_obs_flat = None
-@@ -455,6 +466,10 @@ class CRForgeEnv(gym.Env):
+@@ -455,6 +479,10 @@ class CRForgeEnv(gym.Env):
              self._last_obs_flat = obs
              self._last_obs_raw = None
  
@@ -172,7 +212,7 @@ index b953a5a..c71254f 100644
              reward = blue_reward
              if blue_action_failed:
                  reward += self.invalid_action_penalty
-@@ -463,7 +478,7 @@ class CRForgeEnv(gym.Env):
+@@ -463,7 +491,7 @@ class CRForgeEnv(gym.Env):
              if blue_action_failed:
                  info["action_failed"] = True
  
@@ -181,7 +221,7 @@ index b953a5a..c71254f 100644
          else:
              # JSON mode (original path)
              result = self._client.step(
-@@ -547,7 +562,7 @@ class CRForgeEnv(gym.Env):
+@@ -547,7 +575,7 @@ class CRForgeEnv(gym.Env):
  
          if self._rule_based_opponent is None:
              self._rule_based_opponent = RuleBasedOpponent(rng=self._rng)
@@ -191,7 +231,7 @@ index b953a5a..c71254f 100644
      def _parse_observation(self, obs_raw: dict) -> dict[str, np.ndarray]:
          return parse_observation(obs_raw)
 diff --git a/python/crforge_gym/opponents.py b/python/crforge_gym/opponents.py
-index 25b838e..0707867 100644
+index 25b838e..cdc5392 100644
 --- a/python/crforge_gym/opponents.py
 +++ b/python/crforge_gym/opponents.py
 @@ -7,7 +7,16 @@ C2: Self-play opponent that mirrors observations and runs a trained model as red
@@ -239,3 +279,15 @@ index 25b838e..0707867 100644
  
          # Swap tower blocks: blue towers [22:34] <-> red towers [34:46]
          # Also flip y coordinates (index 2 within each 4-float tower block)
+@@ -376,6 +379,11 @@ class SelfPlayOpponent:
+         (5.5, 32 - 22.5),   # 7: SPELL_LEFT -> spell on blue's left
+         (12.5, 32 - 22.5),  # 8: SPELL_RIGHT -> spell on blue's right
+         (9.0, 32 - 20.5),   # 9: SPELL_CENTER -> spell on blue's center
++        (5.5, 32 - 17.5),   # 10: SPELL_BRIDGE_LEFT -> just past blue's left bridge
++        (12.5, 32 - 17.5),  # 11: SPELL_BRIDGE_RIGHT
++        (3.5, 32 - 25.5),   # 12: SPELL_PRINCESS_LEFT -> on blue's left tower
++        (14.5, 32 - 25.5),  # 13: SPELL_PRINCESS_RIGHT -> on blue's right tower
++        (9.0, 32 - 29.0),   # 14: SPELL_KING -> on blue's king tower
+     ]
+ 
+     def act(self, obs_raw: dict | None, player: str = "red", obs_flat: np.ndarray | None = None) -> dict | None:

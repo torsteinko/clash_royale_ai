@@ -56,19 +56,26 @@ def build_bridge_dist(project_root: str) -> str:
     bin_dir = os.path.join(project_root, "gym-bridge", "build", "install", "gym-bridge", "bin")
     script = os.path.join(bin_dir, "gym-bridge.bat" if os.name == "nt" else "gym-bridge")
     legacy = os.path.join(bin_dir, "gym-bridge")
+    gradlew = os.path.join(project_root, "gradlew.bat" if os.name == "nt" else "gradlew")
+
+    # Always refresh the distribution: gradle is a fast no-op when it is already up to
+    # date, and this guarantees the servers match the current Java sources (a stale
+    # install/ directory otherwise silently keeps an old build alive).
+    print("Building gym-bridge distribution...")
+    try:
+        result = subprocess.run([gradlew, ":gym-bridge:installDist", "-q"],
+                                cwd=project_root, capture_output=True, text=True, timeout=600)
+        if result.returncode != 0:
+            print(result.stderr[-2000:])
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"gradle refresh failed ({exc}); falling back to any existing build")
+
     if os.path.isfile(script):
         return script
     if os.path.isfile(legacy):
         return legacy
-    print("Building gym-bridge distribution...")
-    gradlew = os.path.join(project_root, "gradlew.bat" if os.name == "nt" else "gradlew")
-    result = subprocess.run([gradlew, ":gym-bridge:installDist", "-q"],
-                            cwd=project_root, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(result.stderr)
-        sys.exit(1)
-    print("Build complete.")
-    return script if os.path.isfile(script) else legacy
+    print("Error: gym-bridge distribution not found and could not be built.")
+    sys.exit(1)
 
 
 def _tcp_up(port: int, timeout: float = 0.5) -> bool:
