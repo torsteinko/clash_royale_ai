@@ -24,6 +24,14 @@ Verified equal to real Clash Royale values:
 
 Gaps / quirks found:
 
+- `--opponent rule_based` is broken in binary mode (which `train_ppo.py` hardcodes): the
+  opponent silently no-ops because `env._rule_based_action` doesn't pass the flat
+  observation. Verified Sept 14: a random policy "wins" 30/30 against the dead bot;
+  after a one-line fix (`obs_flat=self._last_obs_flat` in `crforge_gym/env.py`), 2/2/26.
+  Upstream issue candidate.
+- Self-play (`--opponent self_play`) works in binary mode (mirrors the flat observation),
+  but red cannot see its own hand (upstream code comment acknowledges this) — acceptable
+  for the POC, worth improving later.
 - Spells cannot hit towers through the 10-zone action space (fireball dealt 0 damage
   from zones 7/8/9; zones are ~3.6 tiles from princess towers vs fireball radius 2.5).
   An action-space extension would be needed for spell-finish strategies.
@@ -31,6 +39,8 @@ Gaps / quirks found:
   (the elixir check runs before `engine.tick()`); upstream issue candidate.
 - Missing cards: Minion Giant, Void, Cannon Cart. 240 card entries exist
   (130 base + 21 evolutions + 89 heroes); missing ones can be added via the data JSONs.
+  Evolutions/heroes are separate card IDs with explicit base links (`heroForm` /
+  `baseCard`, `evolved` / `evolvedCard`) and can be placed in decks (verified).
 
 Probe scripts + raw reports: `fidelity_probe.py` (scripted knight/elixir check —
 note: probe 1's elixir slope analysis was flawed; see probe 2), `fidelity_probe2.py`,
@@ -38,7 +48,9 @@ note: probe 1's elixir slope analysis was flawed; see probe 2), `fidelity_probe2
 
 ## POC runs (started Sept 14 2026)
 
-- Run A: default decks, self-play, 1M steps (`train_ppo.py --opponent self_play`)
+- Run A: default decks, self-play, 1M steps (`train_ppo.py --opponent self_play`) — running
+  locally on Olsen's machine (Ryzen 5 5600X): first smoke green at **450–540 steps/s**
+  single-env (vs ~120–170 on the 2-vCPU VM).
 - Run B: two different decks — Hog cycle vs Giant beatdown — self-play, 400k steps,
   then eval vs `rule_based` and `noop` (`poc_decks.py`)
 
