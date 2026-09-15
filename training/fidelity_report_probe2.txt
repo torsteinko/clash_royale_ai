@@ -1,0 +1,24 @@
+============================================================
+probe2: seed 7, noop, tps=1 — phases/spells/invalid/full clock
+start hand=['knight', 'fireball', 'minions', 'archer'] elixir=5.0
+match: end t=180.1 over=False term=True trunc=False crowns b=1 r=0
+
+multiplier timeline: [(0.05, 1.0), (120.05, 2.0)]   (expect 1 -> 2 @120s -> 3 @240s)
+
+regen 1x early                : 0.3571/s -> 1 per 2.80s
+regen after 120s (expect 2x)  : 0.7143/s -> 1 per 1.40s
+regen after 240s (expect 3x)  : n/a (capped)
+
+---- FIREBALL (casts aimed at enemy LEFT princess zone7, then RIGHT zone8) ----
+cast t=30.00 zone=7 failed=True | red princess-L 1638->0  princess-R 3052->3052
+  within 2.5s: princess-L -0  princess-R -0
+
+---- INVALID ACTION (troop -> enemy-half zone 8) ----
+t=45.00 played giant to zone8: elixir 10.00->10.00 spent=0.00 failed=True blue_troops 0->0 (expect: failed=True, spent=0, no new troop)
+
+---- PLAYS ----
+t=  2.00 knight     zone=0 elixir 5.71->2.73 failed=True
+t=117.00 giant      zone=0 elixir 5.00->5.00 failed=True
+
+---- PRINCESS-L DAMAGE EVENTS (first 100s) ----
+events: [(13.75, 202), (15.0, 202), (16.25, 202), (17.5, 202), (18.75, 202), (20.0, 202), (21.25, 202)]

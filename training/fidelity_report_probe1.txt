@@ -1,0 +1,40 @@
+================================================================
+CRForge fidelity probe — seed 7, level 11, opponent noop, tps=1
+================================================================
+blue towers: crown hp=4824 @(9.0,3.0) | princess-L hp=3052 @(3.5,6.5) | princess-R hp=3052 @(14.5,6.5)
+red  towers: crown hp=4824 @(9.0,29.0) | princess-L hp=3052 @(3.5,25.5) | princess-R hp=3052 @(14.5,25.5)
+start: t=0.0 elixir=5.0 mult=1.0 hand=['knight', 'fireball', 'minions', 'archer']
+
+match done: t=62.5s overtime=False term=True trunc=False crowns blue=3 red=0 (1243 steps, 2s wall)
+
+---- PLAYS ----
+t=  2.05 play knight       slot=0 zone=0 cost=3 elixir 5.71->2.73 failed=True
+t=  2.90 play minions      slot=2 zone=0 cost=3 elixir 3.02->0.04 failed=True
+t= 11.30 play archer       slot=3 zone=0 cost=3 elixir 3.02->0.04 failed=True
+t= 22.50 play valkyrie     slot=3 zone=0 cost=4 elixir 4.02->0.04 failed=True
+t= 33.70 play musketeer    slot=3 zone=0 cost=4 elixir 4.02->0.04 failed=True
+t= 42.10 play knight       slot=3 zone=0 cost=3 elixir 3.02->0.04 failed=True
+t= 50.50 play minions      slot=3 zone=0 cost=3 elixir 3.02->0.04 failed=True
+t= 58.90 play archer       slot=3 zone=0 cost=3 elixir 3.02->0.04 failed=True
+
+---- ELIXIR ----
+multiplier timeline: [(0.1, 1.0)]
+elixir regen regular 1x      : -0.0078 elixir/s -> 1 per -127.79s (real: 1x=2.80s, 2x=1.40s, 3x=0.93s)
+elixir regen regular last min: n/a (capped or no samples)
+elixir regen OT first min    : n/a (capped or no samples)
+elixir regen OT last min     : n/a (capped or no samples)
+
+---- KNIGHT ----
+played at t=2.05
+first seen t=3.05 pos=(5.5,14.5) hp=1766
+last seen  t=59.85 pos=(7.918,26.129) hp=22
+red princess-L took 23 hits: dmgs=[107, 107, 107, 107, 202, 107, 202, 107, 202, 107, 202, 107] gaps=[0.5, 0.75, 0.5, 1.0, 0.25, 1.0, 0.25, 1.0, 0.25, 1.0, 0.25, 1.0]
+last hit t=22.35; princess-L hp now 0
+
+---- FIREBALL ----
+fireball casts: 0
+
+---- FINAL STATE ----
+end t=62.5 mult=1.0
+red  princess-L hp=0/3052  princess-R hp=3052/3052
+blue princess-L hp=3052  king hp=4824/4824

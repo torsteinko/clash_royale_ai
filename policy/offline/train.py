@@ -753,7 +753,7 @@ def main():
     parser.add_argument(
         "--replay-dir",
         type=str,
-        default="replay_data_patched",
+        default="replay_data",
         help="Directory with replay files",
     )
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size")

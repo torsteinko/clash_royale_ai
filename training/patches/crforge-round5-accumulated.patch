@@ -1,0 +1,709 @@
+diff --git a/core/src/main/java/org/crforge/core/engine/GameEngine.java b/core/src/main/java/org/crforge/core/engine/GameEngine.java
+index d8a06c0..0eb41cb 100644
+--- a/core/src/main/java/org/crforge/core/engine/GameEngine.java
++++ b/core/src/main/java/org/crforge/core/engine/GameEngine.java
+@@ -303,6 +303,9 @@ public class GameEngine {
+       }
+       match.setWinner(winner);
+     }
++    // Propagate time-limit decisions (crowns / tower-health tiebreaker) to the game state so
++    // the reward calculator and telemetry see the result instead of reporting a draw.
++    gameState.markFinished(winner);
+   }
+ 
+   /** Spawn an entity into the game. */
+diff --git a/core/src/main/java/org/crforge/core/engine/GameState.java b/core/src/main/java/org/crforge/core/engine/GameState.java
+index 3f2f85a..e649dea 100644
+--- a/core/src/main/java/org/crforge/core/engine/GameState.java
++++ b/core/src/main/java/org/crforge/core/engine/GameState.java
+@@ -165,6 +165,17 @@ public class GameState {
+     }
+   }
+ 
++  /**
++   * Marks the game as finished with the given winner (null = draw). Used for time-limit decisions
++   * (regular-time crowns, overtime crowns, overtime tower-health tiebreaker), which previously only
++   * marked the Match — making the bridge reward/telemetry report them as draws even though a winner
++   * was decided.
++   */
++  public void markFinished(Team winner) {
++    this.gameOver = true;
++    this.winner = winner;
++  }
++
+   public void incrementFrame() {
+     frameCount++;
+   }
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java b/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java
+index 3d758dd..53f85f9 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java
+@@ -33,19 +33,38 @@ public class BridgeServer {
+         "Loading card registry ({} cards)...",
+         org.crforge.data.card.CardRegistry.getAllIds().size());
+ 
+-    try (ZmqTransport transport = new ZmqTransport(endpoint)) {
+-      transport.bind();
+-
+-      // Run session loop -- reconnects automatically after client disconnects
+-      while (true) {
+-        log.info("Waiting for client connection on port {}...", port);
++    // One fresh PAIR socket + context per session: reusing a socket across
++    // sessions leaves stale peer/connection state behind, and the next client's
++    // handshake can then hang indefinitely (workers stuck in init, no messages
++    // reaching the server). A clean socket per session removes that whole class.
++    while (true) {
++      log.info("Waiting for client connection on port {}...", port);
++      try (ZmqTransport transport = new ZmqTransport(endpoint)) {
++        boolean bound = false;
++        for (int attempt = 0; attempt < 10 && !bound; attempt++) {
++          try {
++            transport.bind();
++            bound = true;
++          } catch (Exception be) {
++            log.warn("Bind attempt {} failed: {}", attempt + 1, be.toString());
++            try {
++              Thread.sleep(200);
++            } catch (InterruptedException ie) {
++              Thread.currentThread().interrupt();
++            }
++          }
++        }
++        if (!bound) {
++          log.error("Could not bind {} after retries", endpoint);
++          System.exit(1);
++        }
+         BridgeSession session = new BridgeSession(transport);
+         session.run();
+-        log.info("Session ended, ready for next connection");
++      } catch (Exception e) {
++        log.error("Bridge server error", e);
++        System.exit(1);
+       }
+-    } catch (Exception e) {
+-      log.error("Bridge server error", e);
+-      System.exit(1);
++      log.info("Session ended, ready for next connection");
+     }
+   }
+ }
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java b/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java
+index 75fb920..4917cfc 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java
+@@ -60,7 +60,14 @@ public class BridgeSession {
+           case "step" -> handleStep(data);
+           case "close" -> {
+             log.info("Client requested close");
+-            transport.send("close_ok", null);
++            // Best-effort ack: the peer may already be gone, so a failed (or timed
++            // out) send must never prevent the session from ending — that wedge left
++            // servers stuck forever with no "Session ended" line.
++            try {
++              transport.send("close_ok", null);
++            } catch (Exception e) {
++              log.debug("close_ok not delivered: {}", e.toString());
++            }
+             return;
+           }
+           default -> {
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java b/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
+index dae6c93..ea7aea3 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
+@@ -23,7 +23,7 @@ import org.crforge.data.card.CardRegistry;
+  * Encodes observations as a flat float32 array sent as raw bytes. Pre-allocates buffers and writes
+  * directly from entity/player/state fields with no DTO allocations.
+  *
+- * <p>Float layout (1079 values):
++ * <p>Float layout (1094 values):
+  *
+  * <pre>
+  * Offset  Count  Field
+@@ -42,6 +42,9 @@ import org.crforge.data.card.CardRegistry;
+  * 46      1024   entities (64 x 16 features, zero-padded)
+  * 1070    1      num_entities
+  * 1071    8      lane_summary
++ * 1079    15     red hand (costs 4, types 4, ids 4, next 3) -- same layout as the blue
++ *                 hand block at 7; lets the Python mirror give red ITS OWN hand in
++ *                 binary self-play (each side zeroes the other's block before use).
+  * </pre>
+  */
+ public class BinaryObservationEncoder {
+@@ -56,7 +59,7 @@ public class BinaryObservationEncoder {
+   private static final int ENTITY_FEATURES = 16;
+ 
+   // Total floats in the observation
+-  public static final int OBS_FLOATS = 1079;
++  public static final int OBS_FLOATS = 1094;
+   public static final int OBS_BYTES = OBS_FLOATS * 4;
+ 
+   // Lane summary normalization
+@@ -120,7 +123,7 @@ public class BinaryObservationEncoder {
+    * 9       byte       truncated (0/1)
+    * 10      byte       blueActionFailed (0/1)
+    * 11      byte       redActionFailed (0/1)
+-   * 12      float32[]  observation (1079 floats)
++   * 12      float32[]  observation (1094 floats)
+    * </pre>
+    */
+   public byte[] encodeStepResult(
+@@ -378,6 +381,34 @@ public class BinaryObservationEncoder {
+     obs[laneIdx + 5] = Math.min(rightFriendlyHp / MAX_LANE_HP, 1f);
+     obs[laneIdx + 6] = (blueElixir - redElixir) / 10f;
+     obs[laneIdx + 7] = (float) (friendlyCount - enemyCount) / MAX_ENTITIES;
++
++    // Red hand block at offset 1079 (costs 4, types 4, ids 4, next 3). Mirrors the blue
++    // hand layout at offset 7 so the Python side can give red its own hand in binary
++    // self-play. Consumers must zero the block they should not see (see env.py).
++    int redIdx = 1079;
++    Hand redHand = redPlayer.getHand();
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? card.getCost() / 10f : 0f;
++    }
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? cardTypeToFloat(card.getType()) : 0f;
++    }
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? CardRegistry.getIndex(card.getId()) : -1f;
++    }
++    Card redNext = redHand.getNextCard();
++    if (redNext != null) {
++      obs[redIdx++] = redNext.getCost() / 10f;
++      obs[redIdx++] = cardTypeToFloat(redNext.getType());
++      obs[redIdx] = CardRegistry.getIndex(redNext.getId());
++    } else {
++      obs[redIdx++] = 0f;
++      obs[redIdx++] = 0f;
++      obs[redIdx] = -1f;
++    }
+   }
+ 
+   /** Encodes up to 3 towers for a team into the obs buffer. Returns the updated index. */
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java b/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java
+index e247787..0b8b36b 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java
+@@ -29,6 +29,11 @@ public class ZmqTransport implements Closeable {
+     this.mapper = new ObjectMapper();
+     this.context = new ZContext();
+     this.socket = context.createSocket(SocketType.PAIR);
++    // Never block forever on a dying peer: a send that cannot be delivered within
++    // this window returns false instead of wedging the session loop. Also cap the
++    // close-time linger so context shutdown can't stall on undeliverable frames.
++    socket.setSendTimeOut(5000);
++    socket.setLinger(2000);
+   }
+ 
+   /** Binds the socket as a server. */
+diff --git a/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java b/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
+index e7e49e7..8665058 100644
+--- a/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
++++ b/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
+@@ -213,6 +213,26 @@ class BinaryObservationEncoderTest {
+     assertThat(obs1.length).isEqualTo(obs2.length);
+   }
+ 
++  @Test
++  void redHandBlockMatchesJsonObservation() {
++    ObservationDTO json = ObservationBuilder.build(engine, bluePlayer, redPlayer);
++    float[] obs = decodeObs(encoder.encodeObservation(engine, bluePlayer, redPlayer));
++
++    // Red hand block at 1079: costs (4) / types (4) / ids (4) / next card (3)
++    PlayerObsDTO redObs = json.redPlayer();
++    List<HandCardDTO> hand = redObs.hand();
++    for (int i = 0; i < hand.size(); i++) {
++      HandCardDTO card = hand.get(i);
++      assertThat(obs[1079 + i]).isCloseTo(card.cost() / 10f, offset(0.01f));
++      assertThat(obs[1079 + 8 + i]).isCloseTo(card.cardIndex(), offset(0.01f));
++    }
++    HandCardDTO next = redObs.nextCard();
++    if (next != null) {
++      assertThat(obs[1091]).isCloseTo(next.cost() / 10f, offset(0.01f));
++      assertThat(obs[1093]).isCloseTo(next.cardIndex(), offset(0.01f));
++    }
++  }
++
+   private float[] decodeObs(byte[] bytes) {
+     ByteBuffer buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+     float[] result = new float[BinaryObservationEncoder.OBS_FLOATS];
+diff --git a/python/crforge_gym/bridge.py b/python/crforge_gym/bridge.py
+index 8bb4297..e8689a8 100644
+--- a/python/crforge_gym/bridge.py
++++ b/python/crforge_gym/bridge.py
+@@ -51,7 +51,14 @@ class BridgeClient:
+         ticks_per_step: int = 1,
+         seed: int | None = None,
+     ) -> dict[str, Any]:
+-        """Initialize a match on the server."""
++        """Initialize a match on the server (with retry on the PAIR startup race).
++
++        The ZMQ PAIR handshake can occasionally get lost while a JVM is still
++        warming up (or right after another client closed); without a retry this
++        hangs the calling worker forever. On timeout: reconnect and resend.
++        """
++        import time as _time
++
+         data = {
+             "blueDeck": blue_deck,
+             "redDeck": red_deck,
+@@ -61,11 +68,28 @@ class BridgeClient:
+         }
+         if seed is not None:
+             data["seed"] = seed
+-        self.send("init", data)
+-        response = self.receive()
+-        if response.get("type") == "error":
+-            raise RuntimeError(f"Init failed: {response.get('message')}")
+-        return response
++
++        last_error: Exception | None = None
++        for attempt in range(5):
++            try:
++                if not self._connected:
++                    self.connect()
++                self.socket.setsockopt(zmq.RCVTIMEO, 60000)
++                self.send("init", data)
++                response = self.receive()
++                if response.get("type") == "error":
++                    raise RuntimeError(f"Init failed: {response.get('message')}")
++                return response
++            except zmq.Again as exc:  # recv timed out: stale/lost handshake
++                last_error = exc
++                try:
++                    self.socket.close(linger=0)
++                except Exception:
++                    pass
++                self.socket = self.context.socket(zmq.PAIR)  # fresh socket for retry
++                self._connected = False
++                _time.sleep(3.0)
++        raise RuntimeError(f"Init failed after 5 attempts: {last_error!r}")
+ 
+     def reset(self, seed: int | None = None) -> dict[str, Any] | np.ndarray:
+         """Reset the match and get initial observation.
+@@ -74,7 +98,8 @@ class BridgeClient:
+             seed: optional seed override for deterministic deck shuffling
+ 
+         Returns:
+-            In binary mode: flat float32 numpy array (1079 values).
++            In binary mode: flat float32 numpy array (1094 values:
++                1079 base floats + a 15-float red-hand block appended at 1079).
+             In JSON mode: raw observation dict from server.
+         """
+         data = {}
+@@ -128,15 +153,21 @@ class BridgeClient:
+         return response.get("data", {})
+ 
+     def close(self) -> None:
+-        """Send close message and disconnect."""
++        """Send close message and disconnect (bounded: never blocks on a dead peer)."""
+         if self._connected:
+             try:
+                 self.send("close")
+-                self.receive()  # wait for close_ok
++                self.receive()  # wait for close_ok (RCVTIMEO applies)
++            except Exception:
++                pass
++            try:
++                self.socket.close(linger=1000)
++            except Exception:
++                pass
++            try:
++                self.context.term()
+             except Exception:
+                 pass
+-            self.socket.close()
+-            self.context.term()
+             self._connected = False
+ 
+     def __enter__(self):
+diff --git a/python/crforge_gym/env.py b/python/crforge_gym/env.py
+index b953a5a..9b5fe85 100644
+--- a/python/crforge_gym/env.py
++++ b/python/crforge_gym/env.py
+@@ -2,10 +2,10 @@
+ Gymnasium environment for CRForge.
+ 
+ Action space:
+-  MultiDiscrete([2, 4, 10])
++  MultiDiscrete([2, 4, 15])
+   - action_type: 0 = no-op, 1 = play card
+   - hand_index: 0-3 (which card slot)
+-  - zone: 0-9 (strategic placement zone)
++  - zone: 0-14 (strategic placement zone)
+ 
+ Placement zones (blue's perspective):
+   Own half (troops/buildings):
+@@ -20,9 +20,18 @@ Placement zones (blue's perspective):
+     7: SPELL_LEFT    (5.5, 22.5)  - spell on enemy left lane
+     8: SPELL_RIGHT   (12.5, 22.5) - spell on enemy right lane
+     9: SPELL_CENTER  (9.0, 20.5)  - spell on enemy center
++    10: SPELL_BRIDGE_LEFT  (5.5, 17.5)  - right past the left bridge (troop kill)
++    11: SPELL_BRIDGE_RIGHT (12.5, 17.5) - right past the right bridge
++    12: SPELL_PRINCESS_LEFT  (3.5, 25.5)  - ON the left princess tower
++    13: SPELL_PRINCESS_RIGHT (14.5, 25.5) - ON the right princess tower
++    14: SPELL_KING  (9.0, 29.0)  - ON the king tower
++
++  (Zones 12-14 sit on the towers so spells with radius >= 0.5 can damage them;
++  card-specific placement rules, e.g. Royal Delivery, are enforced server-side.)
+ 
+ Observation space:
+-  Binary mode (default): flat Box(shape=(1079,)) float32 vector.
++  Binary mode (default): flat Box(shape=(1094,)) float32 vector.
++  (1079 base floats + a 15-float red-hand block appended at offset 1079.)
+   JSON mode: Dict with structured game state arrays (all float32 for SB3 compatibility).
+ 
+ Default ticks_per_step=6 gives ~5 decisions/second (~900 steps per 3-min game).
+@@ -58,11 +67,17 @@ INVALID_ACTION_PENALTY = -0.01
+ MAX_CARD_INDEX = 200
+ 
+ # Total size of the flat observation vector
+-OBS_SIZE = 1079
++OBS_SIZE = 1094
++
++# Appended red-hand block (offset 1079, same 15-float layout as the blue hand block
++# at offset 7): costs 4, types 4, ids 4, next card 3. The learner's obs zeroes this
++# block (it must not see red's hand); the self-play mirror reads it for red's view.
++IDX_OPPONENT_HAND_START = 1079
++IDX_OPPONENT_HAND_END = 1094
+ 
+ # Strategic placement zones: (x, y) in arena coordinates.
+ # Zones 0-6 are on blue's own half (troops/buildings).
+-# Zones 7-9 are on the enemy half (spells only).
++# Zones 7-14 are on the enemy half (spells only); 12-14 sit on the towers.
+ PLACEMENT_ZONES = [
+     (5.5, 14.5),   # 0: LEFT_BRIDGE
+     (12.5, 14.5),  # 1: RIGHT_BRIDGE
+@@ -74,6 +89,11 @@ PLACEMENT_ZONES = [
+     (5.5, 22.5),   # 7: SPELL_LEFT
+     (12.5, 22.5),  # 8: SPELL_RIGHT
+     (9.0, 20.5),   # 9: SPELL_CENTER
++    (5.5, 17.5),   # 10: SPELL_BRIDGE_LEFT (just past the left bridge)
++    (12.5, 17.5),  # 11: SPELL_BRIDGE_RIGHT
++    (3.5, 25.5),   # 12: SPELL_PRINCESS_LEFT (on the tower)
++    (14.5, 25.5),  # 13: SPELL_PRINCESS_RIGHT (on the tower)
++    (9.0, 29.0),   # 14: SPELL_KING (on the tower)
+ ]
+ NUM_ZONES = len(PLACEMENT_ZONES)
+ # Zones on own half (valid for troops/buildings/spells)
+@@ -431,7 +451,14 @@ class CRForgeEnv(gym.Env):
+         if self.binary_obs:
+             self._last_obs_flat = result
+             self._last_obs_raw = None
+-            return result, {}
++            # The learner must not see the opponent-hand block appended by the server
++            # (offset 1079+); the self-play mirror reads it from _last_obs_flat.
++            learner_obs = result.copy()
++            learner_obs[IDX_OPPONENT_HAND_START:] = 0.0
++            # Normalize raw sim counters (parity with env.step; see comment there).
++            learner_obs[0] /= 600000.0
++            learner_obs[1] /= 600.0
++            return learner_obs, {}
+         else:
+             self._last_obs_raw = result
+             self._last_obs_flat = None
+@@ -455,6 +482,15 @@ class CRForgeEnv(gym.Env):
+             self._last_obs_flat = obs
+             self._last_obs_raw = None
+ 
++            # Zero the opponent-hand block for the learner (see reset()).
++            learner_obs = obs.copy()
++            learner_obs[IDX_OPPONENT_HAND_START:] = 0.0
++            # Normalize the raw sim counters (frame can reach ~6000+, game_time 300s):
++            # unnormalized inputs dominate the MLP's first layer and wreck learning.
++            # The self-play mirror applies the identical transform (opponents.py).
++            learner_obs[0] /= 600000.0
++            learner_obs[1] /= 600.0
++
+             reward = blue_reward
+             if blue_action_failed:
+                 reward += self.invalid_action_penalty
+@@ -463,7 +499,7 @@ class CRForgeEnv(gym.Env):
+             if blue_action_failed:
+                 info["action_failed"] = True
+ 
+-            return obs, reward, terminated, truncated, info
++            return learner_obs, reward, terminated, truncated, info
+         else:
+             # JSON mode (original path)
+             result = self._client.step(
+@@ -547,7 +583,7 @@ class CRForgeEnv(gym.Env):
+ 
+         if self._rule_based_opponent is None:
+             self._rule_based_opponent = RuleBasedOpponent(rng=self._rng)
+-        return self._rule_based_opponent.act(self._last_obs_raw, player="red")
++        return self._rule_based_opponent.act(self._last_obs_raw, player="red", obs_flat=self._last_obs_flat)
+ 
+     def _parse_observation(self, obs_raw: dict) -> dict[str, np.ndarray]:
+         return parse_observation(obs_raw)
+diff --git a/python/crforge_gym/opponents.py b/python/crforge_gym/opponents.py
+index 25b838e..6514b73 100644
+--- a/python/crforge_gym/opponents.py
++++ b/python/crforge_gym/opponents.py
+@@ -7,7 +7,16 @@ C2: Self-play opponent that mirrors observations and runs a trained model as red
+ 
+ import numpy as np
+ 
+-from crforge_gym.env import ARENA_WIDTH, ARENA_HEIGHT, NUM_ZONES, NUM_OWN_HALF_ZONES, OBS_SIZE, parse_observation
++from crforge_gym.env import (
++    ARENA_HEIGHT,
++    ARENA_WIDTH,
++    IDX_OPPONENT_HAND_END,
++    IDX_OPPONENT_HAND_START,
++    NUM_OWN_HALF_ZONES,
++    NUM_ZONES,
++    OBS_SIZE,
++    parse_observation,
++)
+ 
+ 
+ class RuleBasedOpponent:
+@@ -107,26 +116,63 @@ class RuleBasedOpponent:
+         return {"handIndex": best_index, "x": x, "y": y}
+ 
+     def _act_from_flat(self, obs_flat: np.ndarray, player: str) -> dict | None:
+-        """Simplified strategy when only flat observation is available.
++        """Binary-mode strategy using the acting player's own hand block.
+ 
+-        Red's elixir is at index 4. We don't have red's hand costs, so we
+-        play a random card and hope it works (the server rejects invalid plays).
++        The flat observation carries each player's hand (costs 4, types 4, ids 4,
++        next 3): blue's at offset 7, red's appended block at offset 1079. So we can
++        pick the best affordable card instead of guessing a random slot.
+         """
+-        red_elixir = float(obs_flat[4]) if player == "red" else float(obs_flat[3])
++        from crforge_gym.env import (
++            IDX_BLUE_ELIXIR,
++            IDX_HAND_COSTS_END,
++            IDX_HAND_COSTS_START,
++            IDX_HAND_TYPES_END,
++            IDX_HAND_TYPES_START,
++            IDX_OPPONENT_HAND_START,
++        )
++
++        if player == "red":
++            elixir = float(obs_flat[4])
++            costs = obs_flat[IDX_OPPONENT_HAND_START:IDX_OPPONENT_HAND_START + 4] * 10.0
++            types = obs_flat[IDX_OPPONENT_HAND_START + 4:IDX_OPPONENT_HAND_START + 8]
++        else:
++            elixir = float(obs_flat[IDX_BLUE_ELIXIR])
++            costs = obs_flat[IDX_HAND_COSTS_START:IDX_HAND_COSTS_END] * 10.0
++            types = obs_flat[IDX_HAND_TYPES_START:IDX_HAND_TYPES_END]
+ 
+-        should_play = red_elixir >= self.ELIXIR_PLAY_THRESHOLD
+-        if not should_play and red_elixir >= self.EARLY_PLAY_MIN_ELIXIR:
++        should_play = elixir >= self.ELIXIR_PLAY_THRESHOLD
++        if not should_play and elixir >= self.EARLY_PLAY_MIN_ELIXIR:
+             should_play = self._rng.random() < self.EARLY_PLAY_CHANCE
+ 
+         if not should_play:
+             return None
+ 
+-        # Pick a random hand index since we don't have card costs
+-        hand_index = int(self._rng.integers(0, 4))
++        # Highest-cost affordable card (most board impact)
++        best_index = -1
++        best_cost = -1
++        for i in range(4):
++            cost = float(costs[i])
++            if 0 < cost <= elixir and cost > best_cost:
++                best_cost = cost
++                best_index = i
++
++        if best_index < 0:
++            return None
+ 
+-        # Default to troop placement strategy
+-        x, y = self._pick_position("TROOP", player, None)
+-        return {"handIndex": hand_index, "x": x, "y": y}
++        t = float(types[best_index])
++        card_type = "SPELL" if t == 1.0 else ("BUILDING" if t == 2.0 else "TROOP")
++
++        if card_type == "SPELL":
++            # Cast into the enemy half where troops cluster
++            if player == "red":
++                y = float(self._rng.integers(6, 15)) + 0.5
++            else:
++                y = float(self._rng.integers(17, 26)) + 0.5
++            x = float(self._rng.integers(4, 15)) + 0.5
++        else:
++            x, y = self._pick_position(card_type, player, None)
++
++        return {"handIndex": best_index, "x": x, "y": y}
+ 
+     def _pick_position(
+         self, card_type: str, player: str, obs_raw: dict | None
+@@ -253,9 +299,17 @@ def _mirror_tower(t: dict) -> dict:
+ 
+ 
+ def _flatten_dict_obs(dict_obs: dict[str, np.ndarray]) -> np.ndarray:
+-    """Flatten dict observation in the same key order as FlattenedObsWrapper."""
++    """Flatten dict observation in the same key order as FlattenedObsWrapper.
++
++    The original 15 keys flatten to 1079 floats. The binary observation appends
++    a 15-float opponent-hand block (offset 1079) that the mirrored/learner view
++    zeroes -- so pad with zeros to OBS_SIZE for model-input parity.
++    """
+     parts = [dict_obs[k].astype(np.float32).flatten() for k in _OBS_KEYS]
+-    return np.concatenate(parts)
++    flat = np.concatenate(parts)
++    if flat.shape[0] < OBS_SIZE:
++        flat = np.concatenate([flat, np.zeros(OBS_SIZE - flat.shape[0], dtype=np.float32)])
++    return flat
+ 
+ 
+ class SelfPlayOpponent:
+@@ -309,19 +363,13 @@ class SelfPlayOpponent:
+         # Swap crowns (indices 5, 6)
+         m[5], m[6] = flat_obs[6], flat_obs[5]
+ 
+-        # Hand data (indices 7-21): replace with red player's hand
+-        # In binary mode, only blue's hand is encoded, so red's hand is unknown.
+-        # We zero out the hand to indicate "no hand info" for red-as-blue.
+-        # The model will learn to play without perfect hand knowledge of the
+-        # mirrored perspective. This is a known limitation of binary self-play.
+-        # For proper self-play with binary mode, the server would need to encode
+-        # both players' hands. For now, keep the hand as-is (it's blue's hand,
+-        # which becomes "our" hand from red's perspective in self-play the model
+-        # doesn't get red's actual hand... but this matches what the model sees
+-        # during training where it always plays as blue).
+-        # Actually -- in self-play, we need red's hand to be visible to the model.
+-        # Since binary mode only includes blue's hand, self-play should use JSON mode
+-        # or the model should be trained to handle this. Leave hand as-is for now.
++        # Hand data (indices 7-21): give red ITS OWN hand from the appended block
++        # (offset 1079, same 15-float layout: costs 4, types 4, ids 4, next 3), and
++        # hide the opponent's hand (zero the block) -- both sides see only their own
++        # hand, symmetrically, regardless of which deck they play.
++        if flat_obs.shape[0] >= IDX_OPPONENT_HAND_END:
++            m[7:22] = flat_obs[IDX_OPPONENT_HAND_START:IDX_OPPONENT_HAND_END]
++        m[IDX_OPPONENT_HAND_START:] = 0.0
+ 
+         # Swap tower blocks: blue towers [22:34] <-> red towers [34:46]
+         # Also flip y coordinates (index 2 within each 4-float tower block)
+@@ -345,6 +393,11 @@ class SelfPlayOpponent:
+             # Flip y_norm: y -> 1 - y
+             m[base + 4] = 1.0 - flat_obs[base + 4]
+ 
++        # Normalize raw sim counters for red as well (identical transform to the
++        # learner's obs post-processing in env.py -- both sides must match).
++        m[0] = flat_obs[0] / 600000.0
++        m[1] = flat_obs[1] / 600.0
++
+         # Mirror lane summary (offset 1071, 8 values)
+         # The lane summary is from blue's perspective; for red-as-blue we need to
+         # swap left/right and flip friendly/enemy.
+@@ -376,6 +429,11 @@ class SelfPlayOpponent:
+         (5.5, 32 - 22.5),   # 7: SPELL_LEFT -> spell on blue's left
+         (12.5, 32 - 22.5),  # 8: SPELL_RIGHT -> spell on blue's right
+         (9.0, 32 - 20.5),   # 9: SPELL_CENTER -> spell on blue's center
++        (5.5, 32 - 17.5),   # 10: SPELL_BRIDGE_LEFT -> just past blue's left bridge
++        (12.5, 32 - 17.5),  # 11: SPELL_BRIDGE_RIGHT
++        (3.5, 32 - 25.5),   # 12: SPELL_PRINCESS_LEFT -> on blue's left tower
++        (14.5, 32 - 25.5),  # 13: SPELL_PRINCESS_RIGHT -> on blue's right tower
++        (9.0, 32 - 29.0),   # 14: SPELL_KING -> on blue's king tower
+     ]
+ 
+     def act(self, obs_raw: dict | None, player: str = "red", obs_flat: np.ndarray | None = None) -> dict | None:
+diff --git a/python/crforge_gym/wrappers.py b/python/crforge_gym/wrappers.py
+index 8db3cac..8f3ad91 100644
+--- a/python/crforge_gym/wrappers.py
++++ b/python/crforge_gym/wrappers.py
+@@ -19,6 +19,32 @@ import gymnasium as gym
+ import numpy as np
+ from gymnasium import spaces
+ 
++try:  # expected binary observation size (defined in crforge_gym.env)
++    from .env import OBS_SIZE as _EXPECTED_OBS_SIZE
++except Exception:  # pragma: no cover
++    _EXPECTED_OBS_SIZE = 1094
++
++
++def _check_binary_obs(obs) -> None:
++    """Catch a stale bridge build on the FIRST reset instead of mid-rollout.
++
++    A stale gym-bridge JVM serves a different observation width (e.g. 1079 vs
++    1094 floats) and training would otherwise die later with a cryptic
++    mat1/mat2 shape error. Runs per worker on every reset, so the failure is
++    immediate and actionable. Only checks flat float32 vectors (binary mode);
++    dict observations (JSON mode) are skipped.
++    """
++    if isinstance(obs, np.ndarray) and obs.ndim == 1 and obs.shape[0] != _EXPECTED_OBS_SIZE:
++        raise RuntimeError(
++            f"Bridge served {obs.shape[0]}-float observations but this code expects "
++            f"{_EXPECTED_OBS_SIZE}. The Java bridge build is STALE. Rebuild it and "
++            "restart the run:\n"
++            "  Windows:  ./gradlew.bat :gym-bridge:installDist  "
++            "(then kill orphans: taskkill /IM java.exe /F)\n"
++            "  Linux:    ./gradlew :gym-bridge:installDist      "
++            "(then kill orphans: pkill -f gym-bridge)"
++        )
++
+ 
+ class EpisodeStatsWrapper(gym.Wrapper):
+     """Tracks per-episode statistics for SB3 logging.
+@@ -49,6 +75,7 @@ class EpisodeStatsWrapper(gym.Wrapper):
+ 
+     def reset(self, **kwargs):
+         obs, info = self.env.reset(**kwargs)
++        _check_binary_obs(obs)
+         self._episode_reward = 0.0
+         self._episode_length = 0
+         return obs, info
+diff --git a/python/examples/train_ppo.py b/python/examples/train_ppo.py
+index 4cefb5d..3903d57 100755
+--- a/python/examples/train_ppo.py
++++ b/python/examples/train_ppo.py
+@@ -49,16 +49,25 @@ def _get_java_home() -> str:
+ 
+ def _build_bridge_dist(project_root: str) -> str:
+     """Build gym-bridge distribution, return path to the launch script."""
+-    script = os.path.join(
+-        project_root, "gym-bridge", "build", "install", "gym-bridge", "bin", "gym-bridge"
+-    )
++    bin_dir = os.path.join(project_root, "gym-bridge", "build", "install", "gym-bridge", "bin")
++    script_name = "gym-bridge.bat" if os.name == "nt" else "gym-bridge"
++    script = os.path.join(bin_dir, script_name)
++    legacy_script = os.path.join(bin_dir, "gym-bridge")
+     if os.path.isfile(script):
+         return script
++    if os.path.isfile(legacy_script):
++        # Gradle startScripts emits both launchers on every OS; the Unix one works as an
++        # existence marker on Windows too (the returned path is unused in jpype mode).
++        return legacy_script
+ 
+     print("Building gym-bridge distribution...")
+-    env = {**os.environ, "JAVA_HOME": _get_java_home()}
++    env = {**os.environ}
++    java_home = _get_java_home()
++    if java_home:
++        env["JAVA_HOME"] = java_home
++    gradlew = os.path.join(project_root, "gradlew.bat" if os.name == "nt" else "gradlew")
+     result = subprocess.run(
+-        [os.path.join(project_root, "gradlew"), ":gym-bridge:installDist", "-q"],
++        [gradlew, ":gym-bridge:installDist", "-q"],
+         cwd=project_root,
+         capture_output=True,
+         text=True,
+@@ -68,7 +77,7 @@ def _build_bridge_dist(project_root: str) -> str:
+         print(f"Build failed:\n{result.stderr}")
+         sys.exit(1)
+     print("Build complete.")
+-    return script
++    return script if os.path.isfile(script) else legacy_script
+ 
+ 
+ def _wait_for_server(endpoint: str, timeout: int = 30) -> bool:
+@@ -135,8 +144,9 @@ def launch_servers(base_port: int, num_envs: int) -> list:
+     processes = []
+     for i in range(num_envs):
+         port = base_port + i
++        cmd = ["cmd", "/c", script, str(port)] if os.name == "nt" else [script, str(port)]
+         proc = subprocess.Popen(
+-            [script, str(port)],
++            cmd,
+             stdout=subprocess.DEVNULL,
+             stderr=subprocess.DEVNULL,
+             env=env,

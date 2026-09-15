@@ -1,0 +1,1048 @@
+{
+ "source": "crforge data patched against noff.gg 2026-09 dump",
+ "note": "xbow tick-damage fields left for L2; unverified cost rows untouched",
+ "changes": [
+  {
+   "card": "Archer",
+   "unit": "Archer",
+   "unit_field": "damage",
+   "from": 44.0,
+   "to": 42.0
+  },
+  {
+   "card": "Archer",
+   "unit": "Archer",
+   "unit_field": "attackCooldown",
+   "from": 0.9,
+   "to": 1.1
+  },
+  {
+   "card": "Goblins",
+   "unit": "Goblin_Stab",
+   "unit_field": "damage",
+   "from": 47.0,
+   "to": 49.0
+  },
+  {
+   "card": "Giant",
+   "unit": "Giant",
+   "unit_field": "health",
+   "from": 1550.0,
+   "to": 1930.0
+  },
+  {
+   "card": "Giant",
+   "unit": "Giant",
+   "unit_field": "damage",
+   "from": 99.0,
+   "to": 120.0
+  },
+  {
+   "card": "Pekka",
+   "unit": "Pekka",
+   "unit_field": "health",
+   "from": 1469.0,
+   "to": 3760.0
+  },
+  {
+   "card": "Pekka",
+   "unit": "Pekka",
+   "unit_field": "damage",
+   "from": 319.0,
+   "to": 510.0
+  },
+  {
+   "card": "Minions",
+   "unit": "Minion",
+   "unit_field": "attackCooldown",
+   "from": 1.2,
+   "to": 1.0
+  },
+  {
+   "card": "Balloon",
+   "unit": "Balloon",
+   "unit_field": "health",
+   "from": 655.0,
+   "to": 1050.0
+  },
+  {
+   "card": "Balloon",
+   "unit": "Balloon",
+   "unit_field": "damage",
+   "from": 250.0,
+   "to": 400.0
+  },
+  {
+   "card": "Witch",
+   "unit": "Witch",
+   "unit_field": "health",
+   "from": 328.0,
+   "to": 524.0
+  },
+  {
+   "card": "Barbarians",
+   "unit": "Barbarian",
+   "unit_field": "health",
+   "from": 262.0,
+   "to": 280.0
+  },
+  {
+   "card": "Barbarians",
+   "unit": "Barbarian",
+   "unit_field": "attackCooldown",
+   "from": 1.3,
+   "to": 1.4
+  },
+  {
+   "card": "Golem",
+   "unit": "Golem",
+   "unit_field": "health",
+   "from": 2000.0,
+   "to": 3200.0
+  },
+  {
+   "card": "Golem",
+   "unit": "Golem",
+   "unit_field": "damage",
+   "from": 122.0,
+   "to": 195.0
+  },
+  {
+   "card": "Valkyrie",
+   "unit": "Valkyrie",
+   "unit_field": "health",
+   "from": 745.0,
+   "to": 900.0
+  },
+  {
+   "card": "Musketeer",
+   "unit": "Musketeer",
+   "unit_field": "health",
+   "from": 282.0,
+   "to": 340.0
+  },
+  {
+   "card": "Musketeer",
+   "unit": "Musketeer",
+   "unit_field": "damage",
+   "from": 85.0,
+   "to": 103.0
+  },
+  {
+   "card": "BabyDragon",
+   "unit": "BabyDragon",
+   "unit_field": "health",
+   "from": 450.0,
+   "to": 1152.0
+  },
+  {
+   "card": "Prince",
+   "unit": "Prince",
+   "unit_field": "health",
+   "from": 750.0,
+   "to": 1200.0
+  },
+  {
+   "card": "Prince",
+   "unit": "Prince",
+   "unit_field": "damage",
+   "from": 153.0,
+   "to": 245.0
+  },
+  {
+   "card": "Wizard",
+   "unit": "Wizard",
+   "unit_field": "health",
+   "from": 295.0,
+   "to": 340.0
+  },
+  {
+   "card": "MiniPekka",
+   "unit": "MiniPekka",
+   "unit_field": "health",
+   "from": 543.0,
+   "to": 657.0
+  },
+  {
+   "card": "MiniPekka",
+   "unit": "MiniPekka",
+   "unit_field": "damage",
+   "from": 295.0,
+   "to": 355.0
+  },
+  {
+   "card": "SpearGoblins",
+   "unit": "SpearGoblin",
+   "unit_field": "attackCooldown",
+   "from": 1.7,
+   "to": 1.6
+  },
+  {
+   "card": "GiantSkeleton",
+   "unit": "GiantSkeleton",
+   "unit_field": "health",
+   "from": 1413.0,
+   "to": 2250.0
+  },
+  {
+   "card": "GiantSkeleton",
+   "unit": "GiantSkeleton",
+   "unit_field": "damage",
+   "from": 108.0,
+   "to": 167.0
+  },
+  {
+   "card": "HogRider",
+   "unit": "HogRider",
+   "unit_field": "health",
+   "from": 663.0,
+   "to": 800.0
+  },
+  {
+   "card": "HogRider",
+   "unit": "HogRider",
+   "unit_field": "damage",
+   "from": 124.0,
+   "to": 150.0
+  },
+  {
+   "card": "IceWizard",
+   "unit": "IceWizard",
+   "unit_field": "health",
+   "from": 269.0,
+   "to": 569.0
+  },
+  {
+   "card": "RoyalGiant",
+   "unit": "RoyalGiant",
+   "unit_field": "health",
+   "from": 1236.0,
+   "to": 1200.0
+  },
+  {
+   "card": "Princess",
+   "unit": "Princess",
+   "unit_field": "health",
+   "from": 102.0,
+   "to": 216.0
+  },
+  {
+   "card": "DarkPrince",
+   "unit": "DarkPrince",
+   "unit_field": "health",
+   "from": 469.0,
+   "to": 750.0
+  },
+  {
+   "card": "ThreeMusketeers",
+   "unit": "ThreeMusketeer_Rework",
+   "unit_field": "health",
+   "from": 345.0,
+   "to": 340.0
+  },
+  {
+   "card": "ThreeMusketeers",
+   "unit": "ThreeMusketeer_Rework",
+   "unit_field": "damage",
+   "from": 80.0,
+   "to": 103.0
+  },
+  {
+   "card": "ThreeMusketeers",
+   "unit": "ThreeMusketeer_Rework",
+   "unit_field": "attackCooldown",
+   "from": 1.3,
+   "to": 1.0
+  },
+  {
+   "card": "LavaHound",
+   "unit": "LavaHound",
+   "unit_field": "health",
+   "from": 1399.0,
+   "to": 3150.0
+  },
+  {
+   "card": "LavaHound",
+   "unit": "LavaHound",
+   "unit_field": "damage",
+   "from": 21.0,
+   "to": 45.0
+  },
+  {
+   "card": "IceSpirits",
+   "unit": "IceSpirits",
+   "unit_field": "health",
+   "from": 90.0,
+   "to": 79.0
+  },
+  {
+   "card": "FireSpirits",
+   "unit": "FireSpirits",
+   "unit_field": "health",
+   "from": 90.0,
+   "to": 84.0
+  },
+  {
+   "card": "FireSpirits",
+   "unit": "FireSpirits",
+   "unit_field": "range",
+   "from": 2.5,
+   "to": 2.0
+  },
+  {
+   "card": "Miner",
+   "unit": "Miner",
+   "unit_field": "health",
+   "from": 473.0,
+   "to": 1000.0
+  },
+  {
+   "card": "Miner",
+   "unit": "Miner",
+   "unit_field": "damage",
+   "from": 76.0,
+   "to": 160.0
+  },
+  {
+   "card": "Miner",
+   "unit": "Miner",
+   "unit_field": "attackCooldown",
+   "from": 1.3,
+   "to": 1.2
+  },
+  {
+   "card": "Bowler",
+   "unit": "Bowler",
+   "unit_field": "health",
+   "from": 813.0,
+   "to": 1300.0
+  },
+  {
+   "card": "BattleRam",
+   "unit": "BattleRam",
+   "unit_field": "health",
+   "from": 378.0,
+   "to": 430.0
+  },
+  {
+   "card": "BattleRam",
+   "unit": "BattleRam",
+   "unit_field": "damage",
+   "from": 112.0,
+   "to": 135.0
+  },
+  {
+   "card": "InfernoDragon",
+   "unit": "InfernoDragon",
+   "unit_field": "health",
+   "from": 506.0,
+   "to": 1070.0
+  },
+  {
+   "card": "MegaMinion",
+   "unit": "MegaMinion",
+   "unit_field": "health",
+   "from": 327.0,
+   "to": 395.0
+  },
+  {
+   "card": "MegaMinion",
+   "unit": "MegaMinion",
+   "unit_field": "damage",
+   "from": 122.0,
+   "to": 147.0
+  },
+  {
+   "card": "MegaMinion",
+   "unit": "MegaMinion",
+   "unit_field": "attackCooldown",
+   "from": 1.5,
+   "to": 1.6
+  },
+  {
+   "card": "BlowdartGoblin",
+   "unit": "BlowdartGoblin",
+   "unit_field": "health",
+   "from": 102.0,
+   "to": 123.0
+  },
+  {
+   "card": "BlowdartGoblin",
+   "unit": "BlowdartGoblin",
+   "unit_field": "damage",
+   "from": 59.0,
+   "to": 72.0
+  },
+  {
+   "card": "BlowdartGoblin",
+   "unit": "BlowdartGoblin",
+   "unit_field": "attackCooldown",
+   "from": 0.8,
+   "to": 0.7
+  },
+  {
+   "card": "ElectroWizard",
+   "unit": "ElectroWizard",
+   "unit_field": "health",
+   "from": 279.0,
+   "to": 590.0
+  },
+  {
+   "card": "Hunter",
+   "unit": "Hunter",
+   "unit_field": "health",
+   "from": 346.0,
+   "to": 524.0
+  },
+  {
+   "card": "AxeMan",
+   "unit": "AxeMan",
+   "unit_field": "health",
+   "from": 500.0,
+   "to": 800.0
+  },
+  {
+   "card": "AxeMan",
+   "unit": "AxeMan",
+   "unit_field": "attackCooldown",
+   "from": 0.9,
+   "to": 2.4
+  },
+  {
+   "card": "RoyalRecruits",
+   "unit": "Recruit",
+   "unit_field": "health",
+   "from": 214.0,
+   "to": 208.0
+  },
+  {
+   "card": "DarkWitch",
+   "unit": "DarkWitch",
+   "unit_field": "health",
+   "from": 354.0,
+   "to": 750.0
+  },
+  {
+   "card": "DarkWitch",
+   "unit": "DarkWitch",
+   "unit_field": "damage",
+   "from": 123.0,
+   "to": 260.0
+  },
+  {
+   "card": "DarkWitch",
+   "unit": "DarkWitch",
+   "unit_field": "attackCooldown",
+   "from": 1.3,
+   "to": 1.5
+  },
+  {
+   "card": "Ghost",
+   "unit": "Ghost",
+   "unit_field": "health",
+   "from": 473.0,
+   "to": 1000.0
+  },
+  {
+   "card": "RamRider",
+   "unit": "Ram",
+   "unit_field": "health",
+   "from": 663.0,
+   "to": 1461.0
+  },
+  {
+   "card": "RamRider",
+   "unit": "Ram",
+   "unit_field": "damage",
+   "from": 98.0,
+   "to": 250.0
+  },
+  {
+   "card": "RamRider",
+   "unit": "Ram",
+   "unit_field": "attackCooldown",
+   "from": 1.7,
+   "to": 1.8
+  },
+  {
+   "card": "MiniSparkys",
+   "unit": "MiniZapMachine",
+   "unit_field": "health",
+   "from": 207.0,
+   "to": 250.0
+  },
+  {
+   "card": "MiniSparkys",
+   "unit": "MiniZapMachine",
+   "unit_field": "damage",
+   "from": 46.0,
+   "to": 55.0
+  },
+  {
+   "card": "MiniSparkys",
+   "unit": "MiniZapMachine",
+   "unit_field": "attackCooldown",
+   "from": 2.1,
+   "to": 2.3
+  },
+  {
+   "card": "MovingCannon",
+   "unit": "MovingCannon",
+   "unit_field": "health",
+   "from": 707.0,
+   "to": 558.0
+  },
+  {
+   "card": "MovingCannon",
+   "unit": "MovingCannon",
+   "unit_field": "damage",
+   "from": 83.0,
+   "to": 133.0
+  },
+  {
+   "card": "MovingCannon",
+   "unit": "MovingCannon",
+   "unit_field": "attackCooldown",
+   "from": 0.9,
+   "to": 1.0
+  },
+  {
+   "card": "MegaKnight",
+   "unit": "MegaKnight",
+   "unit_field": "health",
+   "from": 1560.0,
+   "to": 3300.0
+  },
+  {
+   "card": "Wallbreakers",
+   "unit": "Wallbreaker",
+   "unit_field": "health",
+   "from": 129.0,
+   "to": 207.0
+  },
+  {
+   "card": "RoyalHogs",
+   "unit": "RoyalHog",
+   "unit_field": "health",
+   "from": 327.0,
+   "to": 395.0
+  },
+  {
+   "card": "RoyalHogs",
+   "unit": "RoyalHog",
+   "unit_field": "damage",
+   "from": 29.0,
+   "to": 35.0
+  },
+  {
+   "card": "GoblinGiant",
+   "unit": "GoblinGiant",
+   "unit_field": "health",
+   "from": 1180.0,
+   "to": 1944.0
+  },
+  {
+   "card": "GoblinGiant",
+   "unit": "GoblinGiant",
+   "unit_field": "damage",
+   "from": 69.0,
+   "to": 110.0
+  },
+  {
+   "card": "Fisherman",
+   "unit": "Fisherman",
+   "unit_field": "health",
+   "from": 340.0,
+   "to": 720.0
+  },
+  {
+   "card": "Fisherman",
+   "unit": "Fisherman",
+   "unit_field": "damage",
+   "from": 76.0,
+   "to": 160.0
+  },
+  {
+   "card": "ElectroDragon",
+   "unit": "ElectroDragon",
+   "unit_field": "health",
+   "from": 371.0,
+   "to": 655.0
+  },
+  {
+   "card": "ElectroDragon",
+   "unit": "ElectroDragon",
+   "unit_field": "damage",
+   "from": 75.0,
+   "to": 120.0
+  },
+  {
+   "card": "ElixirGolem",
+   "unit": "ElixirGolem1",
+   "unit_field": "health",
+   "from": 613.0,
+   "to": 680.0
+  },
+  {
+   "card": "ElixirGolem",
+   "unit": "ElixirGolem1",
+   "unit_field": "damage",
+   "from": 99.0,
+   "to": 120.0
+  },
+  {
+   "card": "ElixirGolem",
+   "unit": "ElixirGolem1",
+   "unit_field": "attackCooldown",
+   "from": 1.1,
+   "to": 1.3
+  },
+  {
+   "card": "BattleHealer",
+   "unit": "BattleHealer",
+   "unit_field": "health",
+   "from": 671.0,
+   "to": 907.0
+  },
+  {
+   "card": "BattleHealer",
+   "unit": "BattleHealer",
+   "unit_field": "damage",
+   "from": 58.0,
+   "to": 126.0
+  },
+  {
+   "card": "BattleHealer",
+   "unit": "BattleHealer",
+   "unit_field": "attackCooldown",
+   "from": 1.5,
+   "to": 2.0
+  },
+  {
+   "card": "SkeletonDragons",
+   "unit": "SkeletonDragon",
+   "unit_field": "health",
+   "from": 219.0,
+   "to": 208.0
+  },
+  {
+   "card": "SkeletonDragons",
+   "unit": "SkeletonDragon",
+   "unit_field": "attackCooldown",
+   "from": 1.9,
+   "to": 2.0
+  },
+  {
+   "card": "WitchMother",
+   "unit": "WitchMother",
+   "unit_field": "health",
+   "from": 207.0,
+   "to": 440.0
+  },
+  {
+   "card": "WitchMother",
+   "unit": "WitchMother",
+   "unit_field": "damage",
+   "from": 52.0,
+   "to": 110.0
+  },
+  {
+   "card": "WitchMother",
+   "unit": "WitchMother",
+   "unit_field": "attackCooldown",
+   "from": 1.0,
+   "to": 1.1
+  },
+  {
+   "card": "ElectroSpirit",
+   "unit": "ElectroSpirit",
+   "unit_field": "health",
+   "from": 90.0,
+   "to": 84.0
+  },
+  {
+   "card": "ElectroGiant",
+   "unit": "ElectroGiant",
+   "unit_field": "health",
+   "from": 1506.0,
+   "to": 2210.0
+  },
+  {
+   "card": "ElectroGiant",
+   "unit": "ElectroGiant",
+   "unit_field": "damage",
+   "from": 64.0,
+   "to": 115.0
+  },
+  {
+   "card": "Phoenix",
+   "unit": "Phoenix",
+   "unit_field": "health",
+   "from": 411.0,
+   "to": 870.0
+  },
+  {
+   "card": "Phoenix",
+   "unit": "Phoenix",
+   "unit_field": "damage",
+   "from": 85.0,
+   "to": 179.0
+  },
+  {
+   "card": "GoblinDemolisher",
+   "unit": "GoblinDemolisher",
+   "unit_field": "health",
+   "from": 508.0,
+   "to": 1300.0
+  },
+  {
+   "card": "GoblinMachine",
+   "unit": "GoblinMachine",
+   "unit_field": "health",
+   "from": 840.0,
+   "to": 1875.0
+  },
+  {
+   "card": "GoblinMachine",
+   "unit": "GoblinMachine",
+   "unit_field": "damage",
+   "from": 83.0,
+   "to": 192.0
+  },
+  {
+   "card": "SuspiciousBush",
+   "unit": "SuspiciousBush",
+   "unit_field": "health",
+   "from": 32.0,
+   "to": 38.0
+  },
+  {
+   "card": "SuspiciousBush",
+   "unit": "SuspiciousBush",
+   "unit_field": "speed",
+   "from": 60.0,
+   "to": 45.0
+  },
+  {
+   "card": "GiantBuffer",
+   "unit": "GiantBuffer",
+   "unit_field": "health",
+   "from": 1040.0,
+   "to": 1760.0
+  },
+  {
+   "card": "GiantBuffer",
+   "unit": "GiantBuffer",
+   "unit_field": "damage",
+   "from": 47.0,
+   "to": 95.0
+  },
+  {
+   "card": "Berserker",
+   "unit": "Berserker",
+   "unit_field": "health",
+   "from": 350.0,
+   "to": 832.0
+  },
+  {
+   "card": "Berserker",
+   "unit": "Berserker",
+   "unit_field": "damage",
+   "from": 0.0,
+   "to": 102.0
+  },
+  {
+   "card": "MightyMiner",
+   "unit": "MightyMiner",
+   "unit_field": "health",
+   "from": 879.0,
+   "to": 2400.0
+  },
+  {
+   "card": "MightyMiner",
+   "unit": "MightyMiner",
+   "unit_field": "speed",
+   "from": 60.0,
+   "to": 90.0
+  },
+  {
+   "card": "SkeletonKing",
+   "unit": "SkeletonKing",
+   "unit_field": "health",
+   "from": 898.0,
+   "to": 2300.0
+  },
+  {
+   "card": "ArcherQueen",
+   "unit": "ArcherQueen",
+   "unit_field": "health",
+   "from": 391.0,
+   "to": 1000.0
+  },
+  {
+   "card": "ArcherQueen",
+   "unit": "ArcherQueen",
+   "unit_field": "damage",
+   "from": 88.0,
+   "to": 232.0
+  },
+  {
+   "card": "GoldenKnight",
+   "unit": "GoldenKnight",
+   "unit_field": "health",
+   "from": 703.0,
+   "to": 2000.0
+  },
+  {
+   "card": "GoldenKnight",
+   "unit": "GoldenKnight",
+   "unit_field": "damage",
+   "from": 63.0,
+   "to": 160.0
+  },
+  {
+   "card": "Monk",
+   "unit": "Monk",
+   "unit_field": "health",
+   "from": 865.0,
+   "to": 2000.0
+  },
+  {
+   "card": "Monk",
+   "unit": "Monk",
+   "unit_field": "damage",
+   "from": 55.0,
+   "to": 140.0
+  },
+  {
+   "card": "Monk",
+   "unit": "Monk",
+   "unit_field": "attackCooldown",
+   "from": 0.8,
+   "to": 0.9
+  },
+  {
+   "card": "LittlePrince",
+   "unit": "LittlePrince",
+   "unit_field": "health",
+   "from": 273.0,
+   "to": 700.0
+  },
+  {
+   "card": "LittlePrince",
+   "unit": "LittlePrince",
+   "unit_field": "damage",
+   "from": 41.0,
+   "to": 104.0
+  },
+  {
+   "card": "Goblinstein",
+   "unit": "goblinstein",
+   "unit_field": "health",
+   "from": 932.0,
+   "to": 721.0
+  },
+  {
+   "card": "Goblinstein",
+   "unit": "goblinstein",
+   "unit_field": "damage",
+   "from": 50.0,
+   "to": 135.0
+  },
+  {
+   "card": "Goblinstein",
+   "unit": "goblinstein",
+   "unit_field": "attackCooldown",
+   "from": 1.5,
+   "to": 1.8
+  },
+  {
+   "card": "Goblinstein",
+   "unit": "goblinstein",
+   "unit_field": "range",
+   "from": 1.2,
+   "to": 5.5
+  },
+  {
+   "card": "BossBandit",
+   "unit": "BossBandit",
+   "unit_field": "health",
+   "from": 1025.0,
+   "to": 2624.0
+  },
+  {
+   "card": "BossBandit",
+   "unit": "BossBandit",
+   "unit_field": "damage",
+   "from": 96.0,
+   "to": 245.0
+  },
+  {
+   "card": "Cannon",
+   "unit": "Cannon",
+   "unit_field": "health",
+   "from": 322.0,
+   "to": 350.0
+  },
+  {
+   "card": "Cannon",
+   "unit": "Cannon",
+   "unit_field": "damage",
+   "from": 83.0,
+   "to": 202.0
+  },
+  {
+   "card": "Cannon",
+   "unit": "Cannon",
+   "unit_field": "attackCooldown",
+   "from": 1.0,
+   "to": 0.9
+  },
+  {
+   "card": "GoblinHut_Rework",
+   "unit": "GoblinHut_Rework",
+   "unit_field": "health",
+   "from": 461.0,
+   "to": 557.0
+  },
+  {
+   "card": "Mortar",
+   "unit": "Mortar",
+   "unit_field": "attackCooldown",
+   "from": 5.0,
+   "to": 4.7
+  },
+  {
+   "card": "InfernoTower",
+   "unit": "InfernoTower",
+   "unit_field": "health",
+   "from": 683.0,
+   "to": 825.0
+  },
+  {
+   "card": "BombTower",
+   "unit": "BombTower",
+   "unit_field": "health",
+   "from": 530.0,
+   "to": 640.0
+  },
+  {
+   "card": "BombTower",
+   "unit": "BombTower",
+   "unit_field": "attackCooldown",
+   "from": 1.8,
+   "to": 1.6
+  },
+  {
+   "card": "BarbarianHut",
+   "unit": "BarbarianHut",
+   "unit_field": "health",
+   "from": 455.0,
+   "to": 550.0
+  },
+  {
+   "card": "Tesla",
+   "unit": "Tesla",
+   "unit_field": "health",
+   "from": 450.0,
+   "to": 462.0
+  },
+  {
+   "card": "Tesla",
+   "unit": "Tesla",
+   "unit_field": "damage",
+   "from": 86.0,
+   "to": 90.0
+  },
+  {
+   "card": "Tesla",
+   "unit": "Tesla",
+   "unit_field": "attackCooldown",
+   "from": 1.1,
+   "to": 1.2
+  },
+  {
+   "card": "ElixirCollector",
+   "unit": "ElixirCollector",
+   "unit_field": "health",
+   "from": 418.0,
+   "to": 505.0
+  },
+  {
+   "card": "Xbow",
+   "unit": "Xbow",
+   "unit_field": "health",
+   "from": 625.0,
+   "to": 1000.0
+  },
+  {
+   "card": "Tombstone",
+   "unit": "Tombstone",
+   "unit_field": "health",
+   "from": 207.0,
+   "to": 250.0
+  },
+  {
+   "card": "GoblinCage",
+   "unit": "GoblinCage",
+   "unit_field": "health",
+   "from": 305.0,
+   "to": 350.0
+  },
+  {
+   "card": "GoblinDrill",
+   "unit": "GoblinDrill",
+   "unit_field": "health",
+   "from": 513.0,
+   "to": 900.0
+  },
+  {
+   "card": "GoblinPartyHut",
+   "unit": "GoblinPartyHut",
+   "unit_field": "health",
+   "from": 461.0,
+   "to": 557.0
+  },
+  {
+   "card": "SkeletonContainerNew",
+   "unit": "SkeletonContainerNew",
+   "unit_field": "health",
+   "from": 0.0,
+   "to": 208.0
+  },
+  {
+   "card": "SkeletonContainerNew",
+   "unit": "SkeletonContainerNew",
+   "unit_field": "speed",
+   "from": 0.0,
+   "to": 90.0
+  },
+  {
+   "card": "SkeletonContainerNew",
+   "card_field": "cost",
+   "from": 0,
+   "to": 3,
+   "reason": "placeholder 0; verified 3 (Olsen + reference)"
+  }
+ ],
+ "conflicts": [
+  {
+   "unit": "Skeleton",
+   "skipped_card": "SkeletonArmy",
+   "kept_writer": "Skeletons",
+   "reason": "shared unit; canonical/first writer kept"
+  },
+  {
+   "unit": "Minion",
+   "skipped_card": "MinionHorde",
+   "kept_writer": "Minions",
+   "reason": "shared unit; canonical/first writer kept"
+  },
+  {
+   "unit": "Goblin_Stab",
+   "skipped_card": "GoblinGang",
+   "kept_writer": "Goblins",
+   "reason": "shared unit; canonical/first writer kept"
+  }
+ ]
+}

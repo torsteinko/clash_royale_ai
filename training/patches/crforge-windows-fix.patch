@@ -1,0 +1,55 @@
+diff --git a/python/examples/train_ppo.py b/python/examples/train_ppo.py
+index 4cefb5d..3903d57 100755
+--- a/python/examples/train_ppo.py
++++ b/python/examples/train_ppo.py
+@@ -49,16 +49,25 @@ def _get_java_home() -> str:
+ 
+ def _build_bridge_dist(project_root: str) -> str:
+     """Build gym-bridge distribution, return path to the launch script."""
+-    script = os.path.join(
+-        project_root, "gym-bridge", "build", "install", "gym-bridge", "bin", "gym-bridge"
+-    )
++    bin_dir = os.path.join(project_root, "gym-bridge", "build", "install", "gym-bridge", "bin")
++    script_name = "gym-bridge.bat" if os.name == "nt" else "gym-bridge"
++    script = os.path.join(bin_dir, script_name)
++    legacy_script = os.path.join(bin_dir, "gym-bridge")
+     if os.path.isfile(script):
+         return script
++    if os.path.isfile(legacy_script):
++        # Gradle startScripts emits both launchers on every OS; the Unix one works as an
++        # existence marker on Windows too (the returned path is unused in jpype mode).
++        return legacy_script
+ 
+     print("Building gym-bridge distribution...")
+-    env = {**os.environ, "JAVA_HOME": _get_java_home()}
++    env = {**os.environ}
++    java_home = _get_java_home()
++    if java_home:
++        env["JAVA_HOME"] = java_home
++    gradlew = os.path.join(project_root, "gradlew.bat" if os.name == "nt" else "gradlew")
+     result = subprocess.run(
+-        [os.path.join(project_root, "gradlew"), ":gym-bridge:installDist", "-q"],
++        [gradlew, ":gym-bridge:installDist", "-q"],
+         cwd=project_root,
+         capture_output=True,
+         text=True,
+@@ -68,7 +77,7 @@ def _build_bridge_dist(project_root: str) -> str:
+         print(f"Build failed:\n{result.stderr}")
+         sys.exit(1)
+     print("Build complete.")
+-    return script
++    return script if os.path.isfile(script) else legacy_script
+ 
+ 
+ def _wait_for_server(endpoint: str, timeout: int = 30) -> bool:
+@@ -135,8 +144,9 @@ def launch_servers(base_port: int, num_envs: int) -> list:
+     processes = []
+     for i in range(num_envs):
+         port = base_port + i
++        cmd = ["cmd", "/c", script, str(port)] if os.name == "nt" else [script, str(port)]
+         proc = subprocess.Popen(
+-            [script, str(port)],
++            cmd,
+             stdout=subprocess.DEVNULL,
+             stderr=subprocess.DEVNULL,
+             env=env,

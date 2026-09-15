@@ -5,9 +5,14 @@ import torch
 import torch.nn as nn
 from torchvision import models, transforms
 import subprocess
-import win32gui
-import win32ui
-import win32con
+try:  # win32 window capture is only available on Windows (MEmu workflow)
+    import win32gui
+    import win32ui
+    import win32con
+
+    _HAVE_WIN32 = True
+except ImportError:  # Linux/headless -> use the ADB screencap backend below
+    _HAVE_WIN32 = False
 from PIL import Image
 from pathlib import Path
 import sys
@@ -262,6 +267,8 @@ def get_adb_devices():
 
 def find_memu_windows():
     windows = []
+    if not _HAVE_WIN32:
+        return windows
 
     def enum_handler(hwnd, ctx):
         if win32gui.IsWindowVisible(hwnd):
@@ -274,6 +281,8 @@ def find_memu_windows():
 
 
 def capture_background_window(hwnd):
+    if not _HAVE_WIN32:
+        return None
     try:
         rect = win32gui.GetWindowRect(hwnd)
         w_total = rect[2] - rect[0]
@@ -482,14 +491,22 @@ def main():
 
     adb_devices = get_adb_devices()
     windows = find_memu_windows()
-    if not windows or not adb_devices:
-        print("❌ Devices or Windows missing!")
+
+    if not adb_devices:
+        print("❌ No ADB devices found (start the emulator and enable ADB)!")
         return
 
-    print("\nSelect the WINDOW to capture (visuals):")
-    for i, (hwnd, title) in enumerate(windows):
-        print(f"  {i}: {title}")
-    selected_hwnd, selected_title = windows[int(input("Enter ID: "))]
+    if windows:
+        print("\nSelect the WINDOW to capture (visuals):")
+        for i, (hwnd, title) in enumerate(windows):
+            print(f"  {i}: {title}")
+        selected_hwnd, selected_title = windows[int(input("Enter ID: "))]
+        use_window_capture = True
+    else:
+        # No MEmu window (headless/Linux) -> capture straight from the device.
+        selected_hwnd, selected_title = None, "adb-screencap"
+        use_window_capture = False
+        print("\nℹ️  No MEmu windows found -- using ADB screencap capture.")
 
     print("\nSelect the ADB DEVICE to control (clicks):")
     for i, dev in enumerate(adb_devices):
@@ -503,7 +520,12 @@ def main():
 
     while True:
         try:
-            img_bgr = capture_background_window(selected_hwnd)
+            if use_window_capture:
+                img_bgr = capture_background_window(selected_hwnd)
+            else:
+                from detection.adb_capture import capture_adb
+
+                img_bgr = capture_adb(selected_serial)
             if img_bgr is None:
                 time.sleep(1)
                 continue

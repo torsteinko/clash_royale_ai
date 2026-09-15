@@ -1,0 +1,49 @@
+diff --git a/core/src/main/java/org/crforge/core/engine/GameEngine.java b/core/src/main/java/org/crforge/core/engine/GameEngine.java
+index d8a06c0..0eb41cb 100644
+--- a/core/src/main/java/org/crforge/core/engine/GameEngine.java
++++ b/core/src/main/java/org/crforge/core/engine/GameEngine.java
+@@ -303,6 +303,9 @@ public class GameEngine {
+       }
+       match.setWinner(winner);
+     }
++    // Propagate time-limit decisions (crowns / tower-health tiebreaker) to the game state so
++    // the reward calculator and telemetry see the result instead of reporting a draw.
++    gameState.markFinished(winner);
+   }
+ 
+   /** Spawn an entity into the game. */
+diff --git a/core/src/main/java/org/crforge/core/engine/GameState.java b/core/src/main/java/org/crforge/core/engine/GameState.java
+index 3f2f85a..e649dea 100644
+--- a/core/src/main/java/org/crforge/core/engine/GameState.java
++++ b/core/src/main/java/org/crforge/core/engine/GameState.java
+@@ -165,6 +165,17 @@ public class GameState {
+     }
+   }
+ 
++  /**
++   * Marks the game as finished with the given winner (null = draw). Used for time-limit decisions
++   * (regular-time crowns, overtime crowns, overtime tower-health tiebreaker), which previously only
++   * marked the Match — making the bridge reward/telemetry report them as draws even though a winner
++   * was decided.
++   */
++  public void markFinished(Team winner) {
++    this.gameOver = true;
++    this.winner = winner;
++  }
++
+   public void incrementFrame() {
+     frameCount++;
+   }
+diff --git a/python/crforge_gym/env.py b/python/crforge_gym/env.py
+index b953a5a..3042d3d 100644
+--- a/python/crforge_gym/env.py
++++ b/python/crforge_gym/env.py
+@@ -547,7 +547,7 @@ class CRForgeEnv(gym.Env):
+ 
+         if self._rule_based_opponent is None:
+             self._rule_based_opponent = RuleBasedOpponent(rng=self._rng)
+-        return self._rule_based_opponent.act(self._last_obs_raw, player="red")
++        return self._rule_based_opponent.act(self._last_obs_raw, player="red", obs_flat=self._last_obs_flat)
+ 
+     def _parse_observation(self, obs_raw: dict) -> dict[str, np.ndarray]:
+         return parse_observation(obs_raw)

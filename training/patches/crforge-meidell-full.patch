@@ -1,0 +1,1507 @@
+diff --git a/core/src/main/java/org/crforge/core/engine/GameEngine.java b/core/src/main/java/org/crforge/core/engine/GameEngine.java
+index d8a06c0..0eb41cb 100644
+--- a/core/src/main/java/org/crforge/core/engine/GameEngine.java
++++ b/core/src/main/java/org/crforge/core/engine/GameEngine.java
+@@ -303,6 +303,9 @@ public class GameEngine {
+       }
+       match.setWinner(winner);
+     }
++    // Propagate time-limit decisions (crowns / tower-health tiebreaker) to the game state so
++    // the reward calculator and telemetry see the result instead of reporting a draw.
++    gameState.markFinished(winner);
+   }
+ 
+   /** Spawn an entity into the game. */
+diff --git a/core/src/main/java/org/crforge/core/engine/GameState.java b/core/src/main/java/org/crforge/core/engine/GameState.java
+index 3f2f85a..e649dea 100644
+--- a/core/src/main/java/org/crforge/core/engine/GameState.java
++++ b/core/src/main/java/org/crforge/core/engine/GameState.java
+@@ -165,6 +165,17 @@ public class GameState {
+     }
+   }
+ 
++  /**
++   * Marks the game as finished with the given winner (null = draw). Used for time-limit decisions
++   * (regular-time crowns, overtime crowns, overtime tower-health tiebreaker), which previously only
++   * marked the Match — making the bridge reward/telemetry report them as draws even though a winner
++   * was decided.
++   */
++  public void markFinished(Team winner) {
++    this.gameOver = true;
++    this.winner = winner;
++  }
++
+   public void incrementFrame() {
+     frameCount++;
+   }
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java b/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java
+index 3d758dd..9c4af32 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/BridgeServer.java
+@@ -4,10 +4,17 @@ import org.crforge.bridge.protocol.ZmqTransport;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
++import java.util.ArrayList;
++import java.util.List;
++
+ /**
+- * Entry point for the gym-bridge server. Binds a ZMQ PAIR socket and runs a session loop.
++ * Entry point for the gym-bridge server. Binds one ZMQ PAIR socket per session and runs a
++ * session loop per port.
+  *
+- * <p>Usage: java -jar gym-bridge.jar [port] Default port: 9876
++ * <p>Usage: java -jar gym-bridge.jar [basePort] [numSessions] Default: 9876, 1. With
++ * numSessions &gt; 1, one JVM hosts several independent game sessions (ports basePort ..
++ * basePort+numSessions-1), one thread each. Game logic per session is unchanged; this only
++ * reduces the process/context-switch overhead per game.
+  */
+ public class BridgeServer {
+ 
+@@ -24,28 +31,86 @@ public class BridgeServer {
+         System.exit(1);
+       }
+     }
++    int sessions = 1;
++    if (args.length > 1) {
++      try {
++        sessions = Integer.parseInt(args[1]);
++      } catch (NumberFormatException e) {
++        log.error("Invalid session count: {}", args[1]);
++        System.exit(1);
++      }
++    }
+ 
+-    String endpoint = "tcp://*:" + port;
+-    log.info("Starting CRForge Bridge Server on {}", endpoint);
++    log.info(
++        "Starting CRForge Bridge Server: {} session(s) on ports {}-{}",
++        sessions, port, port + sessions - 1);
+ 
+     // Force CardRegistry static initialization before accepting connections
+     log.info(
+         "Loading card registry ({} cards)...",
+         org.crforge.data.card.CardRegistry.getAllIds().size());
+ 
+-    try (ZmqTransport transport = new ZmqTransport(endpoint)) {
+-      transport.bind();
++    if (sessions <= 1) {
++      runServerLoop(port);
++      return;
++    }
+ 
+-      // Run session loop -- reconnects automatically after client disconnects
+-      while (true) {
+-        log.info("Waiting for client connection on port {}...", port);
++    List<Thread> threads = new ArrayList<>();
++    for (int i = 0; i < sessions; i++) {
++      final int p = port + i;
++      Thread t = new Thread(() -> runServerLoop(p), "bridge-session-" + p);
++      t.start();
++      threads.add(t);
++    }
++    for (Thread t : threads) {
++      try {
++        t.join();
++      } catch (InterruptedException ie) {
++        Thread.currentThread().interrupt();
++      }
++    }
++  }
++
++  private static void runServerLoop(int port) {
++    String endpoint = "tcp://*:" + port;
++    // Optional unix-socket transport (lower round-trip latency on loopback):
++    //   BRIDGE_TRANSPORT=ipc -> binds ipc:///tmp/gym-bridge-<port>
++    if ("ipc".equals(System.getenv("BRIDGE_TRANSPORT"))) {
++      endpoint = "ipc:///tmp/gym-bridge-" + port;
++    }
++
++    // One fresh PAIR socket + context per session: reusing a socket across
++    // sessions leaves stale peer/connection state behind, and the next client's
++    // handshake can then hang indefinitely (workers stuck in init, no messages
++    // reaching the server). A clean socket per session removes that whole class.
++    while (true) {
++      log.info("Waiting for client connection on port {}...", port);
++      try (ZmqTransport transport = new ZmqTransport(endpoint)) {
++        boolean bound = false;
++        for (int attempt = 0; attempt < 10 && !bound; attempt++) {
++          try {
++            transport.bind();
++            bound = true;
++          } catch (Exception be) {
++            log.warn("Bind attempt {} failed on port {}: {}", attempt + 1, port, be.toString());
++            try {
++              Thread.sleep(200);
++            } catch (InterruptedException ie) {
++              Thread.currentThread().interrupt();
++            }
++          }
++        }
++        if (!bound) {
++          log.error("Could not bind {} after retries", endpoint);
++          System.exit(1);
++        }
+         BridgeSession session = new BridgeSession(transport);
+         session.run();
+-        log.info("Session ended, ready for next connection");
++      } catch (Exception e) {
++        log.error("Bridge server error on port " + port, e);
++        System.exit(1);
+       }
+-    } catch (Exception e) {
+-      log.error("Bridge server error", e);
+-      System.exit(1);
++      log.info("Session ended on port {}, ready for next connection", port);
+     }
+   }
+ }
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java b/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java
+index 75fb920..4917cfc 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/BridgeSession.java
+@@ -60,7 +60,14 @@ public class BridgeSession {
+           case "step" -> handleStep(data);
+           case "close" -> {
+             log.info("Client requested close");
+-            transport.send("close_ok", null);
++            // Best-effort ack: the peer may already be gone, so a failed (or timed
++            // out) send must never prevent the session from ending — that wedge left
++            // servers stuck forever with no "Session ended" line.
++            try {
++              transport.send("close_ok", null);
++            } catch (Exception e) {
++              log.debug("close_ok not delivered: {}", e.toString());
++            }
+             return;
+           }
+           default -> {
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java b/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
+index dae6c93..ea7aea3 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/observation/BinaryObservationEncoder.java
+@@ -23,7 +23,7 @@ import org.crforge.data.card.CardRegistry;
+  * Encodes observations as a flat float32 array sent as raw bytes. Pre-allocates buffers and writes
+  * directly from entity/player/state fields with no DTO allocations.
+  *
+- * <p>Float layout (1079 values):
++ * <p>Float layout (1094 values):
+  *
+  * <pre>
+  * Offset  Count  Field
+@@ -42,6 +42,9 @@ import org.crforge.data.card.CardRegistry;
+  * 46      1024   entities (64 x 16 features, zero-padded)
+  * 1070    1      num_entities
+  * 1071    8      lane_summary
++ * 1079    15     red hand (costs 4, types 4, ids 4, next 3) -- same layout as the blue
++ *                 hand block at 7; lets the Python mirror give red ITS OWN hand in
++ *                 binary self-play (each side zeroes the other's block before use).
+  * </pre>
+  */
+ public class BinaryObservationEncoder {
+@@ -56,7 +59,7 @@ public class BinaryObservationEncoder {
+   private static final int ENTITY_FEATURES = 16;
+ 
+   // Total floats in the observation
+-  public static final int OBS_FLOATS = 1079;
++  public static final int OBS_FLOATS = 1094;
+   public static final int OBS_BYTES = OBS_FLOATS * 4;
+ 
+   // Lane summary normalization
+@@ -120,7 +123,7 @@ public class BinaryObservationEncoder {
+    * 9       byte       truncated (0/1)
+    * 10      byte       blueActionFailed (0/1)
+    * 11      byte       redActionFailed (0/1)
+-   * 12      float32[]  observation (1079 floats)
++   * 12      float32[]  observation (1094 floats)
+    * </pre>
+    */
+   public byte[] encodeStepResult(
+@@ -378,6 +381,34 @@ public class BinaryObservationEncoder {
+     obs[laneIdx + 5] = Math.min(rightFriendlyHp / MAX_LANE_HP, 1f);
+     obs[laneIdx + 6] = (blueElixir - redElixir) / 10f;
+     obs[laneIdx + 7] = (float) (friendlyCount - enemyCount) / MAX_ENTITIES;
++
++    // Red hand block at offset 1079 (costs 4, types 4, ids 4, next 3). Mirrors the blue
++    // hand layout at offset 7 so the Python side can give red its own hand in binary
++    // self-play. Consumers must zero the block they should not see (see env.py).
++    int redIdx = 1079;
++    Hand redHand = redPlayer.getHand();
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? card.getCost() / 10f : 0f;
++    }
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? cardTypeToFloat(card.getType()) : 0f;
++    }
++    for (int i = 0; i < Hand.HAND_SIZE; i++) {
++      Card card = redHand.getCard(i);
++      obs[redIdx++] = card != null ? CardRegistry.getIndex(card.getId()) : -1f;
++    }
++    Card redNext = redHand.getNextCard();
++    if (redNext != null) {
++      obs[redIdx++] = redNext.getCost() / 10f;
++      obs[redIdx++] = cardTypeToFloat(redNext.getType());
++      obs[redIdx] = CardRegistry.getIndex(redNext.getId());
++    } else {
++      obs[redIdx++] = 0f;
++      obs[redIdx++] = 0f;
++      obs[redIdx] = -1f;
++    }
+   }
+ 
+   /** Encodes up to 3 towers for a team into the obs buffer. Returns the updated index. */
+diff --git a/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java b/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java
+index e247787..0b8b36b 100644
+--- a/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java
++++ b/gym-bridge/src/main/java/org/crforge/bridge/protocol/ZmqTransport.java
+@@ -29,6 +29,11 @@ public class ZmqTransport implements Closeable {
+     this.mapper = new ObjectMapper();
+     this.context = new ZContext();
+     this.socket = context.createSocket(SocketType.PAIR);
++    // Never block forever on a dying peer: a send that cannot be delivered within
++    // this window returns false instead of wedging the session loop. Also cap the
++    // close-time linger so context shutdown can't stall on undeliverable frames.
++    socket.setSendTimeOut(5000);
++    socket.setLinger(2000);
+   }
+ 
+   /** Binds the socket as a server. */
+diff --git a/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java b/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
+index e7e49e7..8665058 100644
+--- a/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
++++ b/gym-bridge/src/test/java/org/crforge/bridge/observation/BinaryObservationEncoderTest.java
+@@ -213,6 +213,26 @@ class BinaryObservationEncoderTest {
+     assertThat(obs1.length).isEqualTo(obs2.length);
+   }
+ 
++  @Test
++  void redHandBlockMatchesJsonObservation() {
++    ObservationDTO json = ObservationBuilder.build(engine, bluePlayer, redPlayer);
++    float[] obs = decodeObs(encoder.encodeObservation(engine, bluePlayer, redPlayer));
++
++    // Red hand block at 1079: costs (4) / types (4) / ids (4) / next card (3)
++    PlayerObsDTO redObs = json.redPlayer();
++    List<HandCardDTO> hand = redObs.hand();
++    for (int i = 0; i < hand.size(); i++) {
++      HandCardDTO card = hand.get(i);
++      assertThat(obs[1079 + i]).isCloseTo(card.cost() / 10f, offset(0.01f));
++      assertThat(obs[1079 + 8 + i]).isCloseTo(card.cardIndex(), offset(0.01f));
++    }
++    HandCardDTO next = redObs.nextCard();
++    if (next != null) {
++      assertThat(obs[1091]).isCloseTo(next.cost() / 10f, offset(0.01f));
++      assertThat(obs[1093]).isCloseTo(next.cardIndex(), offset(0.01f));
++    }
++  }
++
+   private float[] decodeObs(byte[] bytes) {
+     ByteBuffer buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+     float[] result = new float[BinaryObservationEncoder.OBS_FLOATS];
+diff --git a/python/crforge_gym/bridge.py b/python/crforge_gym/bridge.py
+index 8bb4297..aeafbbc 100644
+--- a/python/crforge_gym/bridge.py
++++ b/python/crforge_gym/bridge.py
+@@ -51,7 +51,14 @@ class BridgeClient:
+         ticks_per_step: int = 1,
+         seed: int | None = None,
+     ) -> dict[str, Any]:
+-        """Initialize a match on the server."""
++        """Initialize a match on the server (with retry on the PAIR startup race).
++
++        The ZMQ PAIR handshake can occasionally get lost while a JVM is still
++        warming up (or right after another client closed); without a retry this
++        hangs the calling worker forever. On timeout: reconnect and resend.
++        """
++        import time as _time
++
+         data = {
+             "blueDeck": blue_deck,
+             "redDeck": red_deck,
+@@ -61,11 +68,28 @@ class BridgeClient:
+         }
+         if seed is not None:
+             data["seed"] = seed
+-        self.send("init", data)
+-        response = self.receive()
+-        if response.get("type") == "error":
+-            raise RuntimeError(f"Init failed: {response.get('message')}")
+-        return response
++
++        last_error: Exception | None = None
++        for attempt in range(5):
++            try:
++                if not self._connected:
++                    self.connect()
++                self.socket.setsockopt(zmq.RCVTIMEO, 60000)
++                self.send("init", data)
++                response = self.receive()
++                if response.get("type") == "error":
++                    raise RuntimeError(f"Init failed: {response.get('message')}")
++                return response
++            except zmq.Again as exc:  # recv timed out: stale/lost handshake
++                last_error = exc
++                try:
++                    self.socket.close(linger=0)
++                except Exception:
++                    pass
++                self.socket = self.context.socket(zmq.PAIR)  # fresh socket for retry
++                self._connected = False
++                _time.sleep(3.0)
++        raise RuntimeError(f"Init failed after 5 attempts: {last_error!r}")
+ 
+     def reset(self, seed: int | None = None) -> dict[str, Any] | np.ndarray:
+         """Reset the match and get initial observation.
+@@ -74,7 +98,8 @@ class BridgeClient:
+             seed: optional seed override for deterministic deck shuffling
+ 
+         Returns:
+-            In binary mode: flat float32 numpy array (1079 values).
++            In binary mode: flat float32 numpy array (1094 values:
++                1079 base floats + a 15-float red-hand block appended at 1079).
+             In JSON mode: raw observation dict from server.
+         """
+         data = {}
+@@ -91,18 +116,12 @@ class BridgeClient:
+             raise RuntimeError(f"Reset failed: {response.get('message')}")
+         return response.get("data", {})
+ 
+-    def step(
++    def send_step(
+         self,
+         blue_action: dict | None = None,
+         red_action: dict | None = None,
+-    ) -> dict[str, Any] | tuple[np.ndarray, float, float, bool, bool, bool, bool]:
+-        """Submit actions for both players and advance the simulation.
+-
+-        Returns:
+-            In binary mode: tuple of (obs_array, blue_reward, red_reward,
+-                terminated, truncated, blue_action_failed, red_action_failed).
+-            In JSON mode: raw step result dict from server.
+-        """
++    ) -> None:
++        """Send one step request WITHOUT waiting for the reply (pipelining)."""
+         self.send(
+             "step",
+             {
+@@ -111,6 +130,14 @@ class BridgeClient:
+             },
+         )
+ 
++    def recv_step(
++        self,
++    ) -> dict[str, Any] | tuple[np.ndarray, float, float, bool, bool, bool, bool]:
++        """Receive the step result for the last send_step() on this socket.
++
++        Returns (binary mode): tuple of (obs_array, blue_reward, red_reward,
++        terminated, truncated, blue_action_failed, red_action_failed).
++        """
+         if self.binary_obs:
+             raw = self.socket.recv()
+             # Header: 2 floats (rewards) + 4 bytes (flags) = 12 bytes
+@@ -127,16 +154,37 @@ class BridgeClient:
+             raise RuntimeError(f"Step failed: {response.get('message')}")
+         return response.get("data", {})
+ 
++    def step(
++        self,
++        blue_action: dict | None = None,
++        red_action: dict | None = None,
++    ) -> dict[str, Any] | tuple[np.ndarray, float, float, bool, bool, bool, bool]:
++        """Submit actions for both players and advance the simulation.
++
++        Returns:
++            In binary mode: tuple of (obs_array, blue_reward, red_reward,
++                terminated, truncated, blue_action_failed, red_action_failed).
++            In JSON mode: raw step result dict from server.
++        """
++        self.send_step(blue_action=blue_action, red_action=red_action)
++        return self.recv_step()
++
+     def close(self) -> None:
+-        """Send close message and disconnect."""
++        """Send close message and disconnect (bounded: never blocks on a dead peer)."""
+         if self._connected:
+             try:
+                 self.send("close")
+-                self.receive()  # wait for close_ok
++                self.receive()  # wait for close_ok (RCVTIMEO applies)
++            except Exception:
++                pass
++            try:
++                self.socket.close(linger=1000)
++            except Exception:
++                pass
++            try:
++                self.context.term()
+             except Exception:
+                 pass
+-            self.socket.close()
+-            self.context.term()
+             self._connected = False
+ 
+     def __enter__(self):
+diff --git a/python/crforge_gym/env.py b/python/crforge_gym/env.py
+index b953a5a..dd31063 100644
+--- a/python/crforge_gym/env.py
++++ b/python/crforge_gym/env.py
+@@ -2,10 +2,10 @@
+ Gymnasium environment for CRForge.
+ 
+ Action space:
+-  MultiDiscrete([2, 4, 10])
++  MultiDiscrete([2, 4, 15])
+   - action_type: 0 = no-op, 1 = play card
+   - hand_index: 0-3 (which card slot)
+-  - zone: 0-9 (strategic placement zone)
++  - zone: 0-14 (strategic placement zone)
+ 
+ Placement zones (blue's perspective):
+   Own half (troops/buildings):
+@@ -20,9 +20,18 @@ Placement zones (blue's perspective):
+     7: SPELL_LEFT    (5.5, 22.5)  - spell on enemy left lane
+     8: SPELL_RIGHT   (12.5, 22.5) - spell on enemy right lane
+     9: SPELL_CENTER  (9.0, 20.5)  - spell on enemy center
++    10: SPELL_BRIDGE_LEFT  (5.5, 17.5)  - right past the left bridge (troop kill)
++    11: SPELL_BRIDGE_RIGHT (12.5, 17.5) - right past the right bridge
++    12: SPELL_PRINCESS_LEFT  (3.5, 25.5)  - ON the left princess tower
++    13: SPELL_PRINCESS_RIGHT (14.5, 25.5) - ON the right princess tower
++    14: SPELL_KING  (9.0, 29.0)  - ON the king tower
++
++  (Zones 12-14 sit on the towers so spells with radius >= 0.5 can damage them;
++  card-specific placement rules, e.g. Royal Delivery, are enforced server-side.)
+ 
+ Observation space:
+-  Binary mode (default): flat Box(shape=(1079,)) float32 vector.
++  Binary mode (default): flat Box(shape=(1094,)) float32 vector.
++  (1079 base floats + a 15-float red-hand block appended at offset 1079.)
+   JSON mode: Dict with structured game state arrays (all float32 for SB3 compatibility).
+ 
+ Default ticks_per_step=6 gives ~5 decisions/second (~900 steps per 3-min game).
+@@ -58,11 +67,17 @@ INVALID_ACTION_PENALTY = -0.01
+ MAX_CARD_INDEX = 200
+ 
+ # Total size of the flat observation vector
+-OBS_SIZE = 1079
++OBS_SIZE = 1094
++
++# Appended red-hand block (offset 1079, same 15-float layout as the blue hand block
++# at offset 7): costs 4, types 4, ids 4, next card 3. The learner's obs zeroes this
++# block (it must not see red's hand); the self-play mirror reads it for red's view.
++IDX_OPPONENT_HAND_START = 1079
++IDX_OPPONENT_HAND_END = 1094
+ 
+ # Strategic placement zones: (x, y) in arena coordinates.
+ # Zones 0-6 are on blue's own half (troops/buildings).
+-# Zones 7-9 are on the enemy half (spells only).
++# Zones 7-14 are on the enemy half (spells only); 12-14 sit on the towers.
+ PLACEMENT_ZONES = [
+     (5.5, 14.5),   # 0: LEFT_BRIDGE
+     (12.5, 14.5),  # 1: RIGHT_BRIDGE
+@@ -74,6 +89,11 @@ PLACEMENT_ZONES = [
+     (5.5, 22.5),   # 7: SPELL_LEFT
+     (12.5, 22.5),  # 8: SPELL_RIGHT
+     (9.0, 20.5),   # 9: SPELL_CENTER
++    (5.5, 17.5),   # 10: SPELL_BRIDGE_LEFT (just past the left bridge)
++    (12.5, 17.5),  # 11: SPELL_BRIDGE_RIGHT
++    (3.5, 25.5),   # 12: SPELL_PRINCESS_LEFT (on the tower)
++    (14.5, 25.5),  # 13: SPELL_PRINCESS_RIGHT (on the tower)
++    (9.0, 29.0),   # 14: SPELL_KING (on the tower)
+ ]
+ NUM_ZONES = len(PLACEMENT_ZONES)
+ # Zones on own half (valid for troops/buildings/spells)
+@@ -431,30 +451,49 @@ class CRForgeEnv(gym.Env):
+         if self.binary_obs:
+             self._last_obs_flat = result
+             self._last_obs_raw = None
+-            return result, {}
++            # The learner must not see the opponent-hand block appended by the server
++            # (offset 1079+); the self-play mirror reads it from _last_obs_flat.
++            learner_obs = result.copy()
++            learner_obs[IDX_OPPONENT_HAND_START:] = 0.0
++            # Normalize raw sim counters (parity with env.step; see comment there).
++            learner_obs[0] /= 600000.0
++            learner_obs[1] /= 600.0
++            return learner_obs, {}
+         else:
+             self._last_obs_raw = result
+             self._last_obs_flat = None
+             return self._parse_observation(result), {}
+ 
+-    def step(
+-        self, action: np.ndarray
+-    ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
++    def step_async(self, action: np.ndarray) -> None:
++        """Send one step to the bridge WITHOUT waiting for the reply.
++
++        Enables pipelining: a multi-game worker can issue send_step for K envs
++        (K separate sockets) and only then collect the K replies, overlapping
++        the JVM round trips instead of serializing them.
++        """
+         # Decode action
+         blue_action = self._decode_action(action)
+-
+-        # Get opponent action
++        # Get opponent action (uses the CURRENT obs: must precede the send)
+         red_action = self._get_opponent_action()
++        self._client.send_step(blue_action=blue_action, red_action=red_action)
+ 
++    def step_wait(self) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
++        """Receive and postprocess the step result issued by step_async()."""
+         if self.binary_obs:
+             (obs, blue_reward, _red_reward, terminated, truncated,
+-             blue_action_failed, _red_action_failed) = self._client.step(
+-                blue_action=blue_action,
+-                red_action=red_action,
+-            )
++             blue_action_failed, _red_action_failed) = self._client.recv_step()
+             self._last_obs_flat = obs
+             self._last_obs_raw = None
+ 
++            # Zero the opponent-hand block for the learner (see reset()).
++            learner_obs = obs.copy()
++            learner_obs[IDX_OPPONENT_HAND_START:] = 0.0
++            # Normalize the raw sim counters (frame can reach ~6000+, game_time 300s):
++            # unnormalized inputs dominate the MLP's first layer and wreck learning.
++            # The self-play mirror applies the identical transform (opponents.py).
++            learner_obs[0] /= 600000.0
++            learner_obs[1] /= 600.0
++
+             reward = blue_reward
+             if blue_action_failed:
+                 reward += self.invalid_action_penalty
+@@ -463,13 +502,10 @@ class CRForgeEnv(gym.Env):
+             if blue_action_failed:
+                 info["action_failed"] = True
+ 
+-            return obs, reward, terminated, truncated, info
++            return learner_obs, reward, terminated, truncated, info
+         else:
+             # JSON mode (original path)
+-            result = self._client.step(
+-                blue_action=blue_action,
+-                red_action=red_action,
+-            )
++            result = self._client.recv_step()
+ 
+             obs_raw = result.get("observation", {})
+             reward_data = result.get("reward", {})
+@@ -492,6 +528,12 @@ class CRForgeEnv(gym.Env):
+ 
+             return obs, reward, terminated, truncated, info
+ 
++    def step(
++        self, action: np.ndarray
++    ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
++        self.step_async(action)
++        return self.step_wait()
++
+     def close(self) -> None:
+         if self._connected:
+             self._client.close()
+@@ -547,7 +589,7 @@ class CRForgeEnv(gym.Env):
+ 
+         if self._rule_based_opponent is None:
+             self._rule_based_opponent = RuleBasedOpponent(rng=self._rng)
+-        return self._rule_based_opponent.act(self._last_obs_raw, player="red")
++        return self._rule_based_opponent.act(self._last_obs_raw, player="red", obs_flat=self._last_obs_flat)
+ 
+     def _parse_observation(self, obs_raw: dict) -> dict[str, np.ndarray]:
+         return parse_observation(obs_raw)
+diff --git a/python/crforge_gym/multi_vec_env.py b/python/crforge_gym/multi_vec_env.py
+new file mode 100644
+index 0000000..c06716d
+--- /dev/null
++++ b/python/crforge_gym/multi_vec_env.py
+@@ -0,0 +1,233 @@
++"""SB3 VecEnv on top of multi-game worker processes (see multi_worker.py).
++
++Layout: W worker processes x K games each = N envs. Compared with SB3's
++SubprocVecEnv (1 process + 1 bridge JVM per env) this collapses the process
++count and, crucially, returns the action masks together with every step/reset
++payload -- SB3's MaskablePPO fetches masks via env_method("action_masks")
++EVERY step, which on SubprocVecEnv is an extra pickle round trip per env per
++step. Here that becomes a cache lookup.
++
++Only the process/transport layout differs; each game still runs the exact
++same env + wrappers + opponent code as the single-game path.
++"""
++
++from typing import Any, Optional, Sequence
++
++import gymnasium
++import numpy as np
++from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvIndices, VecEnvObs
++from stable_baselines3.common.vec_env.base_vec_env import VecEnvStepReturn
++
++
++class MultiBridgeVecEnv(VecEnv):
++    """VecEnv where each worker process hosts K pipelined game sessions."""
++
++    def __init__(self, worker_specs: list[dict], start_method: str = "fork",
++                 handshake_timeout: float = 300.0):
++        """worker_specs: one dict per worker process:
++        {"ports": [...], "blue_decks": [...], "red_decks": [...],
++         "opponent": "selfplay"|"rule_based"|"random", "snapshot_path": str|None}
++        """
++        import multiprocessing as mp
++
++        self._specs = worker_specs
++        self._sizes = [len(s["ports"]) for s in worker_specs]
++        num_envs = sum(self._sizes)
++
++        ctx = mp.get_context(start_method)
++        self.conns = []
++        self.processes = []
++        for idx, spec in enumerate(worker_specs):
++            parent_conn, child_conn = ctx.Pipe()
++            proc = ctx.Process(
++                target=_import_worker_main(),
++                args=(child_conn, idx, spec["ports"], spec["blue_decks"],
++                      spec["red_decks"], spec.get("opponent", "selfplay"),
++                      spec.get("snapshot_path")),
++                daemon=True,
++            )
++            proc.start()
++            child_conn.close()
++            self.conns.append(parent_conn)
++            self.processes.append(proc)
++
++        # Handshake: spaces from the first worker (all workers share the layout).
++        obs_space = act_space = None
++        for c in self.conns:
++            kind, obs_space, act_space = _recv_with_timeout(c, handshake_timeout)
++            if kind != "ready":
++                raise RuntimeError(f"multi-worker handshake failed: {kind!r}")
++
++        super().__init__(num_envs, obs_space, act_space)
++
++        self._masks_cache = np.ones(
++            (num_envs, 2 + 4 + 15), dtype=bool)  # replaced on first reset
++        self._reset_infos: list = [{} for _ in range(num_envs)]
++        self.waiting = False
++        self.closed = False
++
++    # -- helpers ----------------------------------------------------------
++    def _chunks(self):
++        out = []
++        start = 0
++        for size in self._sizes:
++            out.append(slice(start, start + size))
++            start += size
++        return out
++
++    # -- VecEnv API -------------------------------------------------------
++    def reset(self) -> VecEnvObs:
++        for c in self.conns:
++            c.send(("reset", None))
++        obs_list = []
++        mask_list = []
++        for c in self.conns:
++            kind, obs, masks = _recv(c)
++            if kind != "reset_ok":
++                raise RuntimeError(f"multi-worker reset failed: {kind!r} {obs!r}")
++            obs_list.append(obs)
++            mask_list.append(masks)
++        self._masks_cache = np.concatenate(mask_list, axis=0)
++        self._reset_infos = [{} for _ in range(self.num_envs)]
++        return np.concatenate(obs_list, axis=0)
++
++    def step_async(self, actions: np.ndarray) -> None:
++        actions = np.asarray(actions)
++        chunks = self._chunks()
++        for c, sl in zip(self.conns, chunks):
++            c.send(("step", np.ascontiguousarray(actions[sl])))
++        self.waiting = True
++
++    def step_wait(self) -> VecEnvStepReturn:
++        obs_list = []
++        rew_list = []
++        done_list = []
++        info_list = []
++        mask_list = []
++        for c in self.conns:
++            kind, obs, rew, done, infos, masks = _recv(c)
++            if kind != "step_ok":
++                raise RuntimeError(f"multi-worker step failed: {kind!r}")
++            obs_list.append(obs)
++            rew_list.append(rew)
++            done_list.append(done)
++            info_list.extend(infos)
++            mask_list.append(masks)
++        self._masks_cache = np.concatenate(mask_list, axis=0)
++        self.waiting = False
++        return (
++            np.concatenate(obs_list, axis=0),
++            np.concatenate(rew_list, axis=0),
++            np.concatenate(done_list, axis=0),
++            info_list,
++        )
++
++    def close(self) -> None:
++        if self.closed:
++            return
++        if self.waiting:
++            for c in self.conns:
++                try:
++                    c.recv()
++                except Exception:
++                    pass
++        for c in self.conns:
++            try:
++                c.send(("close", None))
++            except Exception:
++                pass
++        for proc in self.processes:
++            proc.join(timeout=15)
++        for proc in self.processes:
++            if proc.is_alive():
++                proc.terminate()
++        self.closed = True
++
++    # -- attribute/method routing ----------------------------------------
++    def has_attr(self, attr_name: str) -> bool:
++        # Fast local answer for the mask method (must be True for MaskablePPO);
++        # anything else: ask the workers once.
++        if attr_name in ("action_masks",):
++            return True
++        for c in self.conns:
++            c.send(("has_attr", attr_name))
++        return all(_recv(c)[1] for c in self.conns)
++
++    def env_method(self, method_name: str, *method_args, indices: VecEnvIndices = None,
++                   **method_kwargs) -> list[Any]:
++        if method_name == "action_masks" and indices is None:
++            # Served from cache: masks travel with every reset/step payload.
++            return [self._masks_cache[i] for i in range(self.num_envs)]
++        for c in self.conns:
++            c.send(("env_method", (method_name, method_args, method_kwargs)))
++        results: list[Any] = []
++        for c in self.conns:
++            kind, res = _recv(c)
++            if kind != "method":
++                raise RuntimeError(f"multi-worker env_method failed: {kind!r}")
++            results.extend(res)
++        if indices is not None:
++            return [results[i] for i in indices]
++        return results
++
++    def get_attr(self, attr_name: str, indices: VecEnvIndices = None) -> list[Any]:
++        for c in self.conns:
++            c.send(("get_attr", attr_name))
++        results: list[Any] = []
++        for c in self.conns:
++            kind, res = _recv(c)
++            if kind != "attr":
++                raise RuntimeError(f"multi-worker get_attr failed: {kind!r}")
++            results.extend(res)
++        if indices is not None:
++            return [results[i] for i in indices]
++        return results
++
++    def set_attr(self, attr_name: str, value: Any, indices: VecEnvIndices = None) -> None:
++        for c in self.conns:
++            c.send(("set_attr", (attr_name, value)))
++        for c in self.conns:
++            _recv(c)
++
++    def env_is_wrapped(self, wrapper_class: type[gymnasium.Wrapper],
++                       indices: VecEnvIndices = None) -> list[bool]:
++        for c in self.conns:
++            c.send(("is_wrapped", wrapper_class))
++        results: list[bool] = []
++        for c in self.conns:
++            kind, res = _recv(c)
++            if kind != "is_wrapped":
++                raise RuntimeError(f"multi-worker is_wrapped failed: {kind!r}")
++            results.extend(res)
++        if indices is not None:
++            return [results[i] for i in indices]
++        return results
++
++    def seed(self, seed: Optional[int] = None) -> Sequence[None | int]:
++        return [None for _ in range(self.num_envs)]
++
++    def render(self, mode: str | None = None):
++        return None
++
++    def get_images(self):
++        return [None for _ in range(self.num_envs)]
++
++
++def _import_worker_main():
++    from crforge_gym.multi_worker import multi_worker_main
++
++    return multi_worker_main
++
++
++def _recv(conn):
++    msg = conn.recv()
++    if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "error":
++        raise RuntimeError(f"multi-worker error: {msg[1]}")
++    return msg
++
++
++def _recv_with_timeout(conn, timeout: float):
++    if not conn.poll(timeout):
++        raise TimeoutError(
++            f"multi-worker handshake timed out after {timeout:.0f}s")
++    return _recv(conn)
+diff --git a/python/crforge_gym/multi_worker.py b/python/crforge_gym/multi_worker.py
+new file mode 100644
+index 0000000..079cc59
+--- /dev/null
++++ b/python/crforge_gym/multi_worker.py
+@@ -0,0 +1,206 @@
++"""Multi-game worker process for crforge_gym.
++
++One OS process hosts K CRForgeEnv instances (one bridge socket each) and drives
++them with a pipelined step loop: all K step requests are sent first, then all K
++replies are collected, so the JVM round trips overlap instead of serializing
++across processes. This keeps the per-game logic byte-identical to the
++single-game path (same env, same wrappers, same opponent code) -- it only
++changes the process/transport layout.
++
++Pairs with MultiBridgeVecEnv (multi_vec_env.py), which implements the SB3
++VecEnv contract on top of one pipe per worker process.
++
++Worker command protocol (parent -> worker), all messages tuples:
++    ("reset", seeds | None)          -> ("reset_ok", obs(K,1094) f32, masks(K,21) bool)
++    ("step", actions(K,3) int64)     -> ("step_ok", obs, rew(K,) f32, done(K,) bool,
++                                                  infos(list[dict]), masks)
++    ("has_attr", name)               -> ("has_attr", bool)
++    ("env_method", (name, args, kw)) -> ("method", list_of_results)
++    ("get_attr", name)               -> ("attr", list_of_values)
++    ("set_attr", (name, value))      -> ("ok",)
++    ("close", None)                  -> (process exits)
++"""
++
++import time
++
++import numpy as np
++
++
++def _make_selfplay_opponent(snapshot_path: str, label: str):
++    """Self-play opponent that reloads the trainer snapshot when its mtime changes."""
++    import os
++
++    from crforge_gym.opponents import SelfPlayOpponent
++
++    class ReloadingSelfPlayOpponent(SelfPlayOpponent):
++        def __init__(self):
++            super().__init__(model=None)
++            self._loaded_mtime = None
++            self._last_check = 0.0
++            self._announced = False
++
++        def _maybe_reload(self):
++            now = time.time()
++            if now - self._last_check < 2.0:
++                return
++            self._last_check = now
++            try:
++                mtime = os.path.getmtime(snapshot_path)
++            except OSError:
++                return
++            if self._loaded_mtime is not None and mtime <= self._loaded_mtime:
++                return
++            from sb3_contrib import MaskablePPO
++
++            try:
++                self._install_model(MaskablePPO.load(snapshot_path, device="cpu"))
++                self._loaded_mtime = mtime
++                if not self._announced:
++                    self._announced = True
++                    print(f"[multi-worker {label}] self-play opponent loaded snapshot",
++                          flush=True)
++            except Exception:
++                pass  # file mid-write; retry on next check
++
++        def act(self, obs_raw, player="red", obs_flat=None):
++            self._maybe_reload()
++            if self.model is None:
++                return None
++            return super().act(obs_raw, player=player, obs_flat=obs_flat)
++
++    return ReloadingSelfPlayOpponent()
++
++
++def build_env(port: int, blue_deck, red_deck, opponent_mode: str,
++              snapshot_path: str | None, label: str):
++    """Build one fully wrapped CRForgeEnv (identical stack to the single-game path)."""
++    from crforge_gym import CRForgeEnv
++    from crforge_gym.wrappers import ActionMaskedWrapper, EpisodeStatsWrapper
++
++    if opponent_mode == "selfplay":
++        opponent = _make_selfplay_opponent(snapshot_path or "", label)
++    else:
++        opponent = opponent_mode  # built-in name: "random" / "rule_based" / "noop"
++
++    env = CRForgeEnv(
++        endpoint=f"tcp://localhost:{port}",
++        ticks_per_step=15,
++        opponent=opponent,
++        binary_obs=True,
++        blue_deck=blue_deck,
++        red_deck=red_deck,
++    )
++    env = EpisodeStatsWrapper(env)
++    env = ActionMaskedWrapper(env)
++    return env
++
++
++def multi_worker_main(conn, worker_idx, ports, blue_decks, red_decks,
++                      opponent_mode, snapshot_path):
++    """Entry point for one multi-game worker process."""
++    from stable_baselines3.common.vec_env.patch_gym import _patch_env
++
++    k = len(ports)
++    label = f"w{worker_idx}p{ports[0]}"
++    envs = []
++    for i in range(k):
++        env = build_env(ports[i], blue_decks[i], red_decks[i], opponent_mode,
++                        snapshot_path, f"{label}e{i}")
++        envs.append(_patch_env(env))
++
++    conn.send(("ready", envs[0].observation_space, envs[0].action_space))
++
++    while True:
++        try:
++            cmd, payload = conn.recv()
++        except (EOFError, KeyboardInterrupt):
++            break
++
++        if cmd == "reset":
++            seeds = payload
++            obs_list = []
++            mask_list = []
++            for i, env in enumerate(envs):
++                seed = None
++                if seeds is not None:
++                    seed = seeds[i]
++                o, _info = env.reset(seed=seed)
++                obs_list.append(np.asarray(o, dtype=np.float32))
++                mask_list.append(np.asarray(env.action_masks(), dtype=bool))
++            conn.send(("reset_ok", np.stack(obs_list), np.stack(mask_list)))
++
++        elif cmd == "step":
++            actions = payload
++            # Pipelining: issue all K requests first (K sockets), then collect.
++            for i, env in enumerate(envs):
++                env.step_async(np.asarray(actions[i]))
++            obs_list = []
++            rew_list = []
++            done_list = []
++            info_list = []
++            for env in envs:
++                o, r, terminated, truncated, info = env.step_wait()
++                done = bool(terminated or truncated)
++                info["TimeLimit.truncated"] = bool(truncated and not terminated)
++                if done:
++                    # SB3 SubprocVecEnv worker semantics: stash the terminal
++                    # observation and auto-reset, return the post-reset obs.
++                    info["terminal_observation"] = o
++                    o, _reset_info = env.reset()
++                obs_list.append(np.asarray(o, dtype=np.float32))
++                rew_list.append(float(r))
++                done_list.append(done)
++                info_list.append(info)
++            mask_list = [np.asarray(env.action_masks(), dtype=bool) for env in envs]
++            conn.send((
++                "step_ok",
++                np.stack(obs_list),
++                np.asarray(rew_list, dtype=np.float32),
++                np.asarray(done_list, dtype=bool),
++                info_list,
++                np.stack(mask_list),
++            ))
++
++        elif cmd == "has_attr":
++            try:
++                envs[0].get_wrapper_attr(payload)
++                conn.send(("has_attr", True))
++            except AttributeError:
++                conn.send(("has_attr", False))
++
++        elif cmd == "env_method":
++            name, args, kwargs = payload
++            results = []
++            for env in envs:
++                method = env.get_wrapper_attr(name)
++                results.append(method(*args, **kwargs))
++            conn.send(("method", results))
++
++        elif cmd == "is_wrapped":
++            from stable_baselines3.common.env_util import is_wrapped
++
++            conn.send(("is_wrapped", [is_wrapped(env, payload) for env in envs]))
++
++        elif cmd == "get_attr":
++            conn.send(("attr", [env.get_wrapper_attr(payload) for env in envs]))
++
++        elif cmd == "set_attr":
++            name, value = payload
++            for env in envs:
++                env.set_wrapper_attr(name, value)
++            conn.send(("ok",))
++
++        elif cmd == "close":
++            for env in envs:
++                try:
++                    env.close()
++                except Exception:
++                    pass
++            try:
++                conn.close()
++            except Exception:
++                pass
++            return
++
++        else:
++            conn.send(("error", f"unknown command {cmd!r}"))
+diff --git a/python/crforge_gym/opponents.py b/python/crforge_gym/opponents.py
+index 25b838e..9b2e207 100644
+--- a/python/crforge_gym/opponents.py
++++ b/python/crforge_gym/opponents.py
+@@ -7,7 +7,16 @@ C2: Self-play opponent that mirrors observations and runs a trained model as red
+ 
+ import numpy as np
+ 
+-from crforge_gym.env import ARENA_WIDTH, ARENA_HEIGHT, NUM_ZONES, NUM_OWN_HALF_ZONES, OBS_SIZE, parse_observation
++from crforge_gym.env import (
++    ARENA_HEIGHT,
++    ARENA_WIDTH,
++    IDX_OPPONENT_HAND_END,
++    IDX_OPPONENT_HAND_START,
++    NUM_OWN_HALF_ZONES,
++    NUM_ZONES,
++    OBS_SIZE,
++    parse_observation,
++)
+ 
+ 
+ class RuleBasedOpponent:
+@@ -107,26 +116,63 @@ class RuleBasedOpponent:
+         return {"handIndex": best_index, "x": x, "y": y}
+ 
+     def _act_from_flat(self, obs_flat: np.ndarray, player: str) -> dict | None:
+-        """Simplified strategy when only flat observation is available.
++        """Binary-mode strategy using the acting player's own hand block.
+ 
+-        Red's elixir is at index 4. We don't have red's hand costs, so we
+-        play a random card and hope it works (the server rejects invalid plays).
++        The flat observation carries each player's hand (costs 4, types 4, ids 4,
++        next 3): blue's at offset 7, red's appended block at offset 1079. So we can
++        pick the best affordable card instead of guessing a random slot.
+         """
+-        red_elixir = float(obs_flat[4]) if player == "red" else float(obs_flat[3])
++        from crforge_gym.env import (
++            IDX_BLUE_ELIXIR,
++            IDX_HAND_COSTS_END,
++            IDX_HAND_COSTS_START,
++            IDX_HAND_TYPES_END,
++            IDX_HAND_TYPES_START,
++            IDX_OPPONENT_HAND_START,
++        )
++
++        if player == "red":
++            elixir = float(obs_flat[4])
++            costs = obs_flat[IDX_OPPONENT_HAND_START:IDX_OPPONENT_HAND_START + 4] * 10.0
++            types = obs_flat[IDX_OPPONENT_HAND_START + 4:IDX_OPPONENT_HAND_START + 8]
++        else:
++            elixir = float(obs_flat[IDX_BLUE_ELIXIR])
++            costs = obs_flat[IDX_HAND_COSTS_START:IDX_HAND_COSTS_END] * 10.0
++            types = obs_flat[IDX_HAND_TYPES_START:IDX_HAND_TYPES_END]
+ 
+-        should_play = red_elixir >= self.ELIXIR_PLAY_THRESHOLD
+-        if not should_play and red_elixir >= self.EARLY_PLAY_MIN_ELIXIR:
++        should_play = elixir >= self.ELIXIR_PLAY_THRESHOLD
++        if not should_play and elixir >= self.EARLY_PLAY_MIN_ELIXIR:
+             should_play = self._rng.random() < self.EARLY_PLAY_CHANCE
+ 
+         if not should_play:
+             return None
+ 
+-        # Pick a random hand index since we don't have card costs
+-        hand_index = int(self._rng.integers(0, 4))
++        # Highest-cost affordable card (most board impact)
++        best_index = -1
++        best_cost = -1
++        for i in range(4):
++            cost = float(costs[i])
++            if 0 < cost <= elixir and cost > best_cost:
++                best_cost = cost
++                best_index = i
++
++        if best_index < 0:
++            return None
++
++        t = float(types[best_index])
++        card_type = "SPELL" if t == 1.0 else ("BUILDING" if t == 2.0 else "TROOP")
+ 
+-        # Default to troop placement strategy
+-        x, y = self._pick_position("TROOP", player, None)
+-        return {"handIndex": hand_index, "x": x, "y": y}
++        if card_type == "SPELL":
++            # Cast into the enemy half where troops cluster
++            if player == "red":
++                y = float(self._rng.integers(6, 15)) + 0.5
++            else:
++                y = float(self._rng.integers(17, 26)) + 0.5
++            x = float(self._rng.integers(4, 15)) + 0.5
++        else:
++            x, y = self._pick_position(card_type, player, None)
++
++        return {"handIndex": best_index, "x": x, "y": y}
+ 
+     def _pick_position(
+         self, card_type: str, player: str, obs_raw: dict | None
+@@ -253,9 +299,119 @@ def _mirror_tower(t: dict) -> dict:
+ 
+ 
+ def _flatten_dict_obs(dict_obs: dict[str, np.ndarray]) -> np.ndarray:
+-    """Flatten dict observation in the same key order as FlattenedObsWrapper."""
++    """Flatten dict observation in the same key order as FlattenedObsWrapper.
++
++    The original 15 keys flatten to 1079 floats. The binary observation appends
++    a 15-float opponent-hand block (offset 1079) that the mirrored/learner view
++    zeroes -- so pad with zeros to OBS_SIZE for model-input parity.
++    """
+     parts = [dict_obs[k].astype(np.float32).flatten() for k in _OBS_KEYS]
+-    return np.concatenate(parts)
++    flat = np.concatenate(parts)
++    if flat.shape[0] < OBS_SIZE:
++        flat = np.concatenate([flat, np.zeros(OBS_SIZE - flat.shape[0], dtype=np.float32)])
++    return flat
++
++
++def _parse_sequential_numpy(seq) -> list:
++    """Convert a torch Sequential (Linear/ReLU/Tanh) into a list of numpy ops.
++
++    Detects the actual modules instead of assuming an activation -- the pool12
++    checkpoint lineage uses Tanh while SB3's default is ReLU.
++    """
++    import torch.nn as nn
++
++    modules = list(seq) if isinstance(seq, nn.Sequential) else [seq]
++    ops = []
++    for m in modules:
++        if isinstance(m, nn.Linear):
++            w = m.weight.detach().cpu().numpy().astype(np.float32)
++            b = (m.bias.detach().cpu().numpy().astype(np.float32)
++                 if m.bias is not None else None)
++
++            def _lin(x, w=w, b=b):
++                y = x @ w.T
++                if b is not None:
++                    y = y + b
++                return y
++
++            ops.append(_lin)
++        elif isinstance(m, nn.ReLU):
++            ops.append(lambda x: np.maximum(x, 0, out=x))
++        elif isinstance(m, nn.Tanh):
++            ops.append(np.tanh)
++        else:
++            raise ValueError(f"unsupported module in policy net: {type(m).__name__}")
++    return ops
++
++
++class _FastNumpyPolicy:
++    """Numpy forward of the MaskablePPO MLP for fast opponent inference.
++
++    Mirrors the model's actual module layout (Linear/ReLU/Tanh are detected,
++    not assumed) and the same masked categorical sampling semantics as
++    model.predict(..., deterministic=False); only the RNG source differs
++    (numpy instead of torch). Speeds up opponent action selection only --
++    the sim and env logic are untouched.
++    """
++
++    def __init__(self, model):
++        policy = model.policy
++        # Parse the actual Sequential layout (detect activations instead of assuming).
++        self.pi_ops = _parse_sequential_numpy(policy.mlp_extractor.policy_net)
++        self.action_ops = _parse_sequential_numpy(policy.action_net)
++        self.nvec = None
++        nvec = getattr(policy.action_space, "nvec", None)
++        if nvec is None:
++            raise ValueError("expected a MultiDiscrete action space")
++        self.nvec = [int(n) for n in nvec]
++
++    def logits(self, x: np.ndarray) -> np.ndarray:
++        """Forward pass; x is (n, obs_dim) float32 -> (n, sum(nvec)) logits."""
++        h = np.array(x, dtype=np.float32)  # copy: activations may work in place
++        for op in self.pi_ops:
++            h = op(h)
++        for op in self.action_ops:
++            h = op(h)
++        return h
++
++    def _sample_head(self, head: np.ndarray, head_mask: np.ndarray, size: int,
++                     rng: np.random.Generator) -> int:
++        h = head.copy()
++        h[~head_mask] = -np.inf
++        finite = np.isfinite(h)
++        if not finite.any():
++            return 0  # fully masked head: only reachable for hand/zone of a noop
++        mx = h[finite].max()
++        p = np.exp(h - mx)
++        p[~finite] = 0.0
++        s = p.sum()
++        if not np.isfinite(s) or s <= 0:
++            return int(np.argmax(finite))
++        return int(rng.choice(size, p=p / s))
++
++    def sample(self, obs: np.ndarray, mask: np.ndarray,
++               rng: np.random.Generator) -> np.ndarray:
++        """Masked categorical sample for one observation (same semantics as the model)."""
++        logits = self.logits(obs[None, :])[0]
++        out = np.zeros(len(self.nvec), dtype=np.int64)
++        off = 0
++        for j, d in enumerate(self.nvec):
++            out[j] = self._sample_head(logits[off:off + d], mask[off:off + d], d, rng)
++            off += d
++        return out
++
++    def sample_batch(self, obs_batch: np.ndarray, mask_batch: np.ndarray,
++                     rng: np.random.Generator) -> np.ndarray:
++        """Batched masked sampling: (K, obs) + (K, mask) -> (K, n_heads)."""
++        all_logits = self.logits(np.asarray(obs_batch, dtype=np.float32))
++        outs = np.zeros((all_logits.shape[0], len(self.nvec)), dtype=np.int64)
++        for i in range(all_logits.shape[0]):
++            off = 0
++            for j, d in enumerate(self.nvec):
++                outs[i, j] = self._sample_head(all_logits[i, off:off + d],
++                                               mask_batch[i, off:off + d], d, rng)
++                off += d
++        return outs
+ 
+ 
+ class SelfPlayOpponent:
+@@ -272,7 +428,28 @@ class SelfPlayOpponent:
+ 
+     def __init__(self, model):
+         """Initialize with a MaskablePPO instance (live reference or loaded from file)."""
++        self.model = None
++        self._fast = None
++        self._fast_rng = np.random.default_rng()
++        if model is not None:
++            self._install_model(model)
++
++    def _install_model(self, model):
++        """Set the acting model and build the numpy fast path (if possible).
++
++        The fast path is a faithful numpy forward of the same weights; it is
++        optional and silently skipped if the policy layout is unexpected or
++        CRFORGE_FAST_OPPONENT=0 is set (torch path then used as before).
++        """
++        import os
++
+         self.model = model
++        self._fast = None
++        if os.environ.get("CRFORGE_FAST_OPPONENT", "1") == "1":
++            try:
++                self._fast = _FastNumpyPolicy(model)
++            except Exception:
++                self._fast = None
+ 
+     @staticmethod
+     def mirror_raw_obs(raw_obs: dict) -> dict:
+@@ -309,19 +486,13 @@ class SelfPlayOpponent:
+         # Swap crowns (indices 5, 6)
+         m[5], m[6] = flat_obs[6], flat_obs[5]
+ 
+-        # Hand data (indices 7-21): replace with red player's hand
+-        # In binary mode, only blue's hand is encoded, so red's hand is unknown.
+-        # We zero out the hand to indicate "no hand info" for red-as-blue.
+-        # The model will learn to play without perfect hand knowledge of the
+-        # mirrored perspective. This is a known limitation of binary self-play.
+-        # For proper self-play with binary mode, the server would need to encode
+-        # both players' hands. For now, keep the hand as-is (it's blue's hand,
+-        # which becomes "our" hand from red's perspective in self-play the model
+-        # doesn't get red's actual hand... but this matches what the model sees
+-        # during training where it always plays as blue).
+-        # Actually -- in self-play, we need red's hand to be visible to the model.
+-        # Since binary mode only includes blue's hand, self-play should use JSON mode
+-        # or the model should be trained to handle this. Leave hand as-is for now.
++        # Hand data (indices 7-21): give red ITS OWN hand from the appended block
++        # (offset 1079, same 15-float layout: costs 4, types 4, ids 4, next 3), and
++        # hide the opponent's hand (zero the block) -- both sides see only their own
++        # hand, symmetrically, regardless of which deck they play.
++        if flat_obs.shape[0] >= IDX_OPPONENT_HAND_END:
++            m[7:22] = flat_obs[IDX_OPPONENT_HAND_START:IDX_OPPONENT_HAND_END]
++        m[IDX_OPPONENT_HAND_START:] = 0.0
+ 
+         # Swap tower blocks: blue towers [22:34] <-> red towers [34:46]
+         # Also flip y coordinates (index 2 within each 4-float tower block)
+@@ -345,6 +516,11 @@ class SelfPlayOpponent:
+             # Flip y_norm: y -> 1 - y
+             m[base + 4] = 1.0 - flat_obs[base + 4]
+ 
++        # Normalize raw sim counters for red as well (identical transform to the
++        # learner's obs post-processing in env.py -- both sides must match).
++        m[0] = flat_obs[0] / 600000.0
++        m[1] = flat_obs[1] / 600.0
++
+         # Mirror lane summary (offset 1071, 8 values)
+         # The lane summary is from blue's perspective; for red-as-blue we need to
+         # swap left/right and flip friendly/enemy.
+@@ -376,6 +552,11 @@ class SelfPlayOpponent:
+         (5.5, 32 - 22.5),   # 7: SPELL_LEFT -> spell on blue's left
+         (12.5, 32 - 22.5),  # 8: SPELL_RIGHT -> spell on blue's right
+         (9.0, 32 - 20.5),   # 9: SPELL_CENTER -> spell on blue's center
++        (5.5, 32 - 17.5),   # 10: SPELL_BRIDGE_LEFT -> just past blue's left bridge
++        (12.5, 32 - 17.5),  # 11: SPELL_BRIDGE_RIGHT
++        (3.5, 32 - 25.5),   # 12: SPELL_PRINCESS_LEFT -> on blue's left tower
++        (14.5, 32 - 25.5),  # 13: SPELL_PRINCESS_RIGHT -> on blue's right tower
++        (9.0, 32 - 29.0),   # 14: SPELL_KING -> on blue's king tower
+     ]
+ 
+     def act(self, obs_raw: dict | None, player: str = "red", obs_flat: np.ndarray | None = None) -> dict | None:
+@@ -392,7 +573,10 @@ class SelfPlayOpponent:
+             # Binary mode: mirror the flat array directly
+             mirrored_flat = self.mirror_flat_obs(obs_flat)
+             mask = self._compute_mask_from_flat(mirrored_flat)
+-            action, _ = self.model.predict(mirrored_flat, action_masks=mask, deterministic=False)
++            if self._fast is not None:
++                action = self._fast.sample(mirrored_flat, mask, self._fast_rng)
++            else:
++                action, _ = self.model.predict(mirrored_flat, action_masks=mask, deterministic=False)
+         elif obs_raw is not None:
+             # JSON mode: original path
+             mirrored = self.mirror_raw_obs(obs_raw)
+diff --git a/python/crforge_gym/wrappers.py b/python/crforge_gym/wrappers.py
+index 8db3cac..b47d302 100644
+--- a/python/crforge_gym/wrappers.py
++++ b/python/crforge_gym/wrappers.py
+@@ -19,6 +19,32 @@ import gymnasium as gym
+ import numpy as np
+ from gymnasium import spaces
+ 
++try:  # expected binary observation size (defined in crforge_gym.env)
++    from .env import OBS_SIZE as _EXPECTED_OBS_SIZE
++except Exception:  # pragma: no cover
++    _EXPECTED_OBS_SIZE = 1094
++
++
++def _check_binary_obs(obs) -> None:
++    """Catch a stale bridge build on the FIRST reset instead of mid-rollout.
++
++    A stale gym-bridge JVM serves a different observation width (e.g. 1079 vs
++    1094 floats) and training would otherwise die later with a cryptic
++    mat1/mat2 shape error. Runs per worker on every reset, so the failure is
++    immediate and actionable. Only checks flat float32 vectors (binary mode);
++    dict observations (JSON mode) are skipped.
++    """
++    if isinstance(obs, np.ndarray) and obs.ndim == 1 and obs.shape[0] != _EXPECTED_OBS_SIZE:
++        raise RuntimeError(
++            f"Bridge served {obs.shape[0]}-float observations but this code expects "
++            f"{_EXPECTED_OBS_SIZE}. The Java bridge build is STALE. Rebuild it and "
++            "restart the run:\n"
++            "  Windows:  ./gradlew.bat :gym-bridge:installDist  "
++            "(then kill orphans: taskkill /IM java.exe /F)\n"
++            "  Linux:    ./gradlew :gym-bridge:installDist      "
++            "(then kill orphans: pkill -f gym-bridge)"
++        )
++
+ 
+ class EpisodeStatsWrapper(gym.Wrapper):
+     """Tracks per-episode statistics for SB3 logging.
+@@ -49,12 +75,22 @@ class EpisodeStatsWrapper(gym.Wrapper):
+ 
+     def reset(self, **kwargs):
+         obs, info = self.env.reset(**kwargs)
++        _check_binary_obs(obs)
+         self._episode_reward = 0.0
+         self._episode_length = 0
+         return obs, info
+ 
+     def step(self, action):
+-        obs, reward, terminated, truncated, info = self.env.step(action)
++        self.step_async(action)
++        return self.step_wait()
++
++    def step_async(self, action):
++        """Forward the send-half of a step (pipelining support)."""
++        self.env.step_async(action)
++
++    def step_wait(self):
++        """Complete the step started by step_async and update episode stats."""
++        obs, reward, terminated, truncated, info = self.env.step_wait()
+         self._episode_reward += reward
+         self._episode_length += 1
+ 
+@@ -159,7 +195,16 @@ class ActionMaskedWrapper(gym.Wrapper):
+         return obs, info
+ 
+     def step(self, action):
+-        obs, reward, terminated, truncated, info = self.env.step(action)
++        self.step_async(action)
++        return self.step_wait()
++
++    def step_async(self, action):
++        """Forward the send-half of a step (pipelining support)."""
++        self.env.step_async(action)
++
++    def step_wait(self):
++        """Complete the step started by step_async and capture the new obs."""
++        obs, reward, terminated, truncated, info = self.env.step_wait()
+         self._capture_obs()
+         return obs, reward, terminated, truncated, info
+ 
+diff --git a/python/examples/train_ppo.py b/python/examples/train_ppo.py
+index 4cefb5d..3903d57 100755
+--- a/python/examples/train_ppo.py
++++ b/python/examples/train_ppo.py
+@@ -49,16 +49,25 @@ def _get_java_home() -> str:
+ 
+ def _build_bridge_dist(project_root: str) -> str:
+     """Build gym-bridge distribution, return path to the launch script."""
+-    script = os.path.join(
+-        project_root, "gym-bridge", "build", "install", "gym-bridge", "bin", "gym-bridge"
+-    )
++    bin_dir = os.path.join(project_root, "gym-bridge", "build", "install", "gym-bridge", "bin")
++    script_name = "gym-bridge.bat" if os.name == "nt" else "gym-bridge"
++    script = os.path.join(bin_dir, script_name)
++    legacy_script = os.path.join(bin_dir, "gym-bridge")
+     if os.path.isfile(script):
+         return script
++    if os.path.isfile(legacy_script):
++        # Gradle startScripts emits both launchers on every OS; the Unix one works as an
++        # existence marker on Windows too (the returned path is unused in jpype mode).
++        return legacy_script
+ 
+     print("Building gym-bridge distribution...")
+-    env = {**os.environ, "JAVA_HOME": _get_java_home()}
++    env = {**os.environ}
++    java_home = _get_java_home()
++    if java_home:
++        env["JAVA_HOME"] = java_home
++    gradlew = os.path.join(project_root, "gradlew.bat" if os.name == "nt" else "gradlew")
+     result = subprocess.run(
+-        [os.path.join(project_root, "gradlew"), ":gym-bridge:installDist", "-q"],
++        [gradlew, ":gym-bridge:installDist", "-q"],
+         cwd=project_root,
+         capture_output=True,
+         text=True,
+@@ -68,7 +77,7 @@ def _build_bridge_dist(project_root: str) -> str:
+         print(f"Build failed:\n{result.stderr}")
+         sys.exit(1)
+     print("Build complete.")
+-    return script
++    return script if os.path.isfile(script) else legacy_script
+ 
+ 
+ def _wait_for_server(endpoint: str, timeout: int = 30) -> bool:
+@@ -135,8 +144,9 @@ def launch_servers(base_port: int, num_envs: int) -> list:
+     processes = []
+     for i in range(num_envs):
+         port = base_port + i
++        cmd = ["cmd", "/c", script, str(port)] if os.name == "nt" else [script, str(port)]
+         proc = subprocess.Popen(
+-            [script, str(port)],
++            cmd,
+             stdout=subprocess.DEVNULL,
+             stderr=subprocess.DEVNULL,
+             env=env,
