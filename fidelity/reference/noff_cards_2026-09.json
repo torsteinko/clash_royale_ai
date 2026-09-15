@@ -1,0 +1,4759 @@
+{
+ "buildings": {
+  "barbarian_hut": {
+   "dcheck_traits": {
+    "building": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "summon_card_offensive": 1,
+    "targets_ground": 1
+   },
+   "description": "Building that periodically spawns Barbarians to fight the enemy. Time to make the Barbarians!",
+   "elixirs": 7,
+   "id": 27000005,
+   "level_stats": {
+    "hitpoints": "default"
+   },
+   "name": "Barbarian Hut",
+   "rarity": "Rare",
+   "stats": {
+    "barbarian": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Barbarian",
+     "stats": {
+      "damage": 90,
+      "hit_speed": "1.4sec",
+      "hitpoints": 317,
+      "range": "Melee: Short",
+      "speed": "Medium",
+      "targets": "Ground"
+     }
+    },
+    "hitpoints": 550,
+    "lifetime": "40sec",
+    "spawn_on_death": "Barbarian x2",
+    "spawn_speed": "11sec"
+   },
+   "tags": [
+    "barbhut"
+   ],
+   "tl_id": 93,
+   "unlocks": "Arena 14"
+  },
+  "bomb_tower": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "building": 1,
+    "ground": 1,
+    "ranged": 1,
+    "targets_ground": 1,
+    "tower_defense": 1
+   },
+   "description": "Defensive building that houses a Bomber. Deals area damage to anything dumb enough to stand near it.",
+   "elixirs": 4,
+   "id": 27000004,
+   "level_stats": {
+    "area_damage": "default",
+    "death_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Bomb Tower",
+   "rarity": "Rare",
+   "stats": {
+    "area_damage": 105,
+    "death_damage": 105,
+    "hit_speed": "1.6sec",
+    "hitpoints": 640,
+    "lifetime": "30sec",
+    "range": 6,
+    "targets": "Ground"
+   },
+   "tags": [
+    "btower"
+   ],
+   "tl_id": 92,
+   "unlocks": "Arena 12"
+  },
+  "cannon": {
+   "dcheck_traits": {
+    "building": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank_killer": 1,
+    "targets_ground": 1,
+    "tower_defense": 1
+   },
+   "description": "Defensive building. Shoots cannonballs with deadly effect, but cannot target flying troops.",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 27000000,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Cannon",
+   "rarity": "Common",
+   "stats": {
+    "hit_speed": "0.9sec",
+    "hitpoints": 350,
+    "lifetime": "30sec",
+    "range": 5.5,
+    "ranged_damage": 202,
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 88,
+   "unlocks": "Arena 3"
+  },
+  "elixir_collector": {
+   "dcheck_traits": {
+    "building": 1,
+    "elixir_efficiency": 2,
+    "ground": 1
+   },
+   "description": "You gotta spend Elixir to make Elixir! This building makes 8 Elixir over its Lifetime. Does not appear in your starting hand.",
+   "elixirs": 6,
+   "id": 27000007,
+   "level_stats": {
+    "hitpoints": "default"
+   },
+   "name": "Elixir Collector",
+   "rarity": "Rare",
+   "stats": {
+    "hitpoints": 505,
+    "lifetime": "1min 5sec",
+    "production_speed": "13sec"
+   },
+   "tags": [],
+   "tl_id": 95,
+   "unlocks": "Arena 13"
+  },
+  "furnace": {
+   "dcheck_traits": {
+    "building": 1,
+    "fast": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "summon_card_offensive": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Furnace spawns one Fire Spirit at a time while dealing damage with its special cauldron brew.<br /><br />It also makes great brick-oven pancakes.",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 27000010,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Furnace",
+   "rarity": "Rare",
+   "stats": {
+    "fire_spirit": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Fire Spirit",
+     "stats": {
+      "damage": 98,
+      "hitpoints": 84,
+      "range": 2.5,
+      "speed": "Very Fast",
+      "targets": "Air & Ground"
+     }
+    },
+    "hit_speed": "1.7sec",
+    "hitpoints": 343,
+    "range": 5.5,
+    "ranged_damage": 84,
+    "spawn_speed": "5sec",
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 98,
+   "unlocks": "Arena 10"
+  },
+  "goblin_cage": {
+   "dcheck_traits": {
+    "building": 1,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "targets_ground": 1,
+    "tower_defense": 1
+   },
+   "description": "When the Goblin Cage is destroyed, a Goblin Brawler is unleashed into the Arena! Goblin Brawler always skips leg day.",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 27000012,
+   "level_stats": {
+    "hitpoints": "default"
+   },
+   "name": "Goblin Cage",
+   "rarity": "Rare",
+   "stats": {
+    "goblin_brawler": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Goblin Brawler",
+     "stats": {
+      "damage": 159,
+      "hit_speed": "1.1sec",
+      "hitpoints": 529,
+      "range": "Melee: Short",
+      "speed": "Fast",
+      "targets": "Ground"
+     }
+    },
+    "goblin_brawler_count": "x1",
+    "hitpoints": 350,
+    "lifetime": "20sec",
+    "spawn_on_death": "Goblin Brawler x1"
+   },
+   "tags": [
+    "cage"
+   ],
+   "tl_id": 99,
+   "unlocks": "Arena 1"
+  },
+  "goblin_drill": {
+   "dcheck_traits": {
+    "anti_death": 1,
+    "building": 1,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "summon_card_offensive": 1,
+    "tank_killer": 1,
+    "targets_ground": 1,
+    "unbound": 1
+   },
+   "description": "Building capable of burrowing underground and appearing anywhere in the Arena. Spawns Goblins one at a time until destroyed. Then spawns a few more, to make sure everything nearby has been properly stabbed.",
+   "elixirs": 4,
+   "id": 27000013,
+   "level_stats": {
+    "crown_tower_spawn_damage": "default",
+    "hitpoints": "default",
+    "spawn_damage": "default"
+   },
+   "name": "Goblin Drill",
+   "rarity": "Epic",
+   "stats": {
+    "crown_tower_spawn_damage": 16,
+    "goblin": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Goblin",
+     "stats": {
+      "damage": 75,
+      "hit_speed": "1.1sec",
+      "hitpoints": 126,
+      "range": "Melee: Short",
+      "speed": "Very Fast",
+      "targets": "Ground"
+     }
+    },
+    "hitpoints": 900,
+    "lifetime": "9sec",
+    "spawn_damage": 51,
+    "spawn_on_death": "Goblin x2",
+    "spawn_speed": "1sec"
+   },
+   "tags": [
+    "drill"
+   ],
+   "tl_id": 100,
+   "unlocks": "Arena 13"
+  },
+  "goblin_hut": {
+   "dcheck_traits": {
+    "building": 1,
+    "fast": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "summon_card_defensive": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Building that spawns Spear Goblins. Don't look inside... you don't want to see how they're made.",
+   "elixirs": 4,
+   "id": 27000001,
+   "level_stats": {
+    "hitpoints": "default"
+   },
+   "name": "Goblin Hut",
+   "rarity": "Rare",
+   "stats": {
+    "hitpoints": 557,
+    "lifetime": "31sec",
+    "spawn_on_death": "Spear Goblin x3",
+    "spawn_speed": "2.2sec",
+    "spear_goblin": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Spear Goblin",
+     "stats": {
+      "damage": 38,
+      "hit_speed": "1.7sec",
+      "hitpoints": 62,
+      "range": 5,
+      "speed": "Very Fast",
+      "targets": "Air & Ground"
+     }
+    }
+   },
+   "tags": [
+    "gob hut"
+   ],
+   "tl_id": 89,
+   "unlocks": "Arena 9"
+  },
+  "inferno_tower": {
+   "dcheck_traits": {
+    "building": 1,
+    "damage_over_time": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1,
+    "tower_defense": 1
+   },
+   "description": "Defensive building, roasts targets for damage that increases over time. Burns through even the biggest and toughest enemies!",
+   "elixirs": 5,
+   "id": 27000003,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Inferno Tower",
+   "rarity": "Rare",
+   "stats": {
+    "damage": {
+     "max": 400,
+     "min": 20
+    },
+    "damage_per_second": "damage",
+    "hit_speed": "0.4sec",
+    "hitpoints": 825,
+    "lifetime": "30sec",
+    "range": 6,
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "itower"
+   ],
+   "tl_id": 91,
+   "unlocks": "Arena 4"
+  },
+  "mortar": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "building": 1,
+    "ground": 1,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1,
+    "tower_defense": 1,
+    "win_condition": 1
+   },
+   "description": "Defensive building with a long range. Shoots big boulders that deal area damage, but cannot hit targets that get too close!",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 27000002,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Mortar",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 104,
+    "deploy_time": "3.5sec",
+    "hit_speed": "4.7sec",
+    "hitpoints": 535,
+    "lifetime": "30sec",
+    "range": 11.5,
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 90,
+   "unlocks": "Arena 6"
+  },
+  "tesla": {
+   "dcheck_traits": {
+    "building": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank_killer": 0.5,
+    "targets_air": 1,
+    "targets_ground": 1,
+    "tower_defense": 1
+   },
+   "description": "Defensive building. Whenever it's not zapping the enemy, the power of Electrickery is best kept grounded.",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 27000006,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Tesla",
+   "rarity": "Common",
+   "stats": {
+    "damage": 90,
+    "damage_per_second": "damage",
+    "hit_speed": "1.2sec",
+    "hitpoints": 462,
+    "lifetime": "25sec",
+    "range": 5.5,
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 94,
+   "unlocks": "Arena 11"
+  },
+  "tombstone": {
+   "dcheck_traits": {
+    "anti_death": 1,
+    "area_damage": 0.5,
+    "building": 1,
+    "cycle": 0.25,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "summon_card_offensive": 1,
+    "swarm": 0.5,
+    "targets_ground": 1
+   },
+   "description": "Building that periodically spawns Skeletons to fight the enemy... and when destroyed, spawns 4 more Skeletons! Creepy!",
+   "elixirs": 3,
+   "hero": {
+    "ability_description": "Tomb Queen rises from the earth, spawning Skeletons and targeting buildings.",
+    "ability_name": "Regal Revival"
+   },
+   "id": 27000009,
+   "level_stats": {
+    "hitpoints": "default"
+   },
+   "name": "Tombstone",
+   "rarity": "Rare",
+   "stats": {
+    "hitpoints": 250,
+    "lifetime": "30sec",
+    "skeleton": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Skeleton",
+     "stats": {
+      "damage": 38,
+      "hit_speed": "1sec",
+      "hitpoints": 38,
+      "range": "Melee: Short",
+      "speed": "Fast",
+      "targets": "Ground"
+     }
+    },
+    "spawn_on_death": "Skeleton x4",
+    "spawn_speed": "4sec"
+   },
+   "tags": [
+    "tomb"
+   ],
+   "tl_id": 97,
+   "unlocks": "Arena 2"
+  },
+  "x_bow": {
+   "dcheck_traits": {
+    "building": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank_killer": 1,
+    "targets_ground": 1,
+    "win_condition": 1
+   },
+   "description": "Nice tower you got there. Would be a shame if this X-Bow whittled it down from this side of the Arena...",
+   "elixirs": 6,
+   "id": 27000008,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "X-Bow",
+   "rarity": "Epic",
+   "stats": {
+    "deploy_time": "3.5sec",
+    "hit_speed": "0.4sec",
+    "hitpoints": 1000,
+    "lifetime": "30sec",
+    "range": 11.5,
+    "ranged_damage": 36,
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 96,
+   "unlocks": "Arena 6"
+  }
+ },
+ "spells": {
+  "arrows": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.25,
+    "spell": 1
+   },
+   "description": "Arrows pepper a large area, damaging all enemies hit. Reduced damage to Crown Towers.",
+   "elixirs": 3,
+   "id": 28000001,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "Arrows",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 48,
+    "crown_tower_damage": 10,
+    "radius": 4
+   },
+   "tags": [],
+   "tl_id": 102,
+   "unlocks": "Training Camp"
+  },
+  "barbarian_barrel": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.75,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "spell": 1,
+    "targets_ground": 1
+   },
+   "description": "It rolls over and damages anything in its path, then breaks open and out pops a Barbarian! How did he get inside?!",
+   "elixirs": 2,
+   "hero": {
+    "ability_description": "Barrels down then lane a second time for maximum impact.",
+    "ability_name": "Rowdy Reroll"
+   },
+   "id": 28000015,
+   "level_stats": {
+    "area_damage": "default"
+   },
+   "name": "Barbarian Barrel",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 150,
+    "barbarian": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Barbarian",
+     "stats": {
+      "damage": 120,
+      "hit_speed": "1.4sec",
+      "hitpoints": 419,
+      "range": "Melee: Short",
+      "speed": "Medium",
+      "targets": "Ground"
+     }
+    },
+    "range": 5,
+    "targets": "Ground",
+    "width": 2.6
+   },
+   "tags": [
+    "barb barrel"
+   ],
+   "tl_id": 116,
+   "unlocks": "Arena 3"
+  },
+  "clone": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "spell": 1,
+    "summon_card_offensive": 0.5
+   },
+   "description": "Duplicates all friendly troops in the target area. Cloned troops are fragile, but pack the same punch as the original! Doesn't affect buildings.",
+   "elixirs": 3,
+   "id": 28000013,
+   "level_stats": {
+    "cloned_common_level": 1,
+    "cloned_epic_level": 1,
+    "cloned_legendary_level": 1,
+    "cloned_rare_level": 1
+   },
+   "name": "Clone",
+   "rarity": "Epic",
+   "stats": {
+    "clone_hitpoints": 1,
+    "clone_shield_hitpoints": 1,
+    "cloned_common_level": 6,
+    "cloned_epic_level": 6,
+    "cloned_legendary_level": 6,
+    "cloned_rare_level": 6,
+    "radius": 3
+   },
+   "tags": [],
+   "tl_id": 114,
+   "unlocks": "Legendary Arena"
+  },
+  "earthquake": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "damage_over_time": 1,
+    "spell": 1
+   },
+   "description": "Deals Damage per second to Troops and Crown Towers. Deals huge Building Damage! Does not affect flying units (it is an EARTHquake, after all).",
+   "elixirs": 3,
+   "id": 28000014,
+   "level_stats": {
+    "building_damage_per_sec": "default",
+    "crown_tower_damage_per_sec": "default",
+    "damage_per_second": "default"
+   },
+   "name": "Earthquake",
+   "rarity": "Rare",
+   "stats": {
+    "building_damage_per_sec": 135,
+    "crown_tower_damage_per_sec": 25,
+    "damage_per_second": 39,
+    "duration": "3sec",
+    "radius": 3.5,
+    "slowdown_troops": "-50%"
+   },
+   "tags": [
+    "eq"
+   ],
+   "tl_id": 115,
+   "unlocks": "Arena 12"
+  },
+  "fireball": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "spell": 1
+   },
+   "description": "Annnnnd... Fireball. Incinerates a small area, dealing high damage. Reduced damage to Crown Towers.",
+   "elixirs": 4,
+   "id": 28000000,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "Fireball",
+   "rarity": "Rare",
+   "stats": {
+    "area_damage": 325,
+    "crown_tower_damage": 75,
+    "radius": 2.5
+   },
+   "tags": [],
+   "tl_id": 101,
+   "unlocks": "Training Camp"
+  },
+  "freeze": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "reset": 1,
+    "spell": 1,
+    "stun": 1
+   },
+   "description": "Freezes and damages enemy troops and buildings, making them unable to move or attack. Everybody chill. Reduced damage to Crown Towers.",
+   "elixirs": 4,
+   "id": 28000005,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "Freeze",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 92,
+    "crown_tower_damage": 23,
+    "freeze_duration": "3.5sec",
+    "radius": 3
+   },
+   "tags": [],
+   "tl_id": 106,
+   "unlocks": "Arena 8"
+  },
+  "giant_snowball": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.75,
+    "displacement": 1,
+    "slow": 1,
+    "spell": 1,
+    "targets_ground": 1
+   },
+   "description": "It's HUGE! Once it began rolling down Frozen Peak, there was no stopping it. Enemies hit are knocked back and slowed down. Reduced damage to Crown Towers.",
+   "elixirs": 2,
+   "evolution": true,
+   "id": 28000017,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "Giant Snowball",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 75,
+    "crown_tower_damage": 17,
+    "radius": 2.5,
+    "slowdown_duration": "2.5sec"
+   },
+   "tags": [],
+   "tl_id": 117,
+   "unlocks": "Arena 8"
+  },
+  "goblin_barrel": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.25,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "spell": 1,
+    "swarm": 0.5,
+    "targets_ground": 1,
+    "unbound": 1
+   },
+   "description": "Spawns three Goblins anywhere in the Arena. It's going to be a thrilling ride, boys!",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 28000004,
+   "name": "Goblin Barrel",
+   "rarity": "Epic",
+   "stats": {
+    "goblin": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Goblin",
+     "stats": {
+      "damage": 75,
+      "hit_speed": "1.1sec",
+      "hitpoints": 126,
+      "range": "Melee: Short",
+      "speed": "Very Fast",
+      "targets": "Ground"
+     }
+    },
+    "goblin_count": "x3",
+    "radius": 1.5
+   },
+   "tags": [
+    "gob barrel",
+    "gob bar"
+   ],
+   "tl_id": 105,
+   "unlocks": "Arena 3"
+  },
+  "goblin_curse": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.75,
+    "damage_over_time": 1,
+    "spell": 1,
+    "summon_card_offensive": 1
+   },
+   "description": "And thrice were their afflictions... nixed, vexed, and hexed!<br><br>Enemy troops in the area will receive extra damage from attacks and become Goblins when destroyed. Deals damage to enemies over time.",
+   "elixirs": 2,
+   "id": 28000024,
+   "level_stats": {
+    "crown_tower_damage_per_second": "default",
+    "damage_per_second": "default"
+   },
+   "name": "Goblin Curse",
+   "rarity": "Epic",
+   "stats": {
+    "crown_tower_damage_per_second": 6,
+    "damage_per_second": 22,
+    "duration": "6sec",
+    "goblin_level": 11,
+    "radius": 3,
+    "slowdown_troops": "-15%"
+   },
+   "tags": [],
+   "tl_id": 120,
+   "unlocks": "Goblins 2"
+  },
+  "graveyard": {
+   "dcheck_traits": {
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "spell": 1,
+    "targets_ground": 1,
+    "unbound": 1
+   },
+   "description": "Surprise! It's a party. A Skeleton party, anywhere in the Arena. Yay!",
+   "elixirs": 5,
+   "id": 28000010,
+   "name": "Graveyard",
+   "rarity": "Legendary",
+   "stats": {
+    "duration": "9sec",
+    "radius": 4,
+    "skeleton": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Skeleton",
+     "stats": {
+      "damage": 67,
+      "hit_speed": "1sec",
+      "hitpoints": 67,
+      "range": "Melee: Short",
+      "speed": "Fast",
+      "targets": "Ground"
+     }
+    },
+    "spawn_speed": "0.5sec"
+   },
+   "tags": [
+    "gy",
+    "yard",
+    "splashyard"
+   ],
+   "tl_id": 111,
+   "unlocks": "Arena 12"
+  },
+  "lightning": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "burst_damage": 1,
+    "reset": 1,
+    "spell": 1,
+    "stun": 1
+   },
+   "description": "Bolts of lightning damage and stun up to three enemy troops or buildings with the most hitpoints in the target area. Reduced damage to Crown Towers.",
+   "elixirs": 6,
+   "id": 28000007,
+   "level_stats": {
+    "crown_tower_damage": "default",
+    "damage": "default"
+   },
+   "name": "Lightning",
+   "rarity": "Epic",
+   "stats": {
+    "count": "x3",
+    "crown_tower_damage": 165,
+    "damage": 660,
+    "radius": 3.5,
+    "stun_duration": "0.5sec"
+   },
+   "tags": [
+    "light"
+   ],
+   "tl_id": 108,
+   "unlocks": "Arena 8"
+  },
+  "mirror": {
+   "dcheck_traits": {
+    "spell": 1,
+    "summon_card_offensive": 1
+   },
+   "description": "Mirrors your last card played for +1 Elixir. Does not appear in your starting hand.",
+   "elixirs": "?",
+   "id": 28000006,
+   "level_stats": {
+    "mirrored_common_level": 1,
+    "mirrored_epic_level": 1,
+    "mirrored_legendary_level": 1,
+    "mirrored_rare_level": 1
+   },
+   "name": "Mirror",
+   "rarity": "Epic",
+   "stats": {
+    "mirrored_common_level": 8,
+    "mirrored_epic_level": 8,
+    "mirrored_legendary_level": 8,
+    "mirrored_rare_level": 8
+   },
+   "tags": [],
+   "tl_id": 107,
+   "unlocks": "Arena 12"
+  },
+  "poison": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "damage_over_time": 1,
+    "spell": 1
+   },
+   "description": "Covers the area in a deadly toxin, damaging enemy troops and buildings over time. Yet somehow leaves the grass green and healthy. Go figure! Reduced damage to Crown Towers.",
+   "elixirs": 4,
+   "id": 28000009,
+   "level_stats": {
+    "crown_damage_per_sec": "default",
+    "damage_per_sec": "default"
+   },
+   "name": "Poison",
+   "rarity": "Epic",
+   "stats": {
+    "crown_damage_per_sec": 14,
+    "damage_per_sec": 57,
+    "duration": "8sec",
+    "radius": 3.5,
+    "slowdown_troops": "-15%"
+   },
+   "tags": [],
+   "tl_id": 110,
+   "unlocks": "Arena 9"
+  },
+  "rage": {
+   "dcheck_traits": {
+    "attack_speed_boost": 1,
+    "cycle": 0.75,
+    "move_speed_boost": 1,
+    "spell": 1
+   },
+   "description": "Increases troop movement and attack speed. Buildings attack faster and summon troops quicker, too. Chaaaarge!",
+   "elixirs": 2,
+   "id": 28000002,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "Rage",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 132,
+    "boost": "+30%",
+    "crown_tower_damage": 21,
+    "deploy_time": "0.5sec",
+    "duration": "6.0sec",
+    "radius": 3
+   },
+   "tags": [],
+   "tl_id": 103,
+   "unlocks": "Arena 14"
+  },
+  "rocket": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "spell": 1
+   },
+   "description": "Deals high damage to a small area. Looks really awesome doing it. Reduced damage to Crown Towers.",
+   "elixirs": 6,
+   "id": 28000003,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "Rocket",
+   "rarity": "Rare",
+   "stats": {
+    "area_damage": 700,
+    "crown_tower_damage": 162,
+    "radius": 2
+   },
+   "tags": [],
+   "tl_id": 104,
+   "unlocks": "Arena 6"
+  },
+  "royal_delivery": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "spawn_damage": 1,
+    "spell": 1,
+    "targets_ground": 1,
+    "unbound": 1
+   },
+   "description": "No need to sign for this package! Dropped from the sky, it deals Area Damage to enemy Troops before delivering a Royal Recruit. The empty box is also handy for espionage.",
+   "elixirs": 3,
+   "id": 28000018,
+   "level_stats": {
+    "area_damage": "default"
+   },
+   "name": "Royal Delivery",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 150,
+    "count": "x1",
+    "radius": 3,
+    "royal_recruits": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Royal Recruits",
+     "stats": {
+      "damage": 52,
+      "hit_speed": "1.3sec",
+      "hitpoints": 208,
+      "range": "Melee: Long",
+      "speed": "Medium",
+      "targets": "Ground"
+     }
+    }
+   },
+   "tags": [
+    "drop",
+    "rd"
+   ],
+   "tl_id": 118,
+   "unlocks": "Legendary Arena"
+  },
+  "the_log": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "burst_damage": 1,
+    "cycle": 0.75,
+    "spell": 1
+   },
+   "description": "A spilt bottle of Rage turned an innocent tree trunk into The Log. Now, it seeks revenge by crushing anything in its path! Reduced damage to Crown Towers.",
+   "elixirs": 2,
+   "id": 28000011,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "The Log",
+   "rarity": "Legendary",
+   "stats": {
+    "area_damage": 240,
+    "crown_tower_damage": 72,
+    "range": 10.1,
+    "targets": "Ground",
+    "width": 3.9
+   },
+   "tags": [],
+   "tl_id": 112,
+   "unlocks": "Arena 6"
+  },
+  "tornado": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "damage_over_time": 1,
+    "displacement": 1,
+    "spell": 1
+   },
+   "description": "Drags enemy troops to its center while dealing damage over time, just like a magnet. A big, swirling, Tornado-y magnet.",
+   "elixirs": 3,
+   "id": 28000012,
+   "level_stats": {
+    "crown_damage_per_sec": "default",
+    "damage_per_second": "default"
+   },
+   "name": "Tornado",
+   "rarity": "Epic",
+   "stats": {
+    "crown_damage_per_sec": 36,
+    "damage_per_second": 210,
+    "duration": "1sec",
+    "radius": 5.5
+   },
+   "tags": [
+    "nado",
+    "splash",
+    "splashyard"
+   ],
+   "tl_id": 113,
+   "unlocks": "Legendary Arena"
+  },
+  "vines": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "damage_over_time": 1,
+    "spell": 1,
+    "stun": 1
+   },
+   "description": "Entangle the three highest hitpoint troops or buildings in the area, stunning them while doing damage. If the troop is in the air, they'll ground them.<br /><br />Don't worry, they'll grow on you!",
+   "elixirs": 3,
+   "id": 28000026,
+   "level_stats": {
+    "crown_tower_damage_per_second": "default",
+    "damage_per_second": "default"
+   },
+   "name": "Vines",
+   "rarity": "Epic",
+   "stats": {
+    "count": 3,
+    "crown_tower_damage_per_second": 22,
+    "damage_per_second": 84,
+    "duration": "2sec",
+    "radius": 2.5
+   },
+   "tags": [],
+   "tl_id": 121,
+   "unlocks": "Arena 8"
+  },
+  "void": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.25,
+    "single_target": 1,
+    "spell": 1
+   },
+   "description": "You shall not pass! Unless there are lot of you...<br><br>Creates a field of dark magic, damaging all enemy Troops and buildings within. More damage is dealt when fewer targets are in its area. Reduced damage to Crown Towers.",
+   "elixirs": 5,
+   "id": 28000023,
+   "level_stats": {
+    "2_to_4_targets": "default",
+    "5_or_more_targets": "default",
+    "crown_tower_damage_1_target": "default",
+    "damage_1_target": "default"
+   },
+   "name": "Void",
+   "rarity": "Epic",
+   "stats": {
+    "2_to_4_targets": 184,
+    "5_or_more_targets": 96,
+    "crown_tower_damage_1_target": 60,
+    "damage_1_target": 435,
+    "duration": "4sec",
+    "radius": 2.5
+   },
+   "tags": [],
+   "tl_id": 119,
+   "unlocks": "Miner's Mine"
+  },
+  "zap": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.75,
+    "reset": 1,
+    "spell": 1,
+    "stun": 1
+   },
+   "description": "Zaps enemies, briefly stunning them and dealing damage inside a small radius. Reduced damage to Crown Towers.",
+   "elixirs": 2,
+   "evolution": true,
+   "id": 28000008,
+   "level_stats": {
+    "area_damage": "default",
+    "crown_tower_damage": "default"
+   },
+   "name": "Zap",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 75,
+    "crown_tower_damage": 19,
+    "radius": 2.5,
+    "stun_duration": "0.5sec"
+   },
+   "tags": [],
+   "tl_id": 109,
+   "unlocks": "Arena 5"
+  }
+ },
+ "towers": {
+  "cannoneer": {
+   "description": "Slow but powerful. What could be better than a giant cannon on your Tower?",
+   "id": 159000001,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Cannoneer",
+   "rarity": "Epic",
+   "stats": {
+    "damage": 241,
+    "damage_per_second": "damage",
+    "hit_speed": "2.4sec",
+    "hitpoints": 1740,
+    "range": "7.5",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "unlocks": "Arena 8"
+  },
+  "dagger_duchess": {
+   "description": "This Royal stockpiles her daggers when enemies are far away. When they dare to draw near, she unleashes her daggers in a rapid flurry!<br /><br />Oh, one more thing. Don't call her Princess.",
+   "id": 159000002,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Dagger Duchess",
+   "rarity": "Legendary",
+   "stats": {
+    "dagger_charge": "0.9sec",
+    "damage": 93,
+    "damage_per_second": "damage",
+    "hit_speed": "0.4sec",
+    "hitpoints": 2298,
+    "max_daggers": 8,
+    "range": "7.5",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "unlocks": "Arena 11"
+  },
+  "royal_chef": {
+   "description": "Royal Chef cooks a mean Pancake and throws it to your Troop with the most Hitpoints, increasing their Level by 1.<br /><br />Pancakes take longer to cook when he's attacking, and he serves Troops who haven't eaten yet.",
+   "id": 159000004,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Royal Chef",
+   "rarity": "Legendary",
+   "stats": {
+    "buff_threshold": "20%",
+    "cooking_time": "18sec-30sec",
+    "damage": 90,
+    "damage_per_second": "damage",
+    "hit_speed": "0.9sec",
+    "hitpoints": 2234,
+    "range": "7.5",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "unlocks": "Arena 13"
+  },
+  "tower_princess": {
+   "description": "The gold standard for Tower Troops. A Tower Princess can defend against anything, one arrow at a time.",
+   "id": 159000000,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Tower Princess",
+   "rarity": "Common",
+   "stats": {
+    "damage": 50,
+    "damage_per_second": "damage",
+    "hit_speed": "0.8sec",
+    "hitpoints": 1400,
+    "range": "7.5",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "unlocks": "Training Camp"
+  }
+ },
+ "troops": {
+  "archer_queen": {
+   "ability": {
+    "cooldown": "15sec",
+    "description": "Acitvates stealth mode and shoots her arrows faster!",
+    "level_stats": {
+     "damage_per_sec": "default"
+    },
+    "name": "Cloaking Cape!",
+    "stats": {
+     "damage_per_sec": 525,
+     "damage_per_sec_boost": "+180%",
+     "invisibilty_duration": "3sec"
+    }
+   },
+   "dcheck_traits": {
+    "attack_speed_boost": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "stealth": 1,
+    "tank": 0.25,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "She is fast, deadly and hard to catch. Beware of her crossbow bolts and try not to blink - you might miss her!",
+   "elixirs": 5,
+   "id": 26000072,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Archer Queen",
+   "rarity": "Champion",
+   "stats": {
+    "hit_speed": "1.2sec",
+    "hitpoints": 1000,
+    "range": 5,
+    "ranged_damage": 232,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "aq"
+   ],
+   "tl_id": 70,
+   "unlocks": "King Level 14"
+  },
+  "archers": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.25,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 0.5,
+    "swarm": 0.5,
+    "tank_killer": 0.5,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "A pair of lightly armored ranged attackers. They'll help you take down ground and air units, but you're on your own with hair coloring advice.",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 26000001,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Archers",
+   "rarity": "Common",
+   "stats": {
+    "count": "x2",
+    "hit_speed": "1.1sec",
+    "hitpoints": 119,
+    "range": 5,
+    "ranged_damage": 42,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "arch"
+   ],
+   "tl_id": 2,
+   "unlocks": "Training Camp"
+  },
+  "baby_dragon": {
+   "dcheck_traits": {
+    "air": 1,
+    "area_damage": 1,
+    "fast": 0.5,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Burps fireballs from the sky that deal area damage. Baby dragons hatch cute, hungry and ready for a barbeque.",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 26000015,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Baby Dragon",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 100,
+    "damage_per_second": "area_damage",
+    "hit_speed": "1.5sec",
+    "hitpoints": 1152,
+    "range": 3.5,
+    "speed": "Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "babyd"
+   ],
+   "tl_id": 16,
+   "unlocks": "Arena 2"
+  },
+  "balloon": {
+   "dcheck_traits": {
+    "air": 1,
+    "area_damage": 1,
+    "burst_damage": 0.5,
+    "melee": 1,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "As pretty as they are, you won't want a parade of THESE balloons showing up on the horizon. Drops powerful bombs and when shot down, crashes dealing area damage.",
+   "elixirs": 5,
+   "hero": {
+    "ability_description": "A skeletrooper soars to the nearest enemy on the ground, dealing landing damage.",
+    "ability_name": "Coffin Cadets"
+   },
+   "id": 26000006,
+   "level_stats": {
+    "damage": "default",
+    "death_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Balloon",
+   "rarity": "Epic",
+   "stats": {
+    "damage": 400,
+    "damage_per_second": "damage",
+    "death_damage": 150,
+    "hit_speed": "2sec",
+    "hitpoints": 1050,
+    "range": "Melee: Short",
+    "speed": "Medium",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "loon",
+    "lavaloon",
+    "lumberloon"
+   ],
+   "tl_id": 7,
+   "unlocks": "Arena 6"
+  },
+  "bandit": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "dash": 1,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 0.5,
+    "targets_ground": 1
+   },
+   "description": "The Bandit dashes to her target and delivers an extra big hit! While dashing, she can't be touched. The mask keeps her identity safe, and gives her bonus cool points!",
+   "elixirs": 3,
+   "id": 26000046,
+   "level_stats": {
+    "damage": "default",
+    "dash_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Bandit",
+   "rarity": "Legendary",
+   "stats": {
+    "damage": 160,
+    "damage_per_second": "damage",
+    "dash_damage": 320,
+    "dash_range": "3.5-6",
+    "hit_speed": "1sec",
+    "hitpoints": 750,
+    "range": "Melee: Short",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 47,
+   "unlocks": "Arena 13"
+  },
+  "barbarians": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1.5,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "A horde of melee attackers with mean mustaches and even meaner tempers.",
+   "elixirs": 5,
+   "evolution": true,
+   "id": 26000008,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Barbarians",
+   "rarity": "Common",
+   "stats": {
+    "count": "x5",
+    "damage": 75,
+    "damage_per_second": "damage",
+    "hit_speed": "1.4sec",
+    "hitpoints": 280,
+    "range": "Melee: Short",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "barbs"
+   ],
+   "tl_id": 9,
+   "unlocks": "Arena 3"
+  },
+  "bats": {
+   "dcheck_traits": {
+    "air": 1,
+    "area_damage": 0.5,
+    "cycle": 0.75,
+    "fast": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1,
+    "tank_killer": 0.5,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Spawns a handful of tiny flying creatures. Think of them as sweet, purple... balls of DESTRUCTION!",
+   "elixirs": 2,
+   "evolution": true,
+   "id": 26000049,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Bats",
+   "rarity": "Common",
+   "stats": {
+    "count": "x5",
+    "damage": 32,
+    "damage_per_second": "damage",
+    "hit_speed": "1.3sec",
+    "hitpoints": 32,
+    "range": "Melee: Medium",
+    "speed": "Very Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 50,
+   "unlocks": "Arena 5"
+  },
+  "battle_healer": {
+   "dcheck_traits": {
+    "ground": 1,
+    "healing": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_ground": 1
+   },
+   "description": "With each attack, she unleashes a powerful healing aura that restores Hitpoints to herself and friendly Troops. When she isn't attacking, she passively heals herself!",
+   "elixirs": 4,
+   "id": 26000068,
+   "level_stats": {
+    "damage": "default",
+    "healing_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Battle Healer",
+   "rarity": "Rare",
+   "stats": {
+    "damage": 126,
+    "damage_per_second": "damage",
+    "duration": "1sec",
+    "healing_per_second": 101,
+    "hit_speed": "2sec",
+    "hitpoints": 907,
+    "range": "Melee: Long",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "healer",
+    "bh"
+   ],
+   "tl_id": 68,
+   "unlocks": "Legendary Arena"
+  },
+  "battle_ram": {
+   "dcheck_traits": {
+    "charge": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "targets_building": 1,
+    "targets_ground": 1,
+    "win_condition": 1
+   },
+   "description": "Two Barbarians holding a big log charge at the nearest building, dealing significant damage if they connect; then they go to town with their swords!",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 26000036,
+   "level_stats": {
+    "charge_damage": "default",
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Battle Ram",
+   "rarity": "Rare",
+   "stats": {
+    "barbarian": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Barbarian",
+     "stats": {
+      "damage": 90,
+      "hit_speed": "1.4sec",
+      "hitpoints": 317,
+      "range": "Melee: Short",
+      "speed": "Medium",
+      "targets": "Ground"
+     }
+    },
+    "charge_damage": 270,
+    "damage": 135,
+    "hitpoints": 430,
+    "range": "Melee: Short",
+    "speed": "Medium",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "ram"
+   ],
+   "tl_id": 37,
+   "unlocks": "Arena 3"
+  },
+  "berserker": {
+   "dcheck_traits": {
+    "cycle": 0.75,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 0.5,
+    "targets_ground": 1
+   },
+   "description": "It's surprising how often she needs her axes sharpened, but then again, if you liked hitting things as fast as her, so would you.",
+   "elixirs": 2,
+   "hero": {
+    "ability_description": "Goes berserk and becomes unbeatable for a few seconds, unleashing her inner beast.",
+    "ability_name": "Savage Survival"
+   },
+   "id": 26000102,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Berserker",
+   "rarity": "Common",
+   "stats": {
+    "damage": 102,
+    "damage_per_second": "damage",
+    "hit_speed": "0.6sec",
+    "hitpoints": 832,
+    "range": "Melee: Short",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 85,
+   "unlocks": "Arena 11"
+  },
+  "bomber": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.75,
+    "ground": 1,
+    "ranged": 1,
+    "targets_ground": 1
+   },
+   "description": "Small, lightly protected skeleton who throws bombs. Deals area damage that can wipe out a swarm of enemies.",
+   "elixirs": 2,
+   "evolution": true,
+   "id": 26000013,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Bomber",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 83,
+    "damage_per_second": "area_damage",
+    "hit_speed": "1.8sec",
+    "hitpoints": 119,
+    "range": 4.5,
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 14,
+   "unlocks": "Arena 2"
+  },
+  "boss_bandit": {
+   "ability": {
+    "cooldown": "50%",
+    "description": "Briefly becomes invisible and teleports backwards!",
+    "name": "Getaway Grenade",
+    "stats": {
+     "invisibilty_duration": "1sec",
+     "teleport_range": 6
+    }
+   },
+   "dcheck_traits": {
+    "dash": 1,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_ground": 1
+   },
+   "description": "The boss of the Forest Gang finally shows her face... kind of.<br/><br/>Boss Bandit dashes to her targets and is invulnerable while dashing. When things get tough, her pair of grenades are at the ready.",
+   "elixirs": 6,
+   "id": 26000103,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "dash_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Boss Bandit",
+   "rarity": "Champion",
+   "stats": {
+    "damage": 245,
+    "damage_per_second": "damage",
+    "dash_damage": 491,
+    "dash_range": "3.5-6",
+    "hit_speed": "1.1sec",
+    "hitpoints": 2624,
+    "range": "Melee: Short",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 86,
+   "unlocks": "Arena 17"
+  },
+  "bowler": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_ground": 1
+   },
+   "description": "This big blue dude digs the simple things in life - Dark Elixir drinks and throwing rocks. His massive boulders roll through their target, hitting everything behind for a strike!",
+   "elixirs": 5,
+   "hero": {
+    "ability_description": "Plants his feet and throws boulders with increased range.",
+    "ability_name": "Stone Swish"
+   },
+   "id": 26000034,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Bowler",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 180,
+    "hit_speed": "2.5sec",
+    "hitpoints": 1300,
+    "projectile_range": 7,
+    "range": 4,
+    "speed": "Slow",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 35,
+   "unlocks": "Arena 13"
+  },
+  "cannon_cart": {
+   "dcheck_traits": {
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "A Cannon on wheels?! Bet they won't see that coming! Once you break its shield, it becomes a Cannon not on wheels.",
+   "elixirs": 5,
+   "id": 26000054,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default",
+    "shield_hitpoints": "default"
+   },
+   "name": "Cannon Cart",
+   "rarity": "Epic",
+   "stats": {
+    "hit_speed": "1sec",
+    "hitpoints": 558,
+    "range": 5.5,
+    "ranged_damage": 133,
+    "shield_hitpoints": 555,
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "cc"
+   ],
+   "tl_id": 55,
+   "unlocks": "Legendary Arena"
+  },
+  "dark_prince": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "charge": 1,
+    "ground": 1,
+    "melee": 1,
+    "tank": 0.25,
+    "targets_ground": 1
+   },
+   "description": "The Dark Prince deals area damage and lets his spiked club do the talking for him - because when he does talk, it sounds like he has a bucket on his head.",
+   "elixirs": 4,
+   "hero": {
+    "ability_description": "Dismounts doing damage, attacking on foot while Rhino charges buildings.",
+    "ability_name": "Destructive Dismount"
+   },
+   "id": 26000027,
+   "level_stats": {
+    "area_damage": "default",
+    "charge_damage": "default",
+    "hitpoints": "default",
+    "shield_hitpoints": "default"
+   },
+   "name": "Dark Prince",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 155,
+    "charge_damage": 310,
+    "damage_per_second": "area_damage",
+    "hit_speed": "1.3sec",
+    "hitpoints": 750,
+    "range": "Melee: Medium",
+    "shield_hitpoints": 150,
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "dp"
+   ],
+   "tl_id": 28,
+   "unlocks": "Arena 7"
+  },
+  "dart_goblin": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "fast": 1,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Runs fast, shoots far and chews gum. How does he blow darts with a mouthful of Double Trouble Gum? Years of didgeridoo lessons.",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 26000040,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Dart Goblin",
+   "rarity": "Rare",
+   "stats": {
+    "hit_speed": "0.7sec",
+    "hitpoints": 123,
+    "range": 6.5,
+    "ranged_damage": 72,
+    "speed": "Very Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "dart gob",
+    "dgob"
+   ],
+   "tl_id": 41,
+   "unlocks": "Arena 9"
+  },
+  "electro_dragon": {
+   "dcheck_traits": {
+    "air": 1,
+    "area_damage": 1,
+    "ranged": 1,
+    "reset": 1,
+    "stun": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Spits out bolts of electricity hitting up to three targets. Suffers from middle child syndrome to boot.",
+   "elixirs": 5,
+   "evolution": true,
+   "id": 26000063,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Electro Dragon",
+   "rarity": "Epic",
+   "stats": {
+    "chained_attacks": 3,
+    "hit_speed": "2.1sec",
+    "hitpoints": 655,
+    "range": 3.5,
+    "ranged_damage": 120,
+    "speed": "Medium",
+    "stun_duration": "0.5sec",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "edragon",
+    "edrag"
+   ],
+   "tl_id": 64,
+   "unlocks": "Arena 11"
+  },
+  "electro_giant": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "reset": 1,
+    "single_target": 1,
+    "stun": 1,
+    "tank": 0.5,
+    "targets_air": 1,
+    "targets_building": 1,
+    "targets_ground": 1,
+    "win_condition": 1
+   },
+   "description": "He channels electricity through his Zap Pack, a unique device that stuns and damages any Troop attacking him within its range. Don't tell him that his finger guns aren't real! He'll zap you.",
+   "elixirs": 7,
+   "id": 26000085,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default",
+    "reflected_damage": "default"
+   },
+   "name": "Electro Giant",
+   "rarity": "Epic",
+   "stats": {
+    "damage": 115,
+    "damage_per_second": "damage",
+    "hit_speed": "2.1sec",
+    "hitpoints": 2210,
+    "range": "Melee: Medium",
+    "reflected_damage": 120,
+    "speed": "Slow",
+    "stun_duration": "0.5sec",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "egiant"
+   ],
+   "tl_id": 75,
+   "unlocks": "Arena 11"
+  },
+  "electro_spirit": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 1,
+    "fast": 1,
+    "ground": 1,
+    "ranged": 1,
+    "reset": 1,
+    "stun": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Jumps on enemies, dealing Area Damage and stunning up to 9 enemy Troops. Locked in an eternal battle with Knight for the best mustache.",
+   "elixirs": 1,
+   "id": 26000084,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Electro Spirit",
+   "rarity": "Common",
+   "stats": {
+    "chained_attacks": 9,
+    "hitpoints": 84,
+    "range": 2.5,
+    "ranged_damage": 39,
+    "speed": "Very Fast",
+    "stun_duration": "0.5sec",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "espirit"
+   ],
+   "tl_id": 74,
+   "unlocks": "Arena 11"
+  },
+  "electro_wizard": {
+   "dcheck_traits": {
+    "ground": 1,
+    "ranged": 1,
+    "reset": 1,
+    "single_target": 1,
+    "spawn_damage": 1,
+    "stun": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "He lands with a POW!, stuns nearby enemies and shoots lightning with both hands! What a show off.",
+   "elixirs": 4,
+   "id": 26000042,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default",
+    "spawn_damage": "default"
+   },
+   "name": "Electro Wizard",
+   "rarity": "Legendary",
+   "stats": {
+    "damage": {
+     "damage": 91,
+     "num_hits": 2
+    },
+    "damage_per_second": "damage",
+    "hit_speed": "1.8sec",
+    "hitpoints": 590,
+    "range": 5,
+    "spawn_damage": 75,
+    "speed": "Fast",
+    "stun_duration": "0.5sec",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "ewiz"
+   ],
+   "tl_id": 43,
+   "unlocks": "Arena 11"
+  },
+  "elite_barbarians": {
+   "dcheck_traits": {
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "swarm": 0.5,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "Spawns a pair of leveled up Barbarians. They're like regular Barbarians, only harder, better, faster and stronger.",
+   "elixirs": 6,
+   "evolution": true,
+   "id": 26000043,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Elite Barbarians",
+   "rarity": "Common",
+   "stats": {
+    "count": "x2",
+    "damage": 150,
+    "damage_per_second": "damage",
+    "hit_speed": "1.4sec",
+    "hitpoints": 524,
+    "range": "Melee: Medium",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "ebarbs"
+   ],
+   "tl_id": 44,
+   "unlocks": "Arena 10"
+  },
+  "elixir_golem": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_building": 1
+   },
+   "description": "Splits into two Elixir Golemites when destroyed, which split into two sentient Blobs when defeated. A Blob gives your opponent 1 Elixir when destroyed!",
+   "elixirs": 3,
+   "id": 26000067,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Elixir Golem",
+   "rarity": "Rare",
+   "stats": {
+    "damage": 120,
+    "damage_per_second": "damage",
+    "elixir_blob": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Elixir Blob",
+     "stats": {
+      "damage": 30,
+      "hit_speed": "1.3sec",
+      "hitpoints": 170,
+      "range": "Melee: Short",
+      "speed": "Fast",
+      "targets": "Buildings"
+     }
+    },
+    "elixir_golemite": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Elixir Golemite",
+     "stats": {
+      "damage": 60,
+      "hit_speed": "1.3sec",
+      "hitpoints": 340,
+      "range": "Melee: Short",
+      "speed": "Medium",
+      "targets": "Buildings"
+     }
+    },
+    "hit_speed": "1.3sec",
+    "hitpoints": 680,
+    "range": "Melee: Short",
+    "speed": "Slow",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "egolem"
+   ],
+   "tl_id": 67,
+   "unlocks": "Arena 14"
+  },
+  "executioner": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "ground": 1,
+    "ranged": 1,
+    "tank": 0.25,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "He throws his axe like a boomerang, striking all enemies on the way out AND back. It's a miracle he doesn't lose an arm.",
+   "elixirs": 5,
+   "evolution": true,
+   "id": 26000045,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Executioner",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": {
+     "damage": 106,
+     "num_hits": 2
+    },
+    "hit_speed": "2.4sec",
+    "hitpoints": 800,
+    "projectile_range": 7,
+    "range": 4.5,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "exe"
+   ],
+   "tl_id": 46,
+   "unlocks": "Arena 14"
+  },
+  "fire_spirit": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 1,
+    "death_damage": 1,
+    "fast": 1,
+    "ground": 1,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "The Fire Spirit is on a kamikaze mission to give you a warm hug. It'd be adorable if it wasn't on fire.",
+   "elixirs": 1,
+   "id": 26000031,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Fire Spirit",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 89,
+    "hitpoints": 84,
+    "range": 2,
+    "speed": "Very Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "fspirit"
+   ],
+   "tl_id": 32,
+   "unlocks": "Arena 4"
+  },
+  "firecracker": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.25,
+    "fast": 0.5,
+    "ground": 1,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Shoots a firework that explodes upon impact, damaging the target and showering anything directly behind it with sparks. This is what happens when Archers get bored!",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 26000064,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Firecracker",
+   "rarity": "Common",
+   "stats": {
+    "hit_speed": "3sec",
+    "hitpoints": 119,
+    "range": 6,
+    "ranged_damage": {
+     "damage": 25,
+     "num_hits": 5
+    },
+    "speed": "Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 65,
+   "unlocks": "Arena 14"
+  },
+  "fisherman": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "displacement": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_ground": 1
+   },
+   "description": "His Ranged Attack can pull enemies towards him, and pull himself to enemy buildings. He's also mastered the ancient art of 'Fish Slapping'.",
+   "elixirs": 3,
+   "id": 26000061,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Fisherman",
+   "rarity": "Legendary",
+   "stats": {
+    "damage": 160,
+    "damage_per_second": "damage",
+    "hit_speed": "1.3sec",
+    "hitpoints": 720,
+    "range": "Melee: Medium",
+    "ranged_attack_range": "3.5-7",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "fishy boi",
+    "fish"
+   ],
+   "tl_id": 62,
+   "unlocks": "Legendary Arena"
+  },
+  "flying_machine": {
+   "dcheck_traits": {
+    "air": 1,
+    "fast": 0.5,
+    "ranged": 1,
+    "single_target": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "The Master Builder has sent his first contraption to the Arena! It's a fast and fun flying machine, but fragile!",
+   "elixirs": 4,
+   "id": 26000057,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Flying Machine",
+   "rarity": "Rare",
+   "stats": {
+    "hit_speed": "1.1sec",
+    "hitpoints": 290,
+    "range": 6,
+    "ranged_damage": 81,
+    "speed": "Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "fm"
+   ],
+   "tl_id": 58,
+   "unlocks": "Arena 6"
+  },
+  "giant": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "Slow but durable, only attacks buildings. A real one-man wrecking crew!",
+   "elixirs": 5,
+   "hero": {
+    "ability_description": "Throws the highest-hitpoint enemy troop in reach across the arena.",
+    "ability_name": "Heroic Hurl"
+   },
+   "id": 26000003,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Giant",
+   "rarity": "Rare",
+   "stats": {
+    "damage": 120,
+    "damage_per_second": "damage",
+    "hit_speed": "1.5sec",
+    "hitpoints": 1930,
+    "range": "Melee: Medium",
+    "speed": "Slow",
+    "targets": "Buildings"
+   },
+   "tags": [],
+   "tl_id": 4,
+   "unlocks": "Training Camp"
+  },
+  "giant_skeleton": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "death_damage": 1,
+    "ground": 1,
+    "melee": 1,
+    "tank": 0.5,
+    "targets_ground": 1
+   },
+   "description": "The bigger the skeleton, the bigger the bomb. Carries a bomb that blows up when the Giant Skeleton dies.",
+   "elixirs": 6,
+   "id": 26000020,
+   "level_stats": {
+    "crown_tower_death_damage": "default",
+    "damage": "default",
+    "death_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Giant Skeleton",
+   "rarity": "Epic",
+   "stats": {
+    "crown_tower_death_damage": 668,
+    "damage": 167,
+    "damage_per_second": "damage",
+    "death_damage": 334,
+    "hit_speed": "1.3sec",
+    "hitpoints": 2250,
+    "range": "Melee: Short",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "gskel"
+   ],
+   "tl_id": 21,
+   "unlocks": "Arena 4"
+  },
+  "goblin_demolisher": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "attack_speed_boost": 1,
+    "ground": 1,
+    "ranged": 1,
+    "tank": 0.25,
+    "targets_building": 1,
+    "targets_ground": 1
+   },
+   "description": "Boom goes the dynamite! Goblin Demolisher deals area damage and explodes on death. At low health, he charges towards the nearest building.",
+   "elixirs": 4,
+   "id": 26000095,
+   "level_stats": {
+    "area_damage": "default",
+    "death_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Goblin Demolisher",
+   "rarity": "Rare",
+   "stats": {
+    "activation": "50%",
+    "area_damage": 100,
+    "charge_speed": "Very Fast",
+    "charge_targets": "Buildings",
+    "death_damage": 465,
+    "hit_speed": "1.1sec",
+    "hitpoints": 1300,
+    "range": "5",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 80,
+   "unlocks": "Goblins 1"
+  },
+  "goblin_gang": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.25,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "ranged": 1,
+    "single_target": 0.5,
+    "swarm": 1,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Spawns five Goblins - three with knives, two with spears - at a discounted Elixir cost. It's like a Goblin Value Pack!",
+   "elixirs": 3,
+   "id": 26000041,
+   "name": "Goblin Gang",
+   "rarity": "Common",
+   "stats": {
+    "goblin": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Goblin",
+     "stats": {
+      "damage": 47,
+      "hit_speed": "1.1sec",
+      "hitpoints": 79,
+      "range": "Melee: Short",
+      "speed": "Very Fast",
+      "targets": "Ground"
+     }
+    },
+    "goblin_count": "x3",
+    "spear_goblin": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Spear Goblin",
+     "stats": {
+      "damage": 32,
+      "hit_speed": "1.7sec",
+      "hitpoints": 52,
+      "range": 5,
+      "speed": "Very Fast",
+      "targets": "Air & Ground"
+     }
+    },
+    "spear_goblin_count": "x2"
+   },
+   "tags": [
+    "gob gang",
+    "gg"
+   ],
+   "tl_id": 42,
+   "unlocks": "Arena 9"
+  },
+  "goblin_giant": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_air": 1,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "This jolly green Goblin Giant stomps towards enemy buildings. He carries two Spear Goblins everywhere he goes. It's a weird but functional arrangement.",
+   "elixirs": 6,
+   "evolution": true,
+   "id": 26000060,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Goblin Giant",
+   "rarity": "Epic",
+   "stats": {
+    "damage": 110,
+    "damage_per_second": "damage",
+    "hit_speed": "1.5sec",
+    "hitpoints": 1944,
+    "range": "Melee: Medium",
+    "spear_goblin": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Spear Goblin",
+     "stats": {
+      "damage": 51,
+      "hit_speed": "1.7sec",
+      "hitpoints": 83,
+      "range": 5,
+      "speed": "Very Fast",
+      "targets": "Air & Ground"
+     }
+    },
+    "spear_goblin_count": "x2",
+    "speed": "Medium",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "gg"
+   ],
+   "tl_id": 61,
+   "unlocks": "Arena 9"
+  },
+  "goblin_machine": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "ground": 1,
+    "melee": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_ground": 1
+   },
+   "description": "Goblin Machine has two arms for melee and one big rocket for faraway targets. Who let a baby drive this thing?",
+   "elixirs": 5,
+   "id": 26000096,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Goblin Machine",
+   "rarity": "Legendary",
+   "stats": {
+    "damage": 192,
+    "damage_per_second": "damage",
+    "hit_speed": "1.2sec",
+    "hitpoints": 1875,
+    "range": "Melee: Medium",
+    "rocket_level": 11,
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 81,
+   "unlocks": "Goblins 3"
+  },
+  "goblins": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.75,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1,
+    "tank_killer": 0.5,
+    "targets_ground": 1
+   },
+   "description": "Three fast, unarmored melee attackers. Small, fast, green and mean!",
+   "elixirs": 2,
+   "hero": {
+    "ability_description": "The last Goblin standing drops a banner that calls in reinforcements.",
+    "ability_name": "Banner Brigade"
+   },
+   "id": 26000002,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Goblins",
+   "rarity": "Common",
+   "stats": {
+    "count": 3,
+    "damage": 49,
+    "damage_per_second": "damage",
+    "hit_speed": "1.1sec",
+    "hitpoints": 79,
+    "range": "Melee: Short",
+    "speed": "Very Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "gobs"
+   ],
+   "tl_id": 3,
+   "unlocks": "Arena 1"
+  },
+  "goblinstein": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_air": 1,
+    "targets_building": 1,
+    "targets_ground": 1
+   },
+   "description": "It's ALIVE!<br/><br/>Monster lumbers towards enemy buildings while Doctor waits to spring the trap. At the press of a button, Doctor electrifies the link between himself and Monster, frying nearby enemies!",
+   "elixirs": 5,
+   "id": 26000099,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Goblinstein",
+   "rarity": "Champion",
+   "stats": {
+    "hit_speed": "1.8sec",
+    "hitpoints": 721,
+    "monster": {
+     "level_stats": {
+      "damage": "default",
+      "damage_per_second": "default",
+      "hitpoints": "default"
+     },
+     "name": "Monster",
+     "stats": {
+      "damage": 128,
+      "damage_per_second": 85,
+      "hit_speed": "1.5sec",
+      "hitpoints": 2385,
+      "range": "Melee: Medium",
+      "speed": "Medium",
+      "targets": "Buildings"
+     }
+    },
+    "range": 5.5,
+    "ranged_damage": 135,
+    "speed": "Medium",
+    "stun_duration": "0.5sec",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 83,
+   "unlocks": "Goblins 3"
+  },
+  "golden_knight": {
+   "ability": {
+    "cooldown": "12sec",
+    "description": "Dashes towards his enemies and chain attacks everythign in his path!",
+    "level_stats": {
+     "dash_damage": "default"
+    },
+    "name": "Dashing Dash!",
+    "stats": {
+     "dash_damage": 310,
+     "dash_distance": 6,
+     "max_dashses": 10
+    }
+   },
+   "dcheck_traits": {
+    "dash": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_ground": 1
+   },
+   "description": "A warrior with luxurious hair and outstanding flexibility. Demonstrates his aerobics skills on demand.",
+   "elixirs": 4,
+   "id": 26000074,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Golden Knight",
+   "rarity": "Champion",
+   "stats": {
+    "damage": 160,
+    "damage_per_second": "damage",
+    "hit_speed": "0.9sec",
+    "hitpoints": 2000,
+    "range": "Melee: Medium",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "gknight"
+   ],
+   "tl_id": 71,
+   "unlocks": "King Level 14"
+  },
+  "golem": {
+   "dcheck_traits": {
+    "anti_death": 1,
+    "area_damage": 0.5,
+    "death_damage": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 1,
+    "targets_building": 1
+   },
+   "description": "Slow but durable, only attacks buildings. When destroyed, explosively splits into two Golemites and deals area damage!",
+   "elixirs": 8,
+   "id": 26000009,
+   "level_stats": {
+    "damage": "default",
+    "death_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Golem",
+   "rarity": "Epic",
+   "stats": {
+    "damage": 195,
+    "damage_per_second": "damage",
+    "death_damage": 140,
+    "deploy_time": "3sec",
+    "golemite": {
+     "level_stats": {
+      "damage": "default",
+      "death_damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Golemite",
+     "stats": {
+      "damage": 31,
+      "death_damage": 62,
+      "hit_speed": "2.5sec",
+      "hitpoints": 650,
+      "range": "Melee: Short",
+      "speed": "Slow",
+      "targets": "Buildings"
+     }
+    },
+    "hit_speed": "2.5sec",
+    "hitpoints": 3200,
+    "range": "Melee: Short",
+    "speed": "Slow",
+    "targets": "Buildings"
+   },
+   "tags": [],
+   "tl_id": 10,
+   "unlocks": "Arena 10"
+  },
+  "guards": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.25,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 0.5,
+    "tank_killer": 0.5,
+    "targets_ground": 1
+   },
+   "description": "Three ruthless bone brothers with shields. Knock off their shields and all that's left are three ruthless bone brothers.",
+   "elixirs": 3,
+   "id": 26000025,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default",
+    "shield_hitpoints": "default"
+   },
+   "name": "Guards",
+   "rarity": "Epic",
+   "stats": {
+    "count": "x3",
+    "damage": 76,
+    "damage_per_second": "damage",
+    "hit_speed": "1sec",
+    "hitpoints": 51,
+    "range": "Melee: Long",
+    "shield_hitpoints": 150,
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 26,
+   "unlocks": "Arena 12"
+  },
+  "heal_spirit": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 1,
+    "ground": 1,
+    "healing": 1,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "A mischievous Spirit that leaps at enemies, dealing Damage and leaving behind a powerful healing effect that restores Hitpoints to friendly Troops! R.I.P. Heal 2017 - 2020 Alas, we hardly used ye.",
+   "elixirs": 1,
+   "id": 28000016,
+   "level_stats": {
+    "area_damage": "default",
+    "healing_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Heal Spirit",
+   "rarity": "Rare",
+   "stats": {
+    "area_damage": 52,
+    "duration": "1sec",
+    "healing_per_second": 189,
+    "hitpoints": 84,
+    "range": 2.5,
+    "speed": "Very Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "hspirit"
+   ],
+   "tl_id": 76,
+   "unlocks": "Arena 13"
+  },
+  "hog_rider": {
+   "dcheck_traits": {
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "Fast melee troop that targets buildings and can jump over the river. He followed the echoing call of Hog Riderrrrr all the way through the Arena doors.",
+   "elixirs": 4,
+   "id": 26000021,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Hog Rider",
+   "rarity": "Rare",
+   "stats": {
+    "damage": 150,
+    "damage_per_second": "damage",
+    "hit_speed": "1.6sec",
+    "hitpoints": 800,
+    "range": "Melee: Short",
+    "speed": "Very Fast",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "hog"
+   ],
+   "tl_id": 22,
+   "unlocks": "Arena 5"
+  },
+  "hunter": {
+   "dcheck_traits": {
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "He deals BIG damage up close - not so much at range. What he lacks in accuracy, he makes up for with his impressively bushy eyebrows.",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 26000044,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Hunter",
+   "rarity": "Epic",
+   "stats": {
+    "hit_speed": "2.2sec",
+    "hitpoints": 524,
+    "projectile_range": 6.5,
+    "range": 4,
+    "ranged_damage": {
+     "damage": 53,
+     "num_hits": 10
+    },
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 45,
+   "unlocks": "Arena 10"
+  },
+  "ice_golem": {
+   "dcheck_traits": {
+    "cycle": 0.75,
+    "death_damage": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "slow": 0.5,
+    "tank": 0.25,
+    "targets_building": 1
+   },
+   "description": "He's tough, targets buildings and explodes when destroyed, slowing nearby enemies. Made entirely out of ice... or is he?! Yes.",
+   "elixirs": 2,
+   "hero": {
+    "ability_description": "Conjures a blizzard that damages and slows enemies.",
+    "ability_name": "Snowstorm"
+   },
+   "id": 26000038,
+   "level_stats": {
+    "damage": "default",
+    "death_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Ice Golem",
+   "rarity": "Rare",
+   "stats": {
+    "damage": 40,
+    "damage_per_second": "damage",
+    "death_damage": 40,
+    "hit_speed": "2.5sec",
+    "hitpoints": 580,
+    "range": "Melee: Short",
+    "speed": "Slow",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "igolem"
+   ],
+   "tl_id": 39,
+   "unlocks": "Arena 8"
+  },
+  "ice_spirit": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 1,
+    "fast": 1,
+    "ground": 1,
+    "ranged": 1,
+    "reset": 1,
+    "stun": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Spawns one lively little Ice Spirit to freeze a group of enemies. Stay frosty.",
+   "elixirs": 1,
+   "evolution": true,
+   "id": 26000030,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Ice Spirit",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 43,
+    "freeze_duration": "1.3sec",
+    "hitpoints": 79,
+    "range": 2.5,
+    "speed": "Very Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "ispirit"
+   ],
+   "tl_id": 31,
+   "unlocks": "Arena 8"
+  },
+  "ice_wizard": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.25,
+    "ground": 1,
+    "ranged": 1,
+    "slow": 1,
+    "spawn_damage": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "This chill caster throws ice shards that slow down enemies' movement and attack speed. Despite being freezing cold, he has a handlebar mustache that's too hot for TV.",
+   "elixirs": 3,
+   "hero": {
+    "ability_description": "Spawns a snowman & freezes nearby enemies who can only be released upon its defeat.",
+    "ability_name": "Frosty Fella"
+   },
+   "id": 26000023,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default",
+    "spawn_damage": "default"
+   },
+   "name": "Ice Wizard",
+   "rarity": "Legendary",
+   "stats": {
+    "area_damage": 75,
+    "deploy_slow_duration": "1sec",
+    "hit_speed": "1.7sec",
+    "hitpoints": 569,
+    "range": 5.5,
+    "spawn_damage": 70,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "ice wiz, iwiz"
+   ],
+   "tl_id": 24,
+   "unlocks": "Arena 8"
+  },
+  "inferno_dragon": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank_killer": 1,
+    "targets_building": 1,
+    "targets_ground": 1,
+    "win_condition": 1
+   },
+   "description": "Shoots a focused beam of fire that increases in damage over time. Wears a helmet because flying can be dangerous.",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 26000037,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Inferno Dragon",
+   "rarity": "Legendary",
+   "stats": {
+    "damage": {
+     "max": 350,
+     "min": 30
+    },
+    "damage_per_second": "damage",
+    "hit_speed": "0.4sec",
+    "hitpoints": 1070,
+    "range": 3.5,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "idragon"
+   ],
+   "tl_id": 38,
+   "unlocks": "Arena 9"
+  },
+  "knight": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_ground": 1
+   },
+   "description": "A tough melee fighter. The Barbarian's handsome, cultured cousin. Rumor has it that he was knighted based on the sheer awesomeness of his mustache alone.",
+   "elixirs": 3,
+   "evolution": true,
+   "hero": {
+    "ability_description": "Gain a shield and taunts nearby enemies, forcing them to attack him.",
+    "ability_name": "Triumphant Taunt"
+   },
+   "id": 26000000,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Knight",
+   "rarity": "Common",
+   "stats": {
+    "damage": 79,
+    "damage_per_second": "damage",
+    "hit_speed": "1.2sec",
+    "hitpoints": 690,
+    "range": "Melee: Medium",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 1,
+   "unlocks": "Training Camp"
+  },
+  "lava_hound": {
+   "dcheck_traits": {
+    "air": 1,
+    "anti_death": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "swarm": 0.5,
+    "tank": 1,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "The Lava Hound is a majestic flying beast that attacks buildings. The Lava Pups are less majestic angry babies that attack anything.",
+   "elixirs": 7,
+   "id": 26000029,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Lava Hound",
+   "rarity": "Legendary",
+   "stats": {
+    "hit_speed": "1.3sec",
+    "hitpoints": 3150,
+    "lava_pups": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Lava Pups",
+     "stats": {
+      "damage": 75,
+      "hit_speed": "1.7sec",
+      "hitpoints": 179,
+      "range": "Melee: Long",
+      "speed": "Medium",
+      "targets": "Air & Ground"
+     }
+    },
+    "range": 3.5,
+    "ranged_damage": 45,
+    "speed": "Slow",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "hound",
+    "lavaloon"
+   ],
+   "tl_id": 30,
+   "unlocks": "Arena 10"
+  },
+  "little_prince": {
+   "dcheck_traits": {
+    "attack_speed_boost": 1,
+    "cycle": 0.25,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Who let their nephew into the Arena?! This mischievous Royal gains Hit Speed when firing, as long as he stands still! He may look weak, but he's always being watched over from afar...",
+   "elixirs": 3,
+   "id": 26000093,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Little Prince",
+   "rarity": "Champion",
+   "stats": {
+    "hit_speed": "1.2sec-0.4sec",
+    "hitpoints": 700,
+    "range": "5.5",
+    "ranged_damage": 104,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 79,
+   "unlocks": "Arena 18"
+  },
+  "lumberjack": {
+   "dcheck_traits": {
+    "attack_speed_boost": 0.5,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "move_speed_boost": 0.5,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "He chops trees by day and hunts The Log by night. His bottle of Rage spills everywhere when he's defeated.",
+   "elixirs": 4,
+   "evolution": true,
+   "id": 26000035,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Lumberjack",
+   "rarity": "Legendary",
+   "stats": {
+    "damage": 200,
+    "damage_per_second": "damage",
+    "hit_speed": "0.8sec",
+    "hitpoints": 1060,
+    "range": "Melee: Short",
+    "speed": "Very Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "lumber",
+    "lj",
+    "lavaloon"
+   ],
+   "tl_id": 36,
+   "unlocks": "Arena 14"
+  },
+  "magic_archer": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "ground": 1,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Not quite a Wizard, nor an Archer - he shoots a magic arrow that passes through and damages all enemies in its path. It's not a trick, it's magic!",
+   "elixirs": 4,
+   "hero": {
+    "ability_description": "Summons a decoy while darting back and fires a triple shot on his next attack.",
+    "ability_name": "Triple Threat"
+   },
+   "id": 26000062,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Magic Archer",
+   "rarity": "Legendary",
+   "stats": {
+    "area_damage": 112,
+    "hit_speed": "1.1sec",
+    "hitpoints": 440,
+    "projectile_range": 11,
+    "range": 7,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "ma"
+   ],
+   "tl_id": 63,
+   "unlocks": "Arena 13"
+  },
+  "mega_knight": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "ground": 1,
+    "melee": 1,
+    "spawn_damage": 1,
+    "tank": 1,
+    "targets_ground": 1
+   },
+   "description": "He lands with the force of 1,000 mustaches, then jumps from one foe to the next dealing huge area damage. Stand aside!",
+   "elixirs": 7,
+   "evolution": true,
+   "id": 26000055,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default",
+    "jump_damage": "default",
+    "spawn_damage": "default"
+   },
+   "name": "Mega Knight",
+   "rarity": "Legendary",
+   "stats": {
+    "area_damage": 222,
+    "damage_per_second": "area_damage",
+    "hit_speed": "1.7sec",
+    "hitpoints": 3300,
+    "jump_damage": 444,
+    "jump_range": "3.5-5",
+    "range": "Melee: Medium",
+    "spawn_damage": 355,
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "mk"
+   ],
+   "tl_id": 56,
+   "unlocks": "Arena 7"
+  },
+  "mega_minion": {
+   "dcheck_traits": {
+    "air": 1,
+    "cycle": 0.25,
+    "melee": 1,
+    "single_target": 1,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Flying, armored and powerful. What could be its weakness?! Cupcakes.",
+   "elixirs": 3,
+   "hero": {
+    "ability_description": "Warps to the lowest-hitpoint enemy & deals damage before darting back.",
+    "ability_name": "Wounding Warp"
+   },
+   "id": 26000039,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Mega Minion",
+   "rarity": "Rare",
+   "stats": {
+    "hit_speed": "1.6sec",
+    "hitpoints": 395,
+    "range": "Melee: Long",
+    "ranged_damage": 147,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 40,
+   "unlocks": "Arena 3"
+  },
+  "mighty_miner": {
+   "ability": {
+    "cooldown": "13sec",
+    "description": "Mines underground to the opposite lane, leaving a bomb at the original location. Surprise!",
+    "level_stats": {
+     "area_damage": "default"
+    },
+    "name": "Explosive Escape",
+    "stats": {
+     "area_damage": 334,
+     "deploy_time": "3sec",
+     "targets": "Air & Ground"
+    }
+   },
+   "dcheck_traits": {
+    "damage_boost": 1,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_ground": 1
+   },
+   "description": "Walk softly... and carry a big drill!\n\nThis Champion deals increasing Damage to his target and can switch lanes to escape combat or change attack plans.\n\nThis makes him not only the mightiest, but also the sneakiest Miner in the Arena.",
+   "elixirs": 4,
+   "id": 26000065,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Mighty Miner",
+   "rarity": "Champion",
+   "stats": {
+    "damage": {
+     "max": 400,
+     "min": 43
+    },
+    "damage_per_second": "damage",
+    "hit_speed": "0.4sec",
+    "hitpoints": 2400,
+    "range": "Melee: Long",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "mm"
+   ],
+   "tl_id": 66,
+   "unlocks": "King Level 14"
+  },
+  "miner": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "targets_ground": 1,
+    "unbound": 1
+   },
+   "description": "The Miner can burrow his way underground and appear anywhere in the Arena. It's not magic, it's a shovel. A shovel that deals reduced damage to Crown Towers.",
+   "elixirs": 3,
+   "id": 26000032,
+   "level_stats": {
+    "crown_tower_damage": "default",
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Miner",
+   "rarity": "Legendary",
+   "stats": {
+    "crown_tower_damage": 48,
+    "damage": 160,
+    "damage_per_second": "damage",
+    "hit_speed": "1.2sec",
+    "hitpoints": 1000,
+    "range": "Melee: Medium",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 33,
+   "unlocks": "Arena 4"
+  },
+  "mini_pekka": {
+   "dcheck_traits": {
+    "burst_damage": 0.5,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "The Arena is a certified butterfly-free zone. No distractions for P.E.K.K.A, only destruction.",
+   "elixirs": 4,
+   "hero": {
+    "ability_description": "Eats pancakes to level up. The longer you wait, the more pancakes he cooks!",
+    "ability_name": "Breakfast Boost"
+   },
+   "id": 26000018,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Mini P.E.K.K.A",
+   "rarity": "Rare",
+   "stats": {
+    "damage": 355,
+    "damage_per_second": "damage",
+    "hit_speed": "1.6sec",
+    "hitpoints": 657,
+    "range": "Melee: Short",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "mp"
+   ],
+   "tl_id": 19,
+   "unlocks": "Training Camp"
+  },
+  "minion_giant": {
+   "dcheck_traits": {
+    "air": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "targets_building": 1
+   },
+   "description": "Minion Giant was mysteriously formed during an attempt to create the very toxin he spits out. He flies, targets buildings, and retches from range.<br /><br />An experiment gone massively wrong... or exceedingly right?",
+   "elixirs": 4,
+   "id": 26000107,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Minion Giant",
+   "rarity": "Rare",
+   "stats": {
+    "damage": 189,
+    "damage_per_sec": 126,
+    "hit_speed": "1.5sec",
+    "hitpoints": 1817,
+    "range": 4,
+    "speed": "Medium",
+    "targets": "Buildings"
+   },
+   "tags": [],
+   "tl_id": 123,
+   "unlocks": "Arena 5"
+  },
+  "minion_horde": {
+   "dcheck_traits": {
+    "air": 1,
+    "area_damage": 0.5,
+    "fast": 0.5,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1.5,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Six fast, unarmored flying attackers. Three's a crowd, six is a horde!",
+   "elixirs": 5,
+   "id": 26000022,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Minion Horde",
+   "rarity": "Common",
+   "stats": {
+    "count": "x6",
+    "hit_speed": "1sec",
+    "hitpoints": 90,
+    "range": "Melee: Long",
+    "ranged_damage": 46,
+    "speed": "Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 23,
+   "unlocks": "Arena 10"
+  },
+  "minions": {
+   "dcheck_traits": {
+    "cycle": 0.25,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank_killer": 0.5,
+    "targets_ground": 1
+   },
+   "description": "Three fast, unarmored flying attackers. Roses are red, minions are blue, they can fly, and will crush you!",
+   "elixirs": 3,
+   "id": 26000005,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Minions",
+   "rarity": "Common",
+   "stats": {
+    "count": "x3",
+    "hit_speed": "1sec",
+    "hitpoints": 90,
+    "range": "Melee: Long",
+    "ranged_damage": 42,
+    "speed": "Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 6,
+   "unlocks": "Training Camp"
+  },
+  "monk": {
+   "dcheck_traits": {
+    "displacement": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_ground": 1
+   },
+   "description": "Monk has spent many isolated years perfecting a new style of combat. He fires off a 3-hit combo, with the last blow dealing extra Damage and pushing enemies back!",
+   "elixirs": 5,
+   "id": 26000077,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Monk",
+   "rarity": "Champion",
+   "stats": {
+    "combo_damage": 420,
+    "damage": 140,
+    "damage_per_second": 155,
+    "hit_speed": "0.9sec",
+    "hitpoints": 2000,
+    "range": "Melee: Medium",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 78,
+   "unlocks": "Arena 18"
+  },
+  "mother_witch": {
+   "dcheck_traits": {
+    "fast": 0.5,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "summon_card_offensive": 0.5,
+    "targets_air": 1,
+    "targets_building": 1,
+    "targets_ground": 1
+   },
+   "description": "Places a curse on enemy Troops with each attack. When a cursed Troop is destroyed, it turns into a building-targeting Hog that fights alongside the Mother Witch! She also bakes great cookies.",
+   "elixirs": 4,
+   "id": 26000083,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Mother Witch",
+   "rarity": "Legendary",
+   "stats": {
+    "cursed_hog": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Cursed Hog",
+     "stats": {
+      "damage": 44,
+      "hit_speed": "1.2sec",
+      "hitpoints": 520,
+      "range": "Melee: Short",
+      "speed": "Very Fast",
+      "targets": "Buildings"
+     }
+    },
+    "effect_duration": "5sec",
+    "hit_speed": "1.1sec",
+    "hitpoints": 440,
+    "range": 5.5,
+    "ranged_damage": 110,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "mw"
+   ],
+   "tl_id": 73,
+   "unlocks": "Legendary Arena"
+  },
+  "musketeer": {
+   "dcheck_traits": {
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Don't be fooled by her delicately coiffed hair, the Musketeer is a mean shot with her trusty boomstick.",
+   "elixirs": 4,
+   "evolution": true,
+   "hero": {
+    "ability_description": "Spawns a short-range auto-turret in front of Musketeer.",
+    "ability_name": "Trusty Turret"
+   },
+   "id": 26000014,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Musketeer",
+   "rarity": "Rare",
+   "stats": {
+    "damage_per_second": "ranged_damage",
+    "hit_speed": "1sec",
+    "hitpoints": 340,
+    "range": 6,
+    "ranged_damage": 103,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "musk"
+   ],
+   "tl_id": 15,
+   "unlocks": "Training Camp"
+  },
+  "night_witch": {
+   "dcheck_traits": {
+    "air": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "summon_card_offensive": 1,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Summons Bats to do her bidding! If you get too close, she's not afraid of pitching in with her mean-looking battle staff.",
+   "elixirs": 4,
+   "id": 26000048,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Night Witch",
+   "rarity": "Legendary",
+   "stats": {
+    "bat": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Bat",
+     "stats": {
+      "damage": 67,
+      "hit_speed": "1.3sec",
+      "hitpoints": 67,
+      "range": "Melee: Medium",
+      "speed": "Very Fast",
+      "targets": "Air & Ground"
+     }
+    },
+    "damage": 260,
+    "damage_per_second": "damage",
+    "hit_speed": "1.5sec",
+    "hitpoints": 750,
+    "range": "Melee: Long",
+    "spawn_speed": "5sec",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "nw"
+   ],
+   "tl_id": 49,
+   "unlocks": "Arena 14"
+  },
+  "pekka": {
+   "dcheck_traits": {
+    "burst_damage": 0.75,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 1,
+    "tank_killer": 0.5,
+    "targets_ground": 1
+   },
+   "description": "A heavily armored, slow melee fighter. Swings from the hip, but packs a huge punch.",
+   "elixirs": 7,
+   "evolution": true,
+   "id": 26000004,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "P.E.K.K.A",
+   "rarity": "Epic",
+   "stats": {
+    "damage": 510,
+    "damage_per_second": "damage",
+    "hit_speed": "1.8sec",
+    "hitpoints": 3760,
+    "range": "Melee: Medium",
+    "speed": "Slow",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 5,
+   "unlocks": "Arena 4"
+  },
+  "pheonix": {
+   "dcheck_traits": {
+    "air": 1,
+    "anti_death": 1,
+    "death_damage": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "This mystical creature will be reborn as an egg when destroyed. If it hatches, it returns to the fight! What an egg-cellent ability. Phoenix also has a fiery personality! Just kidding, it's a very serious bird. It would disapprove of all these puns.",
+   "elixirs": 4,
+   "id": 26000087,
+   "level_stats": {
+    "damage": "default",
+    "damage_per_second": "default",
+    "hitpoints": "default"
+   },
+   "name": "Phoenix",
+   "rarity": "Legendary",
+   "stats": {
+    "crown_tower_death_damage": 55,
+    "damage": 179,
+    "damage_per_second": "damage",
+    "death_damage": 163,
+    "hit_speed": "1sec",
+    "hitpoints": 870,
+    "pheonix_egg": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Pheonix Egg",
+     "stats": {
+      "hitpoints": 239,
+      "lifetime": "4.3sec"
+     }
+    },
+    "range": "Melee: Long",
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 77,
+   "unlocks": "Arena 12"
+  },
+  "prince": {
+   "dcheck_traits": {
+    "charge": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "Don't let the little pony fool you. Once the Prince gets a running start, you WILL be trampled. Deals double damage once he gets charging.",
+   "elixirs": 5,
+   "id": 26000016,
+   "level_stats": {
+    "charge_damage": "default",
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Prince",
+   "rarity": "Epic",
+   "stats": {
+    "charge_damage": 490,
+    "damage": 245,
+    "damage_per_second": "damage",
+    "hit_speed": "1.4sec",
+    "hitpoints": 1200,
+    "range": "Melee: Long",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "dp"
+   ],
+   "tl_id": 17,
+   "unlocks": "Arena 7"
+  },
+  "princess": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.25,
+    "ground": 1,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "This stunning Princess shoots flaming arrows from long range. If you're feeling warm feelings towards her, it's probably because you're on fire.",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 26000026,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Princess",
+   "rarity": "Legendary",
+   "stats": {
+    "area_damage": 140,
+    "damage_per_second": "area_damage",
+    "hit_speed": "3sec",
+    "hitpoints": 216,
+    "range": 9,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 27,
+   "unlocks": "Arena 5"
+  },
+  "ram_rider": {
+   "dcheck_traits": {
+    "charge": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_air": 1,
+    "targets_building": 1,
+    "targets_ground": 1,
+    "win_condition": 1
+   },
+   "description": "Together they charge through the Arena; snaring enemies, knocking down towers ... and chewing grass!?",
+   "elixirs": 5,
+   "id": 26000051,
+   "level_stats": {
+    "charge_damage": "default",
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Ram Rider",
+   "rarity": "Legendary",
+   "stats": {
+    "charge_damage": 500,
+    "damage": 250,
+    "damage_per_second": "damage",
+    "hit_speed": "1.8sec",
+    "hitpoints": 1461,
+    "range": "Melee: Short",
+    "rider": {
+     "level_stats": {
+      "damage": "default"
+     },
+     "name": "Rider",
+     "stats": {
+      "damage": 86,
+      "hit_speed": "1.7sec",
+      "range": 5.5,
+      "snare_duration": "2sec",
+      "targets": "Air & Ground"
+     }
+    },
+    "rider_count": "x1",
+    "speed": "Medium",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "ram",
+    "rider"
+   ],
+   "tl_id": 52,
+   "unlocks": "Arena 10"
+  },
+  "rascals": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "ranged": 1,
+    "single_target": 0.5,
+    "swarm": 0.5,
+    "tank": 0.25,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Spawns a mischievous trio of Rascals! The boy takes the lead, while the girls pelt enemies from behind... with slingshots full of Double Trouble Gum!",
+   "elixirs": 5,
+   "id": 26000053,
+   "name": "Rascals",
+   "rarity": "Common",
+   "stats": {
+    "rascal_boy": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Rascal Boy",
+     "stats": {
+      "damage": 85,
+      "hit_speed": "1.5sec",
+      "hitpoints": 716,
+      "range": "Melee: Short",
+      "speed": "Medium",
+      "targets": "Ground"
+     }
+    },
+    "rascal_boy_count": "x1",
+    "rascal_girl": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Rascal Girl",
+     "stats": {
+      "damage": 52,
+      "hit_speed": "1sec",
+      "hitpoints": 102,
+      "range": 5,
+      "speed": "Medium",
+      "targets": "Air & Ground"
+     }
+    },
+    "rascal_girl_count": "x2"
+   },
+   "tags": [],
+   "tl_id": 54,
+   "unlocks": "Arena 13"
+  },
+  "ronin": {
+   "dcheck_traits": {
+    "burst_damage": 0.5,
+    "damage_boost": 1,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "reset": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "A wandering warrior with nowhere to be and no one he can't defeat. Ronin parries one melee attack every few seconds, reflecting even more damage than he blocked.<br /><br />1v1 him, we triple hog dare you!",
+   "elixirs": 5,
+   "id": 26000106,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Ronin",
+   "rarity": "Legendary",
+   "stats": {
+    "damage": 371,
+    "hit_speed": "1.3sec",
+    "hitpoints": 1779,
+    "parry_cooldown": "3.5sec",
+    "parry_damage": "200%",
+    "range": "Melee: Medium",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 122,
+   "unlocks": "Arena 14"
+  },
+  "royal_ghost": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.25,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "stealth": 1,
+    "targets_ground": 1
+   },
+   "description": "He drifts invisibly through the Arena until he's startled by an enemy... then he attacks! Then he's invisible again! Zzzz.",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 26000050,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Royal Ghost",
+   "rarity": "Legendary",
+   "stats": {
+    "area_damage": 216,
+    "damage_per_second": "area_damage",
+    "hit_speed": "1.8sec",
+    "hitpoints": 1000,
+    "range": "Melee: Medium",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "ghost"
+   ],
+   "tl_id": 51,
+   "unlocks": "Arena 12"
+  },
+  "royal_giant": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "Destroying enemy buildings with his massive cannon is his job; making a raggedy blond beard look good is his passion.",
+   "elixirs": 6,
+   "evolution": true,
+   "id": 26000024,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Royal Giant",
+   "rarity": "Common",
+   "stats": {
+    "hit_speed": "1.7sec",
+    "hitpoints": 1200,
+    "range": 5,
+    "ranged_damage": 120,
+    "speed": "Slow",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "rg"
+   ],
+   "tl_id": 25,
+   "unlocks": "Arena 7"
+  },
+  "royal_hogs": {
+   "dcheck_traits": {
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "swarm": 1,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "The King's personal pets are loose! They love to chomp on apples and towers alike - who let the hogs out?!",
+   "elixirs": 5,
+   "evolution": true,
+   "id": 26000059,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Royal Hogs",
+   "rarity": "Rare",
+   "stats": {
+    "count": "x4",
+    "damage": 35,
+    "damage_per_second": "damage",
+    "hit_speed": "1.2sec",
+    "hitpoints": 395,
+    "range": "Melee: Short",
+    "speed": "Very Fast",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "hogs"
+   ],
+   "tl_id": 60,
+   "unlocks": "Arena 7"
+  },
+  "royal_recruits": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1.5,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "Deploys a line of recruits armed with spears, shields and wooden buckets. They dream of ponies and one day wearing metal buckets.",
+   "elixirs": 7,
+   "evolution": true,
+   "id": 26000047,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default",
+    "shield_hitpoints": "default"
+   },
+   "name": "Royal Recruits",
+   "rarity": "Common",
+   "stats": {
+    "count": "x6",
+    "damage": 52,
+    "damage_per_second": "damage",
+    "hit_speed": "1.3sec",
+    "hitpoints": 208,
+    "range": "Melee: Long",
+    "shield_hitpoints": 94,
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "rr"
+   ],
+   "tl_id": 48,
+   "unlocks": "Arena 7"
+  },
+  "rune_giant": {
+   "dcheck_traits": {
+    "damage_boost": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "tank": 0.5,
+    "targets_building": 1
+   },
+   "description": "Need your weapons sharpened? You've come to the right place.<br/><br/>Rune Giant enchants Troops closest to her, having them deal Bonus damage every third attack. Only two Troops can be enchanted at once.",
+   "elixirs": 4,
+   "id": 26000101,
+   "level_stats": {
+    "bonus_damage": "default",
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Rune Giant",
+   "rarity": "Epic",
+   "stats": {
+    "bonus_damage": 137,
+    "damage": 95,
+    "damage_per_second": "damage",
+    "enchant_limit": 2,
+    "hit_speed": "1.5sec",
+    "hitpoints": 1760,
+    "range": "Melee: Medium",
+    "speed": "Medium",
+    "targets": "Buildings"
+   },
+   "tags": [],
+   "tl_id": 84,
+   "unlocks": "Arena 11"
+  },
+  "skeleton_army": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.25,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1.5,
+    "tank_killer": 1,
+    "targets_ground": 1
+   },
+   "description": "Spawns an army of Skeletons. Meet Larry and his friends Harry, Gerry, Terry, Mary, etc.",
+   "elixirs": 3,
+   "evolution": true,
+   "id": 26000012,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Skeleton Army",
+   "rarity": "Epic",
+   "stats": {
+    "count": "x15",
+    "damage": 51,
+    "hit_speed": "1sec",
+    "hitpoints": 51,
+    "range": "Melee: Short",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "skarmy",
+    "skarms",
+    "skarm"
+   ],
+   "tl_id": 13,
+   "unlocks": "Arena 2"
+  },
+  "skeleton_barrel": {
+   "dcheck_traits": {
+    "air": 1,
+    "anti_death": 1,
+    "cycle": 0.25,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "swarm": 1,
+    "targets_building": 1,
+    "targets_ground": 1
+   },
+   "description": "It's a Skeleton party in the sky, until all the balloons pop... then it's a Skeleton party on the ground!",
+   "elixirs": 3,
+   "evolution": true,
+   "hero": {
+    "ability_description": "Conjures a blizzard that damages an slows nearby enemies, then freezes them solid.",
+    "ability_name": "Snowstorm"
+   },
+   "id": 26000056,
+   "level_stats": {
+    "death_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Skeleton Barrel",
+   "rarity": "Common",
+   "stats": {
+    "death_damage": 52,
+    "hitpoints": 208,
+    "skeleton": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Skeleton",
+     "stats": {
+      "damage": 51,
+      "hit_speed": "1sec",
+      "hitpoints": 51,
+      "range": "Melee: Short",
+      "speed": "Fast",
+      "targets": "Ground"
+     }
+    },
+    "skeleton_count": "x7",
+    "speed": "Fast",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "skelbarrel, skelbar"
+   ],
+   "tl_id": 57,
+   "unlocks": "Arena 12"
+  },
+  "skeleton_dragons": {
+   "dcheck_traits": {
+    "air": 1,
+    "area_damage": 1,
+    "fast": 0.5,
+    "ranged": 1,
+    "swarm": 0.5,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "This pair of skeletal scorchers deal Area Damage and fly above the Arena. They also play a mean rib cage xylophone duet.",
+   "elixirs": 4,
+   "id": 26000080,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Skeleton Dragons",
+   "rarity": "Common",
+   "stats": {
+    "area_damage": 63,
+    "count": "x2",
+    "hit_speed": "2sec",
+    "hitpoints": 208,
+    "range": 3.5,
+    "speed": "Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "sd"
+   ],
+   "tl_id": 72,
+   "unlocks": "Arena 4"
+  },
+  "skeleton_king": {
+   "ability": {
+    "cooldown": "20sec",
+    "description": "Collect souls of the fallen and bring them back from the dead!",
+    "name": "Soul Summoning!",
+    "stats": {
+     "max_skeleton_count": 16,
+     "min_skeleton_count": 6
+    }
+   },
+   "dcheck_traits": {
+    "area_damage": 1,
+    "ground": 1,
+    "melee": 1,
+    "summon_card_offensive": 1,
+    "tank": 0.5,
+    "targets_ground": 1
+   },
+   "description": "The King of the undead himself. He sometimes feels lonely (could be due to his non flattering features) and will summon friends to join him in the battle even after death. Tough guys have feelings too!",
+   "elixirs": 4,
+   "id": 26000069,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Skeleton King",
+   "rarity": "Champion",
+   "stats": {
+    "area_damage": 205,
+    "damage_per_second": "area_damage",
+    "hit_speed": "1.6sec",
+    "hitpoints": 2300,
+    "range": "Melee: Medium",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "sk",
+    "skel king"
+   ],
+   "tl_id": 69,
+   "unlocks": "King Level 14"
+  },
+  "skeletons": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 1,
+    "fast": 0.5,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1,
+    "targets_ground": 1
+   },
+   "description": "Three fast, very weak melee fighters. Surround your enemies with this pile of bones!",
+   "elixirs": 1,
+   "evolution": true,
+   "id": 26000010,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Skeletons",
+   "rarity": "Common",
+   "stats": {
+    "count": "x3",
+    "damage": 32,
+    "damage_per_second": "damage",
+    "hit_speed": "1.1sec",
+    "hitpoints": 32,
+    "range": "Melee: Short",
+    "speed": "Fast",
+    "targets": "Ground"
+   },
+   "tags": [
+    "skels"
+   ],
+   "tl_id": 11,
+   "unlocks": "Arena 2"
+  },
+  "sparky": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "charge_up_attack": 1,
+    "ground": 1,
+    "ranged": 1,
+    "tank": 0.25,
+    "targets_ground": 1
+   },
+   "description": "Sparky slowly charges up, then unloads MASSIVE area damage. Overkill isn't in her vocabulary.",
+   "elixirs": 6,
+   "id": 26000033,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Sparky",
+   "rarity": "Legendary",
+   "stats": {
+    "area_damage": 1100,
+    "hit_speed": "4sec",
+    "hitpoints": 1200,
+    "range": 5,
+    "speed": "Slow",
+    "targets": "Ground"
+   },
+   "tags": [],
+   "tl_id": 34,
+   "unlocks": "Arena 11"
+  },
+  "spear_goblins": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "cycle": 0.75,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 0.5,
+    "swarm": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Three unarmored ranged attackers. Who the heck taught these guys to throw spears!? Who thought that was a good idea?!",
+   "elixirs": 2,
+   "id": 26000019,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Spear Goblins",
+   "rarity": "Common",
+   "stats": {
+    "count": "x3",
+    "hit_speed": "1.6sec",
+    "hitpoints": 52,
+    "range": 5,
+    "ranged_damage": 32,
+    "speed": "Very Fast",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "spear gobs"
+   ],
+   "tl_id": 20,
+   "unlocks": "Arena 1"
+  },
+  "spirit_empress": {
+   "dcheck_traits": {
+    "air": 1,
+    "burst_damage": 0.5,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "tank": 0.25,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Behold the Spirit Empress, the First of Her Name, Protector of Spirits, Rider of Dragons.<br/><br/>Summon her as a hard-hitting ground troop for 3 Elixir, or atop her majestic spirit dragon For 6 Elixir.",
+   "elixirs": 6,
+   "id": 28000025,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Spirit Empress",
+   "rarity": "Legendary",
+   "stats": {
+    "ground_elixir": {
+     "level_stats": {
+      "damage": "default",
+      "damage_per_sec": "default",
+      "hitpoints": "default"
+     },
+     "name": "Spirit Empress (Ground)",
+     "stats": {
+      "damage": 265,
+      "damage_per_sec": 240,
+      "ground_elixir": 3,
+      "hit_speed": "1.2sec",
+      "hitpoints": 1098,
+      "range": "Melee: Medium",
+      "speed": "Fast",
+      "targets": "Ground"
+     }
+    },
+    "hit_speed": "1.4sec",
+    "hitpoints": 1098,
+    "range": 5,
+    "ranged_damage": 265,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 87,
+   "unlocks": "Arena 15"
+  },
+  "suspicious_bush": {
+   "dcheck_traits": {
+    "cycle": 0.75,
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "stealth": 1,
+    "targets_ground": 1
+   },
+   "description": "This invisible bush skulks towards the nearest building. Sus.<br><br>If Suspicious Bush reaches its target or gets destroyed by a spell, it surprises the enemy with Bush Goblins!",
+   "elixirs": 2,
+   "id": 26000097,
+   "level_stats": {
+    "hitpoints": "default"
+   },
+   "name": "Suspicious Bush",
+   "rarity": "Rare",
+   "stats": {
+    "bush_goblin": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Bush Goblin",
+     "stats": {
+      "damage": 120,
+      "hit_speed": "1.4sec",
+      "hitpoints": 159,
+      "range": "Melee: Long",
+      "speed": "Medium",
+      "targets": "Ground"
+     }
+    },
+    "bush_goblin_count": "x2",
+    "hitpoints": 38,
+    "speed": "Slow",
+    "targets": "Buildings"
+   },
+   "tags": [],
+   "tl_id": 82,
+   "unlocks": "Goblins 4"
+  },
+  "three_musketeers": {
+   "dcheck_traits": {
+    "area_damage": 0.5,
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 0.5,
+    "swarm": 0.5,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Trio of powerful, independent markswomen, fighting for justice and honor. Disrespecting them would not be just a mistake, it would be a cardinal sin!",
+   "elixirs": 9,
+   "id": 26000028,
+   "level_stats": {
+    "hitpoints": "default",
+    "ranged_damage": "default"
+   },
+   "name": "Three Musketeers",
+   "rarity": "Rare",
+   "stats": {
+    "count": "x3",
+    "hit_speed": "1sec",
+    "hitpoints": 340,
+    "range": 6,
+    "ranged_damage": 103,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "3m"
+   ],
+   "tl_id": 29,
+   "unlocks": "Arena 7"
+  },
+  "valkyrie": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "ground": 1,
+    "melee": 1,
+    "tank": 0.25,
+    "targets_ground": 1
+   },
+   "description": "Tough melee fighter, deals area damage around her. Swarm or horde, no problem! She can take them all out with a few spins.",
+   "elixirs": 4,
+   "evolution": true,
+   "hero": {
+    "ability_description": "Whirls her way to nearby enemies, spinning and slicing, but still taking damage.",
+    "ability_name": "Wild Whirlwind"
+   },
+   "id": 26000011,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Valkyrie",
+   "rarity": "Rare",
+   "stats": {
+    "area_damage": 126,
+    "damage_per_second": "area_damage",
+    "hit_speed": "1.5sec",
+    "hitpoints": 900,
+    "range": "Melee: Medium",
+    "speed": "Medium",
+    "targets": "Ground"
+   },
+   "tags": [
+    "valk"
+   ],
+   "tl_id": 12,
+   "unlocks": "Arena 2"
+  },
+  "wall_breakers": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "cycle": 0.75,
+    "fast": 1,
+    "ground": 1,
+    "melee": 1,
+    "targets_building": 1,
+    "win_condition": 1
+   },
+   "description": "A daring duo of dangerous dive bombers. Nothing warms a Wall Breaker's cold and undead heart like blowing up buildings.",
+   "elixirs": 2,
+   "evolution": true,
+   "id": 26000058,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Wall Breakers",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 175,
+    "count": "x2",
+    "hitpoints": 207,
+    "range": "Melee: Short",
+    "speed": "Very Fast",
+    "targets": "Buildings"
+   },
+   "tags": [
+    "wb"
+   ],
+   "tl_id": 59,
+   "unlocks": "Arena 5"
+  },
+  "witch": {
+   "dcheck_traits": {
+    "ground": 1,
+    "ranged": 1,
+    "single_target": 1,
+    "summon_card_offensive": 1,
+    "tank_killer": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Summons Skeletons, shoots destructo beams, has glowing pink eyes that unfortunately don't shoot lasers.",
+   "elixirs": 5,
+   "evolution": true,
+   "id": 26000007,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Witch",
+   "rarity": "Epic",
+   "stats": {
+    "area_damage": 84,
+    "hit_speed": "1.1sec",
+    "hitpoints": 524,
+    "range": 5.5,
+    "skeleton": {
+     "level_stats": {
+      "damage": "default",
+      "hitpoints": "default"
+     },
+     "name": "Skeleton",
+     "stats": {
+      "damage": 51,
+      "hit_speed": "1sec",
+      "hitpoints": 51,
+      "range": "Melee: Short",
+      "speed": "Fast",
+      "targets": "Ground"
+     }
+    },
+    "spawn_speed": "7sec",
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 8,
+   "unlocks": "Arena 5"
+  },
+  "wizard": {
+   "dcheck_traits": {
+    "area_damage": 1,
+    "ground": 1,
+    "ranged": 1,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "The most awesome man to ever set foot in the Arena, the Wizard will blow you away with his handsomeness... and/or fireballs.",
+   "elixirs": 5,
+   "evolution": true,
+   "hero": {
+    "ability_description": "Launches into the air and throws fearsome fire tornadoes.",
+    "ability_name": "Fiery Flight"
+   },
+   "id": 26000017,
+   "level_stats": {
+    "area_damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Wizard",
+   "rarity": "Rare",
+   "stats": {
+    "area_damage": 144,
+    "hit_speed": "1.4sec",
+    "hitpoints": 340,
+    "range": 5.5,
+    "speed": "Medium",
+    "targets": "Air & Ground"
+   },
+   "tags": [
+    "wiz"
+   ],
+   "tl_id": 18,
+   "unlocks": "Arena 4"
+  },
+  "zappies": {
+   "dcheck_traits": {
+    "ground": 1,
+    "melee": 1,
+    "single_target": 1,
+    "stun": 1,
+    "swarm": 0.5,
+    "targets_air": 1,
+    "targets_ground": 1
+   },
+   "description": "Spawns a pack of miniature Zap machines. Who controls them...? Only the Master Builder knows.",
+   "elixirs": 4,
+   "id": 26000052,
+   "level_stats": {
+    "damage": "default",
+    "hitpoints": "default"
+   },
+   "name": "Zappies",
+   "rarity": "Rare",
+   "stats": {
+    "count": "x3",
+    "damage": 55,
+    "damage_per_second": "damage",
+    "hit_speed": "2.3sec",
+    "hitpoints": 250,
+    "range": 4.5,
+    "speed": "Medium",
+    "stun_duration": "0.5sec",
+    "targets": "Air & Ground"
+   },
+   "tags": [],
+   "tl_id": 53,
+   "unlocks": "Arena 11"
+  }
+ }
+}

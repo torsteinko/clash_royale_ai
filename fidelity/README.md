@@ -26,9 +26,16 @@ So the goal is not bit-perfection. The goal is:
 
 ## Truth sources, in priority order
 
-1. **`csv_logic` from the APK** — Supercell's own configuration tables (stats,
-   spawn params, timings, costs). This is not guessing; it is the same config
-   the game loads. (Parser in this directory; data refreshed per balance patch.)
+1. **Live community card database (`noff.gg`)** — server-rendered, embeds the
+   complete card DB (127 cards) as JSON in every card page. Fetchable from our
+   boxes; re-fetchable after every balance patch. Tool: `fetch_noff.py`
+   (verified 2026-09-15). Historical baseline: cr-api-data dump (Oct 2023) for
+   diffing what changed since.
+   - *The APK route is CLOSED (settled 2026-09-15):* the 2026 client is a 148 MB
+     bootstrap — `csv_logic` is gone from the bundle; game data downloads from
+     the CDN post-install and ships in Supercell's `ECC2` encrypted containers
+     (magic verified in `libg.so.*.ecc`, no public tooling exists). Re-check
+     only if the modding scene cracks `ECC2`.
 2. **Recorded real matches** — replay real action sequences INSIDE our engine
    and diff the state evolution against what actually happened. This is the
    emulator-verification pattern (Dolphin/MAME/bsnes all do this) and our
@@ -43,9 +50,11 @@ So the goal is not bit-perfection. The goal is:
 ## The ladder
 
 - **L1 — Constant parity.** Every card's HP/damage/hit-speed/range/speed/cost
-  in our engine == the csv_logic tables. Exact, automated, must be 100%.
-  Tool: `check_constants.py` (parser + diff + report; built when the APK
-  extract lands).
+  in our engine == the reference tables. Exact, automated, must be 100%.
+  Tool: `check_constants.py` (card-level diff vs either reference; alias map
+  for crforge's internal names). First runs: 2023 baseline → 141 field
+  mismatches; live 2026 dump → **152 stat mismatches + 4 elixir-cost errors
+  across 110 matched cards** (reports in `report_l1_*.md`).
 - **L2 — Micro-mechanic probes.** Scripted interactions with per-metric
   tolerances (e.g. knight-vs-knight time-to-kill, elixir rate, fireball on
   tower, single-hog damage to princess tower). Battery grows over time;
