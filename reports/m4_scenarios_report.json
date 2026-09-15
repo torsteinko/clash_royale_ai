@@ -3,9 +3,9 @@
   "source": "gpusim",
   "engine": {
     "impl": "gpusim",
-    "commit": "977823688ece"
+    "commit": "b8736bdbc1d2"
   },
-  "generated": "2026-09-15T21:45:34+00:00",
+  "generated": "2026-09-15T22:11:17+00:00",
   "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
   "level": 11,
   "dt": 0.05,

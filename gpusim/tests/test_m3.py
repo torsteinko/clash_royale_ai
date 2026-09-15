@@ -160,6 +160,67 @@ def test_zap_crown_percent():
     assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 57.0)) < 0.6
 
 
+def test_poison_zone_ticks_and_crown_pct():
+    """M3.5: ticking zones (reference AreaEffect entity + TickingHandler).
+
+    Poison: hitSpeed 0.25 s, lifeDuration 8 s -> 32 damage ticks; per-tick
+    damage = scaleCard(round(36 * 0.25)) = 23 at level 11; towers take the
+    buff's crown percent (-75 -> 25 %): floor(23 * 25 / 100) = 5.
+    """
+    sim = _sim(1)
+    deck = [_C(sim, n) for n in ("Poison", "Earthquake", "Knight", "Archer",
+                                 "Giant", "Fireball", "Zap", "Log")]
+    sim.set_deck(0, deck)
+    sim.s.elixir[0, 0] = 10.0
+    kni = _C(sim, "Knight")
+    sim.deploy(1, torch.tensor([kni]), torch.tensor([3.5]), torch.tensor([7.2]))
+    assert abs(float(sim.t.spell_tick_dmg_base[_C(sim, "Poison")]) - 9.0) < 1e-6  # round(36*0.25)
+    ok = sim.play(0, 0, torch.tensor([3.5]), torch.tensor([6.5]))
+    assert ok.tolist() == [True]
+    # cast fires after the 1.05 s sync (tick 21); first zone tick at tick 25
+    sim.tick(24)
+    assert float(sim.s.tower_hp[0, 4]) == 3052.0, "no tick before hitSpeed accumulates"
+    sim.tick(1)
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 5.0)) < 1e-3
+    k_idx = int(sim.s.u_active[0].nonzero()[0, 0])
+    assert abs(float(sim.s.u_hp[0, k_idx]) - (1766.0 - 23.0)) < 1e-3
+    # 32 ticks total (8 s / 0.25 s): the tower ends at 3052 - 32 * 5
+    sim.tick(155)
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 32 * 5.0)) < 1e-3
+    sim.tick(10)  # zone expired -> no further damage
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 32 * 5.0)) < 1e-3
+    assert not bool(sim.s.z_active.any()), "poison zone must expire after 8 s"
+
+
+def test_earthquake_zone_building_bonus():
+    """M3.5: Earthquake: hitSpeed 0.1 s, life 3 s -> 30 ticks; units take
+    scaleCard(round(32 * 0.1)) = 7; towers get the +350 % building bonus
+    first (floor(7 * 450 / 100) = 31) and then the crown percent
+    (-35 -> floor(31 * 65 / 100) = 20)."""
+    sim = _sim(1)
+    deck = [_C(sim, n) for n in ("Poison", "Earthquake", "Knight", "Archer",
+                                 "Giant", "Fireball", "Zap", "Log")]
+    sim.set_deck(0, deck)
+    sim.s.elixir[0, 0] = 10.0
+    kni = _C(sim, "Knight")
+    sim.deploy(1, torch.tensor([kni]), torch.tensor([3.5]), torch.tensor([7.2]))
+    ok = sim.play(0, 1, torch.tensor([3.5]), torch.tensor([6.5]))
+    assert ok.tolist() == [True]
+    # first zone tick at tick 22 (0.1 s = 2 ticks after the sync cast)
+    sim.tick(21)
+    assert float(sim.s.tower_hp[0, 4]) == 3052.0
+    sim.tick(1)
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 20.0)) < 1e-3
+    k_idx = int(sim.s.u_active[0].nonzero()[0, 0])
+    assert abs(float(sim.s.u_hp[0, k_idx]) - (1766.0 - 7.0)) < 1e-3
+    # 30 ticks total (3 s / 0.1 s): the tower ends at 3052 - 30 * 20
+    sim.tick(58)
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 30 * 20.0)) < 1e-3
+    sim.tick(5)
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 30 * 20.0)) < 1e-3
+    assert not bool(sim.s.z_active.any()), "earthquake zone must expire after 3 s"
+
+
 def test_full_cycle_draw_order_no_empty_slots():
     """Regression: playing past 4 cards must draw the played cards back in FIFO
     order (exact Java Hand semantics). The old `cycle_pos % 8` walked off the

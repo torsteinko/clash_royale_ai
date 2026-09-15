@@ -7,6 +7,7 @@ device tensors. Data provenance: crforge base + noff.gg 2026-09 corrections
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,6 +78,11 @@ class CardTable:
     spell_hits_air: torch.Tensor | None = None   # (C,) 1/0
     spell_hits_ground: torch.Tensor | None = None
     spell_speed: torch.Tensor | None = None      # (C,) tiles/s; > 0 = flying spell (projectile)
+    # ticking area-effect zones (poison/earthquake/tornado; M3.5)
+    spell_life: torch.Tensor | None = None       # (C,) zone lifeDuration (s; 0 = one-shot)
+    spell_hitspeed: torch.Tensor | None = None   # (C,) zone tick interval (s; 0 = one-shot)
+    spell_tick_dmg_base: torch.Tensor | None = None  # (C,) per-tick damage (level-1 base)
+    spell_building_pct: torch.Tensor | None = None   # (C,) zone building-damage bonus (350 = x4.5)
 
     card_index: dict = field(default_factory=dict)   # norm name -> card idx
     unit_index: dict = field(default_factory=dict)   # norm name -> unit idx
@@ -103,6 +109,10 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
     units = units_raw if isinstance(units_raw, list) else list(units_raw.values())
     proj_path = data_dir / "projectiles.json"
     projectiles = json.loads(proj_path.read_text()) if proj_path.exists() else {}
+    # buff definitions (for area-effect zones: the reference derives zone tick
+    # damage from the buff's damagePerSecond — see AreaEffectFactory.java)
+    buff_path = data_dir / "buffs.json"
+    buffs = json.loads(buff_path.read_text()) if buff_path.exists() else {}
 
     t = CardTable()
     t.unit_names = [u.get("name") or u.get("id") for u in units]
@@ -155,6 +165,28 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         radius = c.get("radius", ae.get("radius", pdata.get("radius", 0.0)))
         damage = ae.get("damage", pdata.get("damage", 0.0))
         crown = ae.get("crownTowerDamagePercent", pdata.get("crownTowerDamagePercent", 0.0))
+        # M3.5 zone fields. Damage derivation ported 1:1 from
+        # AreaEffectFactory.deployAreaEffect: when the area effect carries no
+        # damage of its own, the per-tick damage is
+        # round(buff.damagePerSecond * hitSpeed), scaled by card level at use.
+        # Crown percent falls back to the buff's (e.g. Poison -75 -> 25%).
+        life = float(ae.get("lifeDuration", 0.0) or 0.0)
+        hitspeed = float(ae.get("hitSpeed", 0.0) or 0.0)
+        bdef = buffs.get(str(ae.get("buff", "") or ""), {}) or {}
+        bdps = float(bdef.get("damagePerSecond", 0.0) or 0.0)
+        if float(crown or 0.0) == 0.0 and bdef.get("crownTowerDamagePercent"):
+            crown = float(bdef["crownTowerDamagePercent"])
+        if float(damage or 0.0) > 0.0:
+            tick_base = float(damage)
+        elif bdps > 0.0 and hitspeed > 0.0:
+            tick_base = float(math.floor(bdps * hitspeed + 0.5))  # Java Math.round
+        else:
+            tick_base = 0.0
+        t.spell_life = _cat(t.spell_life, life, device)
+        t.spell_hitspeed = _cat(t.spell_hitspeed, hitspeed, device)
+        t.spell_tick_dmg_base = _cat(t.spell_tick_dmg_base, tick_base, device)
+        t.spell_building_pct = _cat(
+            t.spell_building_pct, float(bdef.get("buildingDamagePercent", 0.0) or 0.0), device)
         t.spell_radius = _cat(t.spell_radius, float(radius or 0.0), device)
         t.spell_damage = _cat(t.spell_damage, float(damage or 0.0), device)
         t.spell_crown_pct = _cat(t.spell_crown_pct, float(crown or 0.0), device)
@@ -173,7 +205,8 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
                  "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type",
                  "u_proj_speed", "u_proj_radius", "u_loadtime",
                  "card_types", "card_spell_as_deploy", "spell_radius", "spell_damage",
-                 "spell_crown_pct", "spell_hits_air", "spell_hits_ground", "spell_speed"):
+                 "spell_crown_pct", "spell_hits_air", "spell_hits_ground", "spell_speed",
+                 "spell_life", "spell_hitspeed", "spell_tick_dmg_base", "spell_building_pct"):
         tensor = getattr(t, name)
         assert tensor is not None
         setattr(t, name, tensor.to(torch.float32))

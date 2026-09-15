@@ -1,6 +1,6 @@
 # M4 scenario report — gpusim (M4.1)
 
-generated: 2026-09-15T21:45:34+00:00 · engine: gpusim@977823688ece · data: `/home/torromh_gmail_com/clash_royale_ai/fidelity/patched` · level 11 · dt 0.05s · 1500 ticks (75s)
+generated: 2026-09-15T22:11:17+00:00 · engine: gpusim@b8736bdbc1d2 · data: `/home/torromh_gmail_com/clash_royale_ai/fidelity/patched` · level 11 · dt 0.05s · 1500 ticks (75s)
 
 **determinism: PASS — two full runs byte-identical**
 

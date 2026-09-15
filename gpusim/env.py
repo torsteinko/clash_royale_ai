@@ -23,6 +23,7 @@ MAX_UNITS = 64           # per env (overflow tracked in DIVERGENCES.md #10)
 MAX_PROJ = 128           # per env
 MAX_PENDING = 16         # per side: sync-delayed troop/building spawn queue
 MAX_CASTS = 4            # per side: sync-delayed spell casts
+MAX_ZONES = 8            # per env: ticking area-effect zones (poison/earthquake/tornado)
 N_TOWERS = 6             # slot order: [kingB, pB_l, pB_r, kingR, pR_l, pR_r]
 TICK_DT = 0.05           # 20 ticks/s (GameEngine.TICKS_PER_SECOND = 20)
 ELIXIR_START = 5.0
@@ -115,6 +116,22 @@ class SimState:
     cast_pending: torch.Tensor   # (B, 2, MAX_CASTS) long, card idx (-1 empty)
     cast_timer: torch.Tensor     # (B, 2, MAX_CASTS)
     cast_pos: torch.Tensor       # (B, 2, MAX_CASTS, 2)
+
+    # ticking area-effect zones (M3.5: poison / earthquake / tornado).
+    # Ported from the reference AreaEffect entity + TickingHandler.
+    z_active: torch.Tensor       # (B, MAX_ZONES) bool
+    z_side: torch.Tensor         # (B, MAX_ZONES) long
+    z_x: torch.Tensor            # (B, MAX_ZONES)
+    z_y: torch.Tensor
+    z_radius: torch.Tensor
+    z_life: torch.Tensor         # remaining lifetime, seconds
+    z_acc: torch.Tensor          # tick accumulator (TickingHandler.tickAccumulator)
+    z_hitspeed: torch.Tensor     # seconds between damage ticks
+    z_dmg: torch.Tensor          # level-scaled per-tick damage
+    z_crown: torch.Tensor        # resolved crown-tower damage percent
+    z_building: torch.Tensor     # building damage percent (Earthquake: 350)
+    z_hits_ground: torch.Tensor  # bool
+    z_hits_air: torch.Tensor     # bool
 
     # tower combat (AttackStateMachine parity: windup machinery + shot projectiles)
     t_windup: torch.Tensor       # (B, N_TOWERS) remaining windup
@@ -219,6 +236,19 @@ class BatchedCRSim:
             cast_pending=torch.full((b, 2, MAX_CASTS), -1, dtype=torch.long, device=dev),
             cast_timer=torch.zeros(b, 2, MAX_CASTS, device=dev),
             cast_pos=torch.zeros(b, 2, MAX_CASTS, 2, device=dev),
+            z_active=torch.zeros(b, MAX_ZONES, dtype=torch.bool, device=dev),
+            z_side=torch.zeros(b, MAX_ZONES, dtype=torch.long, device=dev),
+            z_x=torch.zeros(b, MAX_ZONES, device=dev),
+            z_y=torch.zeros(b, MAX_ZONES, device=dev),
+            z_radius=torch.zeros(b, MAX_ZONES, device=dev),
+            z_life=torch.zeros(b, MAX_ZONES, device=dev),
+            z_acc=torch.zeros(b, MAX_ZONES, device=dev),
+            z_hitspeed=torch.ones(b, MAX_ZONES, device=dev),
+            z_dmg=torch.zeros(b, MAX_ZONES, device=dev),
+            z_crown=torch.zeros(b, MAX_ZONES, device=dev),
+            z_building=torch.zeros(b, MAX_ZONES, device=dev),
+            z_hits_ground=torch.ones(b, MAX_ZONES, dtype=torch.bool, device=dev),
+            z_hits_air=torch.ones(b, MAX_ZONES, dtype=torch.bool, device=dev),
             t_windup=torch.zeros(b, N_TOWERS, device=dev),
             t_attacking=torch.zeros(b, N_TOWERS, dtype=torch.bool, device=dev),
             t_tgt=torch.full((b, N_TOWERS), -1, dtype=torch.long, device=dev),
@@ -493,6 +523,14 @@ class BatchedCRSim:
         dmg = self._scaled_scalar(float(self.t.spell_damage[ci]))
         rad = float(self.t.spell_radius[ci])
         crown = float(self.t.spell_crown_pct[ci])
+        life = float(self.t.spell_life[ci])
+        hitspeed = float(self.t.spell_hitspeed[ci])
+        if life > 0.0 and hitspeed > 0.0:
+            # ticking zone (Poison / Earthquake / Tornado): the reference spawns
+            # an AreaEffect entity that applies damage every hitSpeed for
+            # lifeDuration seconds (AreaEffectSystem + TickingHandler, M3.5)
+            self._spawn_zone(e, side, ci, x, y, life, hitspeed)
+            return
         if speed > 0.0:
             self._spawn_spell_projectile(e, side, x, y, dmg, rad, crown, speed)
         else:
@@ -551,6 +589,108 @@ class BatchedCRSim:
         s.p_ty[e, j] = math.floor(y * 1000.0 + 0.5) / 1000.0
         s.p_life[e, j] = 10.0
 
+    # ------------------------------------------------------------------ zones
+    def _spawn_zone(self, e: int, side: int, ci: int, x: float, y: float,
+                    life: float, hitspeed: float) -> None:
+        """Spawn a ticking area-effect zone (reference: AreaEffect entity,
+        created by SpellFactory.deployAreaEffect, ticked by TickingHandler).
+
+        Per-tick damage: ``scaleCard(round(buff.damagePerSecond * hitSpeed))``
+        resolved in cards.py; crown percent falls back to the buff's.
+        """
+        s = self.s
+        free = (~s.z_active[e]).nonzero(as_tuple=False).flatten()
+        if free.numel() == 0:
+            return  # overflow: drop (same policy as the projectile/cast queues)
+        j = int(free[0])
+        s.z_active[e, j] = True
+        s.z_side[e, j] = side
+        s.z_x[e, j] = math.floor(x * 1000.0 + 0.5) / 1000.0
+        s.z_y[e, j] = math.floor(y * 1000.0 + 0.5) / 1000.0
+        s.z_radius[e, j] = float(self.t.spell_radius[ci])
+        s.z_life[e, j] = life
+        s.z_acc[e, j] = 0.0
+        s.z_hitspeed[e, j] = hitspeed
+        s.z_dmg[e, j] = self._scaled_scalar(float(self.t.spell_tick_dmg_base[ci]))
+        s.z_crown[e, j] = float(self.t.spell_crown_pct[ci])
+        s.z_building[e, j] = float(self.t.spell_building_pct[ci])
+        s.z_hits_ground[e, j] = float(self.t.spell_hits_ground[ci]) > 0.5
+        s.z_hits_air[e, j] = float(self.t.spell_hits_air[ci]) > 0.5
+
+    def _zone_ticks(self, dt: float) -> None:
+        """Advance every active zone (Java TickingHandler.process: accumulate,
+        apply while acc >= hitSpeed) and run the lifetime countdown AFTER
+        processing, so an effect gets its final tick before expiry
+        (AreaEffectSystem.update)."""
+        s = self.s
+        if not bool(s.z_active.any()):
+            return
+        s.z_acc = s.z_acc + dt
+        due = s.z_active & (s.z_acc >= s.z_hitspeed)
+        if bool(due.any()):
+            for e, j in torch.nonzero(due, as_tuple=False).tolist():
+                hs = float(s.z_hitspeed[e, j])
+                while float(s.z_acc[e, j]) >= hs:
+                    s.z_acc[e, j] = float(s.z_acc[e, j]) - hs
+                    self._apply_zone_tick(e, j)
+        s.z_life = torch.where(s.z_active, s.z_life - dt, s.z_life)
+        # half-tick tolerance against float32 decrement residue (same rationale
+        # as the spawn timers): the zone dies on the tick its life runs out
+        s.z_active = s.z_active & (s.z_life > TICK_DT * 0.5)
+
+    def _apply_zone_tick(self, e: int, j: int) -> None:
+        """One zone damage tick (Java EnemyDamageApplicator.applyDamageToEnemies):
+        enemy units and buildings within radius + collision radius (ground/air
+        filter), enemy towers within radius + tower radius; the building damage
+        bonus applies first (Earthquake x4.5), then the crown-tower damage
+        percent (DamageUtil.adjustForCrownTower, floor, min 1)."""
+        s, dev = self.s, self.device
+        dmg = float(s.z_dmg[e, j])
+        if dmg <= 0.0:
+            return
+        side = int(s.z_side[e, j])
+        x = float(s.z_x[e, j])
+        y = float(s.z_y[e, j])
+        rad_u = float(s.z_radius[e, j]) * 1000.0
+        cx = math.floor(x * 1000.0 + 0.5)
+        cy = math.floor(y * 1000.0 + 0.5)
+        bpct = float(s.z_building[e, j])
+        ctdp = float(s.z_crown[e, j])
+        dmg_b = float(math.floor(dmg * (100.0 + bpct) / 100.0)) if bpct > 0.0 else dmg
+        # units (deployed buildings are units with movementType BUILDING)
+        enemy = s.u_active[e] & (s.u_side[e] == (1 - side))
+        move = self.t.u_move_type[s.u_unit[e]]
+        air = move == 1
+        hits_g = bool(s.z_hits_ground[e, j])
+        hits_a = bool(s.z_hits_air[e, j])
+        ok_type = (air & hits_a) | (~air & hits_g)
+        u_rad_u = torch.round(self._radius[s.u_unit[e]].double() * 1000.0)
+        dx = torch.round(s.u_x[e].double() * 1000.0) - cx
+        dy = torch.round(s.u_y[e].double() * 1000.0) - cy
+        d2 = dx * dx + dy * dy
+        hit = enemy & ok_type & (d2 <= (rad_u + u_rad_u) ** 2)
+        if bool(hit.any()):
+            b_hit = hit & (move == 2)
+            if bool(b_hit.any()):
+                s.u_hp[e, b_hit] = (s.u_hp[e, b_hit] - dmg_b).clamp(min=0.0)
+            plain = hit & ~(move == 2)
+            if bool(plain.any()):
+                s.u_hp[e, plain] = (s.u_hp[e, plain] - dmg).clamp(min=0.0)
+        # towers
+        t_rad_u = torch.where(self.tower_king,
+                              torch.full((N_TOWERS,), KING_RADIUS * 1000.0, device=dev),
+                              torch.full((N_TOWERS,), T_RADIUS * 1000.0, device=dev))
+        dx_t = torch.round(self.tower_pos[e, :, 0].double() * 1000.0) - cx
+        dy_t = torch.round(self.tower_pos[e, :, 1].double() * 1000.0) - cy
+        d2_t = dx_t * dx_t + dy_t * dy_t
+        enemy_t = self.tower_side == (1 - side)
+        hit_t = s.tower_alive[e] & enemy_t & (d2_t <= (rad_u + t_rad_u) ** 2)
+        if bool(hit_t.any()):
+            d = dmg_b
+            if ctdp != 0.0:
+                d = max(1.0, float(math.floor(d * (100.0 + ctdp) / 100.0)))
+            s.tower_hp[e, hit_t] = (s.tower_hp[e, hit_t] - d).clamp(min=0.0)
+
     # ------------------------------------------------------------------ tick
     def tick(self, n: int = 1, dt: float = TICK_DT) -> None:
         for _ in range(n):
@@ -599,6 +739,11 @@ class BatchedCRSim:
                                      float(s.cast_pos[e, side, j, 0]),
                                      float(s.cast_pos[e, side, j, 1]))
                 s.cast_pending[e, side, j] = -1
+
+        # ticking zones (poison/earthquake/tornado): process first, then the
+        # lifetime countdown — Java AreaEffectSystem ("effects get their final
+        # tick before lifetime expiry")
+        self._zone_ticks(dt)
 
         # timers
         s.u_deploy = torch.clamp(s.u_deploy - dt, min=0)

@@ -1,6 +1,6 @@
 {
  "format": "m4-replay-diff-v1",
- "generated": "2026-09-15 19:58:19",
+ "generated": "2026-09-15 22:03:38",
  "data_dir": "fidelity/patched",
  "tolerances": {
   "tower_hp": 1.0,
@@ -162,8 +162,8 @@
    ],
    "tower_hp": {
     "max_abs_diff": 3584.0,
-    "first_divergent_step": 9,
-    "steps_over_tol": 233
+    "first_divergent_step": 10,
+    "steps_over_tol": 232
    },
    "blue_elixir": {
     "max_abs_diff": 2.054,
@@ -189,13 +189,13 @@
      0
     ],
     "winner": 0,
-    "units_alive": 23
+    "units_alive": 33
    },
    "tol": {
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 11.8
+   "seconds": 46.3
   },
   {
    "format": "m4-replay-diff-v1",
@@ -308,14 +308,14 @@
      "detail": "Skeletons @(9.0,29.0)"
     },
     {
-     "step": 342,
-     "kind": "blue_label_unresolved",
-     "detail": "Skeletons"
+     "step": 341,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
     },
     {
-     "step": 361,
-     "kind": "blue_label_unresolved",
-     "detail": "Musketeer"
+     "step": 360,
+     "kind": "blue_play_rejected",
+     "detail": "Musketeer @(9.0,29.0)"
     }
    ],
    "red_skipped": [
@@ -477,13 +477,13 @@
    ],
    "tower_hp": {
     "max_abs_diff": 4824.0,
-    "first_divergent_step": 35,
-    "steps_over_tol": 367
+    "first_divergent_step": 37,
+    "steps_over_tol": 365
    },
    "blue_elixir": {
-    "max_abs_diff": 3.25,
-    "first_divergent_step": 360,
-    "steps_over_tol": 2
+    "max_abs_diff": 1.66,
+    "first_divergent_step": 401,
+    "steps_over_tol": 1
    },
    "red_elixir": {
     "max_abs_diff": 10.0,
@@ -504,13 +504,13 @@
      0
     ],
     "winner": 0,
-    "units_alive": 49
+    "units_alive": 64
    },
    "tol": {
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 19.2
+   "seconds": 79.0
   },
   {
    "format": "m4-replay-diff-v1",
@@ -711,9 +711,9 @@
     }
    ],
    "tower_hp": {
-    "max_abs_diff": 2370.58,
-    "first_divergent_step": 28,
-    "steps_over_tol": 214
+    "max_abs_diff": 4507.0,
+    "first_divergent_step": 29,
+    "steps_over_tol": 213
    },
    "blue_elixir": {
     "max_abs_diff": 2.572,
@@ -721,7 +721,7 @@
     "steps_over_tol": 8
    },
    "red_elixir": {
-    "max_abs_diff": 8.839,
+    "max_abs_diff": 8.821,
     "first_divergent_step": 3,
     "steps_over_tol": 18
    },
@@ -730,22 +730,22 @@
      true,
      true,
      false,
-     true,
      false,
-     true
+     false,
+     false
     ],
     "crowns": [
-     1,
+     5,
      1
     ],
-    "winner": -1,
-    "units_alive": 10
+    "winner": 0,
+    "units_alive": 13
    },
    "tol": {
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 11.6
+   "seconds": 48.2
   },
   {
    "format": "m4-replay-diff-v1",
@@ -823,9 +823,9 @@
      "detail": "Musketeer @(9.0,29.0)"
     },
     {
-     "step": 51,
-     "kind": "blue_label_unresolved",
-     "detail": "Log"
+     "step": 50,
+     "kind": "blue_play_rejected",
+     "detail": "Log @(14.5,25.5)"
     },
     {
      "step": 55,
@@ -1057,8 +1057,8 @@
    },
    "blue_elixir": {
     "max_abs_diff": 9.0,
-    "first_divergent_step": 50,
-    "steps_over_tol": 129
+    "first_divergent_step": 106,
+    "steps_over_tol": 128
    },
    "red_elixir": {
     "max_abs_diff": 10.0,
@@ -1072,20 +1072,20 @@
      true,
      false,
      false,
-     true
+     false
     ],
     "crowns": [
-     4,
+     5,
      0
     ],
     "winner": 0,
-    "units_alive": 4
+    "units_alive": 10
    },
    "tol": {
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 10.7
+   "seconds": 47.6
   },
   {
    "format": "m4-replay-diff-v1",
@@ -1109,12 +1109,12 @@
     }
    ],
    "tower_hp": {
-    "max_abs_diff": 1895.444,
+    "max_abs_diff": 1854.0,
     "first_divergent_step": 15,
     "steps_over_tol": 186
    },
    "blue_elixir": {
-    "max_abs_diff": 1.304,
+    "max_abs_diff": 1.286,
     "first_divergent_step": null,
     "steps_over_tol": 0
    },
@@ -1137,13 +1137,13 @@
      0
     ],
     "winner": 0,
-    "units_alive": 5
+    "units_alive": 7
    },
    "tol": {
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 8.3
+   "seconds": 47.1
   },
   {
    "format": "m4-replay-diff-v1",
@@ -1244,11 +1244,11 @@
    "red_skipped": [],
    "tower_hp": {
     "max_abs_diff": 4746.0,
-    "first_divergent_step": 17,
-    "steps_over_tol": 208
+    "first_divergent_step": 19,
+    "steps_over_tol": 206
    },
    "blue_elixir": {
-    "max_abs_diff": 1.161,
+    "max_abs_diff": 1.143,
     "first_divergent_step": null,
     "steps_over_tol": 0
    },
@@ -1271,13 +1271,13 @@
      0
     ],
     "winner": -1,
-    "units_alive": 14
+    "units_alive": 13
    },
    "tol": {
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 10.9
+   "seconds": 62.7
   },
   {
    "format": "m4-replay-diff-v1",
@@ -1287,7 +1287,7 @@
    "seed": 7014,
    "recorded_result": "win",
    "steps": 366,
-   "blue_actions_applied": 49,
+   "blue_actions_applied": 53,
    "red_actions_applied": 0,
    "blue_labels_total": 55,
    "blue_labels_model_match": 53,
@@ -1315,34 +1315,14 @@
    ],
    "flags": [
     {
-     "step": 27,
-     "kind": "blue_label_unresolved",
-     "detail": "Tornado"
-    },
-    {
-     "step": 28,
+     "step": 26,
      "kind": "blue_play_rejected",
-     "detail": "DarkWitch @(5.5,14.5)"
+     "detail": "Tornado @(9.0,20.5)"
     },
     {
-     "step": 42,
-     "kind": "blue_label_unresolved",
-     "detail": "Tornado"
-    },
-    {
-     "step": 50,
-     "kind": "blue_label_unresolved",
-     "detail": "Minions"
-    },
-    {
-     "step": 62,
-     "kind": "blue_label_unresolved",
-     "detail": "Skeletons"
-    },
-    {
-     "step": 69,
-     "kind": "blue_label_unresolved",
-     "detail": "Valkyrie"
+     "step": 27,
+     "kind": "blue_play_rejected",
+     "detail": "Tornado @(9.0,20.5)"
     }
    ],
    "red_skipped": [
@@ -1488,14 +1468,14 @@
     }
    ],
    "tower_hp": {
-    "max_abs_diff": 3044.0,
+    "max_abs_diff": 4824.0,
     "first_divergent_step": 10,
     "steps_over_tol": 357
    },
    "blue_elixir": {
-    "max_abs_diff": 10.0,
-    "first_divergent_step": 26,
-    "steps_over_tol": 334
+    "max_abs_diff": 1.036,
+    "first_divergent_step": null,
+    "steps_over_tol": 0
    },
    "red_elixir": {
     "max_abs_diff": 10.0,
@@ -1522,7 +1502,7 @@
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 15.1
+   "seconds": 66.1
   },
   {
    "format": "m4-replay-diff-v1",
@@ -1694,13 +1674,13 @@
    ],
    "tower_hp": {
     "max_abs_diff": 4824.0,
-    "first_divergent_step": 12,
-    "steps_over_tol": 230
+    "first_divergent_step": 13,
+    "steps_over_tol": 229
    },
    "blue_elixir": {
     "max_abs_diff": 6.0,
     "first_divergent_step": 201,
-    "steps_over_tol": 32
+    "steps_over_tol": 31
    },
    "red_elixir": {
     "max_abs_diff": 8.321,
@@ -1721,13 +1701,13 @@
      1
     ],
     "winner": 0,
-    "units_alive": 14
+    "units_alive": 19
    },
    "tol": {
     "tower_hp": 1.0,
     "elixir": 1.5
    },
-   "seconds": 11.1
+   "seconds": 52.9
   }
  ]
 }
