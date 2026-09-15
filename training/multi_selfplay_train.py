@@ -31,9 +31,16 @@ LOGB = ["goblinbarrel", "princess", "rocket", "knight", "goblingang", "log", "in
 XBOW = ["xbow", "tesla", "log", "icespirits", "skeletons", "archer", "fireball", "knight"]
 LAVA = ["lavahound", "balloon", "megaminion", "minions", "tombstone", "fireball", "zap", "arrows"]
 YARD = ["graveyard", "poison", "babydragon", "tornado", "knight", "skeletons", "arrows", "icewizard"]
+# Round-5 additions: more archetypes for the opponent pool + deck rotation.
+RG = ["royalgiant", "fisherman", "hunter", "skeletons", "electrospirit", "lightning", "log", "ghost"]
+GOLEM = ["golem", "babydragon", "darkwitch", "tornado", "lightning", "skeletons", "minions", "valkyrie"]
+MINER = ["miner", "poison", "bats", "skeletons", "speargoblins", "valkyrie", "tesla", "log"]
+MORTAR = ["mortar", "goblinbarrel", "knight", "bats", "log", "arrows", "princess", "goblins"]
+BALLOON = ["balloon", "freeze", "bats", "skeletons", "valkyrie", "arrows", "tesla", "miner"]
+PEKKA = ["pekka", "battleram", "ghost", "electrowizard", "poison", "zap", "skeletons", "minions"]
 DEFAULT_DECK = ["knight", "archer", "fireball", "arrows", "giant", "musketeer", "minions", "valkyrie"]
 
-RED_POOL = [HOG, GIANT, LOGB, XBOW, LAVA, YARD]
+RED_POOL = [HOG, GIANT, LOGB, XBOW, LAVA, YARD, RG, GOLEM, MINER, MORTAR, BALLOON, PEKKA]
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +340,9 @@ def make_worker(port: int, blue_deck: list, red_deck: list, snapshot_path: str,
 # ---------------------------------------------------------------------------
 
 def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int,
-                    worker_decks: list[str] | None = None):
+                    worker_decks: list[str] | None = None, eval_every: int = 0,
+                    eval_endpoint: str = "", eval_targets: list | None = None,
+                    eval_blue: list | None = None):
     from stable_baselines3.common.callbacks import BaseCallback
 
     class SnapshotCallback(BaseCallback):
@@ -399,7 +408,49 @@ def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int
                         print("    per-deck (worker 0..N-1): " + " | ".join(parts), flush=True)
             return True
 
-    return [SnapshotCallback(), LogCallback()]
+    class PeriodicEvalCallback(BaseCallback):
+        """Every `eval_every` steps: 2 episodes vs the random bot per pool deck.
+
+        Runs on a dedicated extra bridge server (base_port + num_envs), so it never
+        collides with the training workers' sessions. The printed lines give a
+        per-deck, absolute learning curve that self-play win% cannot provide.
+        """
+
+        def __init__(self):
+            super().__init__(0)
+            self._last = 0
+
+        def _on_step(self):
+            if not eval_every or self.num_timesteps - self._last < eval_every:
+                return True
+            self._last = self.num_timesteps
+            from stable_baselines3.common.evaluation import evaluate_policy
+
+            from crforge_gym import CRForgeEnv
+            from crforge_gym.wrappers import ActionMaskedWrapper as _AMW
+            from crforge_gym.wrappers import EpisodeStatsWrapper as _ESW
+
+            parts = []
+            for nm, dk in eval_targets or []:
+                try:
+                    el = CRForgeEnv(endpoint=eval_endpoint, ticks_per_step=15, opponent="random",
+                                    binary_obs=True, blue_deck=eval_blue, red_deck=dk)
+                    el = _ESW(el)
+                    el = _AMW(el)
+                    mean_r, _ = evaluate_policy(self.model, el, n_eval_episodes=2,
+                                                deterministic=True)
+                    parts.append(f"{nm} {mean_r:+.0f}")
+                    el.close()
+                    time.sleep(0.3)  # gentle gap between sessions (PAIR teardown)
+                except Exception as exc:
+                    parts.append(f"{nm} ERR({exc!r})")
+            print(f"[eval@{self.num_timesteps} vs random] " + " | ".join(parts), flush=True)
+            return True
+
+    cbs = [SnapshotCallback(), LogCallback()]
+    if eval_every:
+        cbs.append(PeriodicEvalCallback())
+    return cbs
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +477,10 @@ def main():
     parser.add_argument("--logdir", default="logs/ppo_multi")
     parser.add_argument("--snapshot-interval", type=int, default=20000)
     parser.add_argument("--eval-episodes", type=int, default=10)
+    parser.add_argument("--eval-every", type=int, default=0,
+                        help="Periodic in-training eval every N steps: 2 episodes vs the random bot "
+                             "per pool deck (printed as [eval@N vs random]). 0 = off. Uses one "
+                             "extra bridge server on port base+num_envs.")
     parser.add_argument("--ent-coef", type=float, default=0.005,
                         help="PPO entropy bonus (higher = more exploration; default 0.005)")
     parser.add_argument("--resume", action="store_true",
@@ -443,7 +498,9 @@ def main():
     from crforge_gym.wrappers import ActionMaskedWrapper, EpisodeStatsWrapper
 
     deck_by_name = {"hog": HOG, "giant": GIANT, "logb": LOGB,
-                    "xbow": XBOW, "lava": LAVA, "yard": YARD, "default": DEFAULT_DECK}
+                    "xbow": XBOW, "lava": LAVA, "yard": YARD, "default": DEFAULT_DECK,
+                    "rg": RG, "golem": GOLEM, "miner": MINER, "mortar": MORTAR,
+                    "balloon": BALLOON, "pekka": PEKKA}
 
     def parse_pool(spec: str):
         if spec == "all":
@@ -468,7 +525,9 @@ def main():
 
     project_root = find_project_root()
     script = build_bridge_dist(project_root)
-    launch_servers(script, args.base_port, args.num_envs)
+    n_servers = args.num_envs + (1 if args.eval_every > 0 else 0)
+    launch_servers(script, args.base_port, n_servers)
+    eval_endpoint = f"tcp://localhost:{args.base_port + args.num_envs}"
 
     # Stale-build guard: moved into the workers (crforge_gym.wrappers._check_binary_obs
     # on the first reset). The old separate probe session here was the entry point of a
@@ -478,7 +537,9 @@ def main():
 
     deck_name_by_tuple = {tuple(d): n for n, d in
                           (("hog", HOG), ("giant", GIANT), ("logb", LOGB),
-                           ("xbow", XBOW), ("lava", LAVA), ("yard", YARD))}
+                           ("xbow", XBOW), ("lava", LAVA), ("yard", YARD),
+                           ("rg", RG), ("golem", GOLEM), ("miner", MINER),
+                           ("mortar", MORTAR), ("balloon", BALLOON), ("pekka", PEKKA))}
     worker_labels = []
     for i in range(args.num_envs):
         bn = deck_name_by_tuple.get(tuple(blue_pool[i % len(blue_pool)]), f"b{i}")
@@ -531,10 +592,18 @@ def main():
     red_names = ",".join(dict.fromkeys(deck_name_by_tuple.get(tuple(d), "?") for d in pool))
     print(f"\nTraining {train_steps} steps on {args.num_envs} parallel simulators "
           f"(blue: {blue_names}; opponent: {args.opponent}; red: {red_names})...")
+    eval_targets = list(zip([deck_name_by_tuple.get(tuple(d), "?") for d in pool], pool))
     t0 = time.time()
-    model.learn(total_timesteps=train_steps,
+    # NOTE: SB3 resets model.num_timesteps at the start of learn() unless told
+    # otherwise. On resume we keep the counter (reset_num_timesteps=False) and pass
+    # the ABSOLUTE step target, otherwise snapshots save "0 steps" and the next
+    # resume/ETA is wrong.
+    model.learn(total_timesteps=args.steps,
                 callback=CallbackList(build_callbacks(snapshot_path, args.snapshot_interval,
-                                                      args.steps, worker_decks)))
+                                                      args.steps, worker_labels,
+                                                      args.eval_every, eval_endpoint,
+                                                      eval_targets, blue_pool[0])),
+                reset_num_timesteps=(resume_path is None))
     dt = time.time() - t0
     print(f"\nTraining done in {dt:.0f}s ({train_steps / dt:.0f} steps/s overall)")
     model.save(args.save)

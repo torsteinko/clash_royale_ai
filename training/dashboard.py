@@ -67,12 +67,12 @@ def parse_run(name: str) -> dict:
     tail80 = "\n".join(lines[-80:])
     status = "pending"
     if path.exists():
-        if "Done!" in tail80 or "Training done in" in tail80 and not proc_for(name):
-            status = "done" if "Done!" in tail80 else "running"
         if proc_for(name):
             status = "running"
-        elif "Training done in" in tail80:
+        elif "Training done in" in tail80 or "Done!" in tail80:
             status = "done"
+        else:
+            status = "stopped"
     return {
         "name": name,
         "exists": path.exists(),
@@ -173,7 +173,7 @@ def host_stats() -> dict:
 
 
 def build_status() -> dict:
-    names = ["fixed_bar", "mirror10m", "ft_bc"]
+    names = ["fixed_bar", "mirror10m", "warm_pool", "pool12", "ft_bc"]
     runs = {n: parse_run(n) for n in names}
     active = None
     for p in procs():
@@ -227,9 +227,25 @@ def build_status() -> dict:
     bc_data = False
     if BC.exists():
         bc_data = any(BC.glob("data/*"))
+    scale_log = HOME / "scaling_test.log"
+    scale_txt = scale_log.read_text() if scale_log.exists() else ""
+    scale_status = "pending"
+    if "previous run finished" in scale_txt:
+        scale_status = "done" if "SCALE-DONE" in scale_txt else "running"
+    elif scale_txt:
+        scale_status = "pending"  # watcher is queued, still waiting
+    ctrl_log = HOME / "control_evals.log"
+    ctrl_txt = ctrl_log.read_text() if ctrl_log.exists() else ""
+    ctrl_status = "pending"
+    if "bridge up" in ctrl_txt:
+        ctrl_status = "done" if "CONTROL-EVALS-DONE" in ctrl_txt else "running"
     queue = [
         {"name": "L2 · hog vs FAST rule_based (giant) — 10M", "status": d("fixed_bar")},
         {"name": "L1 · mirror hog vs hog — 10M", "status": d("mirror10m")},
+        {"name": "Skalertest · envs 7/12/16 (fps)", "status": scale_status},
+        {"name": "Kontrolleval · fersk vs trent (læringsbevis)", "status": ctrl_status},
+        {"name": "Curriculum varm-start · pool hog,yard,lava — 20M", "status": d("warm_pool")},
+        {"name": "Pool-12 · rotasjon + eval/2M (varmstart)", "status": d("pool12")},
         {"name": "BC-1 · heuristikk-datainnsamling", "status": "done" if bc_data else ("running" if any(p["kind"] == "bc" for p in procs()) else "pending")},
         {"name": "BC-2 · behavior cloning-trening", "status": "done" if (BC / "bc_model.zip").exists() else "pending"},
         {"name": "BC-3 · PPO finjustering fra BC", "status": "done" if d("ft_bc") == "done" else ("running" if d("ft_bc") == "running" else "pending")},
@@ -289,6 +305,7 @@ h1{font-size:17px;font-weight:600;letter-spacing:.5px} h1 span{color:var(--acc)}
 .pill.done{color:var(--green);border-color:#14532d;background:#052e1620}
 .pill.running{color:var(--orange);border-color:#7c2d12;background:#43140720}
 .pill.pending{color:var(--dim)}
+.pill.stopped{color:#fbbf24;border-color:#78350f;background:#451a0320}
 pre{font-size:11.5px;color:#c7d0e0;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto;white-space:pre-wrap}
 canvas{width:100%;height:150px;display:block}
 .legend{font-size:11px;color:var(--dim);margin-top:4px}
@@ -333,12 +350,12 @@ canvas{width:100%;height:150px;display:block}
   <div class="card c6">
     <h2>Win% over episoder</h2>
     <canvas id="ch-win"></canvas>
-    <div class="legend"><span class="dot" style="background:var(--orange)"></span>L2 fixed-bar <span class="dot" style="background:var(--blue);margin-left:10px"></span>L1 mirror</div>
+    <div class="legend"><span class="dot" style="background:var(--orange)"></span>L2 fixed-bar <span class="dot" style="background:var(--blue);margin-left:10px"></span>L1 mirror <span class="dot" style="background:#34d399;margin-left:10px"></span>varm-start pool <span class="dot" style="background:#facc15;margin-left:10px"></span>pool-12</div>
   </div>
   <div class="card c6">
     <h2>Reward over episoder</h2>
     <canvas id="ch-rew"></canvas>
-    <div class="legend"><span class="dot" style="background:var(--orange)"></span>L2 fixed-bar <span class="dot" style="background:var(--blue);margin-left:10px"></span>L1 mirror</div>
+    <div class="legend"><span class="dot" style="background:var(--orange)"></span>L2 fixed-bar <span class="dot" style="background:var(--blue);margin-left:10px"></span>L1 mirror <span class="dot" style="background:#34d399;margin-left:10px"></span>varm-start pool <span class="dot" style="background:#facc15;margin-left:10px"></span>pool-12</div>
   </div>
   <div class="card c12">
     <h2>Trening (entropi / explained variance)</h2>
@@ -350,7 +367,7 @@ canvas{width:100%;height:150px;display:block}
 const $=id=>document.getElementById(id);
 const fmt=(n,d=1)=>n==null?"–":Number(n).toFixed(d);
 const hms=s=>s==null?"–":(s>=3600?Math.floor(s/3600)+"t "+Math.floor(s%3600/60)+"m":Math.floor(s/60)+"m "+Math.round(s%60)+"s");
-function setPill(el,st){el.className="pill "+st;el.textContent=st=="done"?"ferdig":st=="running"?"kjører":"venter"}
+function setPill(el,st){el.className="pill "+st;el.textContent=st=="done"?"ferdig":st=="running"?"kjører":st=="stopped"?"stoppet":"venter"}
 let ACTIVE=null;
 async function status(){
   try{
@@ -383,12 +400,12 @@ async function status(){
 }
 async function series(){
   if(ACTIVE==null) await status();
-  const want=["fixed_bar","mirror10m"];if(ACTIVE&&!want.includes(ACTIVE))want.push(ACTIVE);
+  const want=["fixed_bar","mirror10m","warm_pool","pool12"];if(ACTIVE&&!want.includes(ACTIVE))want.push(ACTIVE);
   const data={};
   for(const n of want){try{data[n]=await (await fetch("api/series?run="+n)).json();}catch(e){data[n]={win:[],reward:[],tables:[],tail:[]}}}
-  const fb=data["fixed_bar"]||{win:[],reward:[],tables:[]},mr=data["mirror10m"]||{win:[],reward:[],tables:[]};
-  draw("ch-win",[[fb.win,"#fb923c"],[mr.win,"#60a5fa"]],{ymin:0,ymax:100,unit:"%"});
-  draw("ch-rew",[[fb.reward,"#fb923c"],[mr.reward,"#60a5fa"]],{unit:""});
+  const fb=data["fixed_bar"]||{win:[],reward:[],tables:[]},mr=data["mirror10m"]||{win:[],reward:[],tables:[]},wp=data["warm_pool"]||{win:[],reward:[],tables:[]},p12=data["pool12"]||{win:[],reward:[],tables:[]};
+  draw("ch-win",[[fb.win,"#fb923c"],[mr.win,"#60a5fa"],[wp.win,"#34d399"],[p12.win,"#facc15"]],{ymin:0,ymax:100,unit:"%"});
+  draw("ch-rew",[[fb.reward,"#fb923c"],[mr.reward,"#60a5fa"],[wp.reward,"#34d399"],[p12.reward,"#facc15"]],{unit:""});
   const te=n=>n.tables.map(t=>[t[0],t[1]]);
   const ev=n=>n.tables.map(t=>[t[0],t[2]]);
   draw("ch-train",[[te(fb),"#4ade80"],[te(mr),"#4ade80"],[ev(fb),"#c084fc"],[ev(mr),"#c084fc"]],{unit:""});
