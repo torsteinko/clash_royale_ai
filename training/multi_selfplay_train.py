@@ -149,11 +149,13 @@ def wait_for_server(port: int, timeout: float = 60.0) -> bool:
 
 
 def probe_obs_size(port: int):
-    """Init + reset against a server and return the observation length (binary mode).
+    """MANUAL DEBUG ONLY — do not call automatically at startup.
 
-    Used at startup to catch a STALE bridge build: the python code's OBS_SIZE and the
-    running server must agree, otherwise training dies mid-rollout with a confusing
-    mat1/mat2 shape error.
+    The old startup use of this probe (init+reset+close on the first worker port)
+    left the bridge server on that port occasionally wedged mid-teardown: the
+    following worker's init handshake then hung forever and the whole run stalled.
+    The stale-build guard now lives in the workers themselves — see
+    crforge_gym.wrappers._check_binary_obs (checked on the first reset).
     """
     import json
 
@@ -180,7 +182,9 @@ def probe_obs_size(port: int):
         return None
     finally:
         try:
+            sock.setsockopt(zmq.LINGER, 2000)
             sock.send_string(json.dumps({"type": "close"}))
+            sock.close()
         except Exception:
             pass
         sock.close()
@@ -440,6 +444,11 @@ def main():
         pool = RED_POOL
     elif args.red_pool in deck_by_name:
         pool = [deck_by_name[args.red_pool]]
+    elif "," in args.red_pool and all(
+        part.strip() in deck_by_name for part in args.red_pool.split(",")
+    ):
+        # Custom subset pool, e.g. --red-pool hog,yard,lava (curriculum staging)
+        pool = [deck_by_name[part.strip()] for part in args.red_pool.split(",")]
     else:
         print(f"Error: unknown --red-pool '{args.red_pool}'.")
         sys.exit(1)
@@ -453,21 +462,11 @@ def main():
     script = build_bridge_dist(project_root)
     launch_servers(script, args.base_port, args.num_envs)
 
-    # Startup guard: the running bridge must serve THIS code's observation size.
-    # (A stale bridge build otherwise crashes mid-rollout with mat1/mat2 shape errors.)
-    from crforge_gym.env import OBS_SIZE as expected_obs
-
-    got = probe_obs_size(args.base_port)
-    if got is not None and got != expected_obs:
-        print(f"\n!! ERROR: the bridge on port {args.base_port} serves {got}-float observations, "
-              f"but this code expects {expected_obs}.")
-        print("!! Two known causes: orphaned servers from an earlier crash, or a stale build.")
-        print("!!   1) kill stray servers:  taskkill /IM java.exe /F")
-        print("!!   2) rebuild manually:    ./gradlew.bat :gym-bridge:installDist")
-        print("!!   3) then rerun this script")
-        sys.exit(1)
-    print(f"Obs check: bridge serves {got if got is not None else '?'} floats "
-          f"(expected {expected_obs}) — OK")
+    # Stale-build guard: moved into the workers (crforge_gym.wrappers._check_binary_obs
+    # on the first reset). The old separate probe session here was the entry point of a
+    # ZMQ PAIR teardown race: the probed server would occasionally wedge after
+    # "Client requested close" and the following worker's init handshake hung forever,
+    # stalling the whole run silently. Do NOT reintroduce an automated probe call.
 
     deck_name_by_tuple = {tuple(d): n for n, d in
                           (("hog", HOG), ("giant", GIANT), ("logb", LOGB),
@@ -479,7 +478,9 @@ def main():
         make_worker(args.base_port + i, blue, pool[i % len(pool)], snapshot_path, args.opponent)
         for i in range(args.num_envs)
     ]
-    env = SubprocVecEnv(env_fns)
+    # NOTE: on some distros (Debian 13 / Python 3.13) the default start method is
+    # "forkserver", which hangs SB3's SubprocVecEnv init. Pin "fork" explicitly.
+    env = SubprocVecEnv(env_fns, start_method="fork")
 
     resume_path = None
     if args.resume:
