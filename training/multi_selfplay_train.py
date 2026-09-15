@@ -198,7 +198,8 @@ def probe_obs_size(port: int):
         ctx.term()
 
 
-def launch_servers(script: str, base_port: int, n: int, max_restarts: int = 3):
+def launch_servers(script: str, base_port: int, n: int, sessions_per_jvm: int = 1,
+                   max_restarts: int = 3):
     import tempfile
 
     # Refuse to start on top of orphaned servers: a crashed previous run can leave
@@ -212,17 +213,32 @@ def launch_servers(script: str, base_port: int, n: int, max_restarts: int = 3):
         print("!! Kill them first:   taskkill /IM java.exe /F   (Linux: pkill -f gym-bridge)")
         sys.exit(1)
 
+    # Group ports into JVMs: sessions_per_jvm > 1 hosts several game sessions in
+    # one JVM (one thread each; game logic per session unchanged) to cut the
+    # per-game process/scheduler overhead.
+    groups = []
+    i = 0
+    while i < n:
+        size = min(sessions_per_jvm, n - i)
+        groups.append((base_port + i, size))
+        i += size
+
     procs = {}
 
-    def _start(port: int):
-        cmd = ["cmd", "/c", script, str(port)] if os.name == "nt" else [script, str(port)]
-        log_path = os.path.join(tempfile.gettempdir(), f"crforge_bridge_{port}.log")
+    def _start(first_port: int, size: int):
+        if os.name == "nt":
+            cmd = ["cmd", "/c", script, str(first_port), str(size)]
+        else:
+            cmd = [script, str(first_port), str(size)]
+        log_path = os.path.join(tempfile.gettempdir(), f"crforge_bridge_{first_port}.log")
         logf = open(log_path, "ab")
-        procs[port] = subprocess.Popen(cmd, stdout=logf, stderr=logf)
-        print(f"  server on port {port} (log: {log_path})")
+        procs[first_port] = subprocess.Popen(cmd, stdout=logf, stderr=logf)
+        ports_desc = (f"{first_port}" if size == 1
+                      else f"{first_port}-{first_port + size - 1}")
+        print(f"  server on port(s) {ports_desc} (log: {log_path})")
 
-    def _stop(port: int):
-        p = procs.pop(port, None)
+    def _stop(first_port: int):
+        p = procs.pop(first_port, None)
         if p is None:
             return
         if os.name == "nt":
@@ -240,27 +256,27 @@ def launch_servers(script: str, base_port: int, n: int, max_restarts: int = 3):
             p.kill()
 
     def cleanup():
-        for port in list(procs):
-            _stop(port)
+        for first_port in list(procs):
+            _stop(first_port)
 
     atexit.register(cleanup)
-    for i in range(n):
-        _start(base_port + i)
+    for first_port, size in groups:
+        _start(first_port, size)
     print(f"Waiting for {n} bridge server(s) on ports {base_port}-{base_port + n - 1}...")
-    for i in range(n):
-        port = base_port + i
-        ready = False
-        for attempt in range(1, max_restarts + 1):
-            if wait_for_server(port, timeout=90):
-                ready = True
-                break
-            print(f"  port {port}: handshake failed (attempt {attempt}) — restarting server")
-            _stop(port)
-            _start(port)
-        if not ready:
-            print(f"Error: server on port {port} failed to start.")
-            cleanup()
-            sys.exit(1)
+    for first_port, size in groups:
+        for port in range(first_port, first_port + size):
+            ready = False
+            for attempt in range(1, max_restarts + 1):
+                if wait_for_server(port, timeout=90):
+                    ready = True
+                    break
+                print(f"  port {port}: handshake failed (attempt {attempt}) — restarting server group")
+                _stop(first_port)
+                _start(first_port, size)
+            if not ready:
+                print(f"Error: server on port {port} failed to start.")
+                cleanup()
+                sys.exit(1)
     print("All servers ready.")
     return procs
 
@@ -409,11 +425,11 @@ def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int
             return True
 
     class PeriodicEvalCallback(BaseCallback):
-        """Every `eval_every` steps: 2 episodes vs the random bot per pool deck.
+        """Every `eval_every` steps: 2 FIXED-seed games vs the random bot per deck.
 
-        Runs on a dedicated extra bridge server (base_port + num_envs), so it never
-        collides with the training workers' sessions. The printed lines give a
-        per-deck, absolute learning curve that self-play win% cannot provide.
+        Seeds are constant across rounds, so the printed per-deck curve changes only
+        because the policy changed. (The earlier seedless version was so noisy that a
+        single flipped episode moved a deck's number by ~±80.)
         """
 
         def __init__(self):
@@ -424,22 +440,32 @@ def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int
             if not eval_every or self.num_timesteps - self._last < eval_every:
                 return True
             self._last = self.num_timesteps
-            from stable_baselines3.common.evaluation import evaluate_policy
+            import numpy as _np
 
             from crforge_gym import CRForgeEnv
             from crforge_gym.wrappers import ActionMaskedWrapper as _AMW
             from crforge_gym.wrappers import EpisodeStatsWrapper as _ESW
 
             parts = []
-            for nm, dk in eval_targets or []:
+            for idx, (nm, dk) in enumerate(eval_targets or []):
                 try:
                     el = CRForgeEnv(endpoint=eval_endpoint, ticks_per_step=15, opponent="random",
                                     binary_obs=True, blue_deck=eval_blue, red_deck=dk)
                     el = _ESW(el)
                     el = _AMW(el)
-                    mean_r, _ = evaluate_policy(self.model, el, n_eval_episodes=2,
-                                                deterministic=True)
-                    parts.append(f"{nm} {mean_r:+.0f}")
+                    tot = 0.0
+                    for k in range(2):
+                        obs, _info = el.reset(seed=90000 + idx * 11 + k)
+                        for _ in range(900):
+                            mask = el.action_masks()
+                            action, _st = self.model.predict(obs, deterministic=True,
+                                                             action_masks=mask)
+                            obs, reward, term, trunc, _info = el.step(
+                                _np.asarray(action, dtype=_np.int64))
+                            tot += float(reward)
+                            if term or trunc:
+                                break
+                    parts.append(f"{nm} {tot / 2.0:+.0f}")
                     el.close()
                     time.sleep(0.3)  # gentle gap between sessions (PAIR teardown)
                 except Exception as exc:
@@ -460,6 +486,10 @@ def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int
 def main():
     parser = argparse.ArgumentParser(description="Multi-process self-play training for CRForge")
     parser.add_argument("--num-envs", type=int, default=5)
+    parser.add_argument("--multi-k", type=int, default=1,
+                        help="games per worker process (and per JVM): >1 collapses the "
+                             "16-workers+16-JVMs layout into fewer processes with pipelined "
+                             "game loops. Same env/wrapper/opponent code per game.")
     parser.add_argument("--steps", type=int, default=2_000_000)
     parser.add_argument("--base-port", type=int, default=9890)
     parser.add_argument("--blue-deck", choices=["hog", "default"], default="hog",
@@ -526,7 +556,8 @@ def main():
     project_root = find_project_root()
     script = build_bridge_dist(project_root)
     n_servers = args.num_envs + (1 if args.eval_every > 0 else 0)
-    launch_servers(script, args.base_port, n_servers)
+    multi_k = max(1, args.multi_k)
+    launch_servers(script, args.base_port, n_servers, sessions_per_jvm=multi_k)
     eval_endpoint = f"tcp://localhost:{args.base_port + args.num_envs}"
 
     # Stale-build guard: moved into the workers (crforge_gym.wrappers._check_binary_obs
@@ -549,14 +580,33 @@ def main():
         print("  worker decks (blue>red): " + " | ".join(worker_labels))
     worker_decks = worker_labels
 
-    env_fns = [
-        make_worker(args.base_port + i, blue_pool[i % len(blue_pool)], pool[i % len(pool)],
-                    snapshot_path, args.opponent)
-        for i in range(args.num_envs)
-    ]
-    # NOTE: on some distros (Debian 13 / Python 3.13) the default start method is
-    # "forkserver", which hangs SB3's SubprocVecEnv init. Pin "fork" explicitly.
-    env = SubprocVecEnv(env_fns, start_method="fork")
+    if multi_k > 1 and args.num_envs > multi_k:
+        # Multi-game workers: few processes, K pipelined games each.
+        from crforge_gym.multi_vec_env import MultiBridgeVecEnv
+
+        n_workers = (args.num_envs + multi_k - 1) // multi_k
+        specs = []
+        for w in range(n_workers):
+            idxs = list(range(w * multi_k, min(args.num_envs, (w + 1) * multi_k)))
+            specs.append({
+                "ports": [args.base_port + i for i in idxs],
+                "blue_decks": [blue_pool[i % len(blue_pool)] for i in idxs],
+                "red_decks": [pool[i % len(pool)] for i in idxs],
+                "opponent": args.opponent,
+                "snapshot_path": snapshot_path,
+            })
+        env = MultiBridgeVecEnv(specs, start_method="fork")
+        print(f"  multi-game workers: {n_workers} process(es) x {multi_k} games "
+              f"({args.num_envs} envs total)")
+    else:
+        env_fns = [
+            make_worker(args.base_port + i, blue_pool[i % len(blue_pool)], pool[i % len(pool)],
+                        snapshot_path, args.opponent)
+            for i in range(args.num_envs)
+        ]
+        # NOTE: on some distros (Debian 13 / Python 3.13) the default start method is
+        # "forkserver", which hangs SB3's SubprocVecEnv init. Pin "fork" explicitly.
+        env = SubprocVecEnv(env_fns, start_method="fork")
 
     resume_path = None
     if args.resume:
