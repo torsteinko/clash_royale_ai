@@ -3,9 +3,9 @@
   "source": "gpusim",
   "engine": {
     "impl": "gpusim",
-    "commit": "aa3d909ec5e4"
+    "commit": "83b614bd7b5c"
   },
-  "generated": "2026-09-15T20:35:02+00:00",
+  "generated": "2026-09-15T21:12:25+00:00",
   "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
   "level": 11,
   "dt": 0.05,
@@ -89,7 +89,7 @@
       "name": "duel_musketeer",
       "desc": "ranged vs melee duel (musketeer vs knight): projectile flight kills the knight; the musketeer then lands one hit on the red right princess tower before tower fire kills it",
       "ticks": 1501,
-      "sha256": "b01f0d4e5aeb5b41762e188ec99cf8ec0bb980d4b0abd624b3a36d4c75ecc1c1",
+      "sha256": "9e4edd2fc74c07f80469a6808535a46ff6f49284675c3550e48e8d596dc868d0",
       "checkpoints": [
         {
           "tick": 0,
@@ -131,8 +131,8 @@
       "first_damage": {
         "blue": null,
         "red": {
-          "tick": 342,
-          "t": 17.1,
+          "tick": 346,
+          "t": 17.3,
           "tower": "princess_red_right",
           "hp": 2789.0
         }
@@ -167,7 +167,7 @@
       "name": "tower_press",
       "desc": "single knight marches the left lane into the red left princess tower: first melee hit at t=11.05, tower fire kills the knight at t=16.85 (5 hits dealt)",
       "ticks": 1501,
-      "sha256": "c539c40d6fcf599576d352784f5528dea2f55f8a806c4cd7b446563413895bbc",
+      "sha256": "bde1e95d571d5d9c60a30520186c380ba277e9a79abccd328cac339f34f8fda6",
       "checkpoints": [
         {
           "tick": 0,
@@ -209,8 +209,8 @@
       "first_damage": {
         "blue": null,
         "red": {
-          "tick": 242,
-          "t": 12.1,
+          "tick": 238,
+          "t": 11.9,
           "tower": "princess_red_left",
           "hp": 2850.0
         }
@@ -243,9 +243,9 @@
     },
     {
       "name": "spell_hit",
-      "desc": "fireball on a red knight standing at the red right princess tower: full damage to the unit, crown-tower % (207) to the tower; the knight then marches a full lane",
+      "desc": "fireball on a red knight standing at the red right princess tower: full damage to the unit, crown-tower % (206) to the tower; the knight then marches a full lane (deploy at (14.5, 8.5): (14.5, 8.0) is a Java TOWER tile and is rejected by Arena.isValidPlacement)",
       "ticks": 1501,
-      "sha256": "f0e05e3cafe5cfa840073c52209d63dcd8d4fbe8ba2673455be14ce59b9bbeda",
+      "sha256": "8f6f05170a589d145c0c85d2ee1cb43e06e6c97131054cf7abd8fc630908ec83",
       "checkpoints": [
         {
           "tick": 0,
@@ -286,14 +286,14 @@
       ],
       "first_damage": {
         "blue": {
-          "tick": 411,
-          "t": 20.55,
+          "tick": 397,
+          "t": 19.85,
           "tower": "princess_blue_right",
           "hp": 2850.0
         },
         "red": {
-          "tick": 143,
-          "t": 7.15,
+          "tick": 142,
+          "t": 7.1,
           "tower": "princess_red_right",
           "hp": 2846.0
         }
@@ -328,7 +328,7 @@
       "name": "push_left",
       "desc": "knight + musketeer push the left lane: the red left princess tower falls (crown 1-0) before both attackers die to tower fire",
       "ticks": 1501,
-      "sha256": "85cd229901f55283412fcc11546dd221f8edac1b0f5482b2f6f42152622fcdf8",
+      "sha256": "cf09c603208ac1283f9d055ac630775800f94647d62b2c5437eee814958deec4",
       "checkpoints": [
         {
           "tick": 0,
@@ -370,8 +370,8 @@
       "first_damage": {
         "blue": null,
         "red": {
-          "tick": 242,
-          "t": 12.1,
+          "tick": 238,
+          "t": 11.9,
           "tower": "princess_red_left",
           "hp": 2850.0
         }

@@ -1,7 +1,7 @@
 {
   "format": "m4-scenario-v1",
   "name": "spell_hit",
-  "desc": "fireball on a red knight standing at the red right princess tower: full damage to the unit, crown-tower % (207) to the tower; the knight then marches a full lane",
+  "desc": "fireball on a red knight standing at the red right princess tower: full damage to the unit, crown-tower % (206) to the tower; the knight then marches a full lane (deploy at (14.5, 8.5): (14.5, 8.0) is a Java TOWER tile and is rejected by Arena.isValidPlacement)",
   "source": "gpusim",
   "level": 11,
   "dt": 0.05,
@@ -46,7 +46,7 @@
       "side_name": "red",
       "slot": 0,
       "x": 14.5,
-      "y": 8.0,
+      "y": 8.5,
       "card": "Knight"
     },
     {
@@ -55,15 +55,15 @@
       "side_name": "blue",
       "slot": 2,
       "x": 14.5,
-      "y": 8.0,
+      "y": 8.5,
       "card": "Fireball"
     }
   ],
   "engine": {
     "impl": "gpusim",
-    "commit": "aa3d909ec5e4",
+    "commit": "83b614bd7b5c",
     "device": "cpu"
   },
   "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
-  "created": "2026-09-15T20:35:02+00:00"
+  "created": "2026-09-15T21:12:25+00:00"
 }

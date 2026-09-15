@@ -58,7 +58,8 @@ def tcp_up(port: int, timeout: float = 1.0) -> bool:
         s.close()
 
 
-def ensure_bridge(port: int, log_path: str, reuse: bool = False) -> subprocess.Popen | None:
+def ensure_bridge(port: int, log_path: str, reuse: bool = False,
+                  bridge_bin: str | None = None) -> subprocess.Popen | None:
     if tcp_up(port):
         # never join a foreign bridge (e.g. a training session) by accident
         if not reuse:
@@ -69,7 +70,7 @@ def ensure_bridge(port: int, log_path: str, reuse: bool = False) -> subprocess.P
         return None
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     logf = open(log_path, "ab")
-    proc = subprocess.Popen([BRIDGE_BIN, str(port)], stdout=logf, stderr=logf)
+    proc = subprocess.Popen([bridge_bin or BRIDGE_BIN, str(port)], stdout=logf, stderr=logf)
     for _ in range(240):
         if tcp_up(port):
             print(f"bridge up on {port} (pid {proc.pid})", flush=True)
@@ -180,6 +181,8 @@ def run_scenario(client, manifest: dict, seed: int, duration: int) -> tuple[str,
 
     client.close()
     text = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in records)
+    attempted = (sum(1 for e in evidence if "slot" in e)
+                 + sum(1 for e in evidence if e.get("reason") == "card-not-in-hand"))
     run_info = {
         "format": "m4-java-run-v1",
         "name": name,
@@ -188,8 +191,7 @@ def run_scenario(client, manifest: dict, seed: int, duration: int) -> tuple[str,
         "duration_ticks": duration,
         "bridge": "crforge gym-bridge (clash-training)",
         "actions_ok": sum(1 for e in evidence if e.get("ok") is True),
-        "actions_total": sum(1 for e in evidence
-                             if e.get("reason") != "card-not-in-hand" or e.get("ok") is not None),
+        "actions_total": attempted,
         "evidence": evidence,
     }
     return text, run_info
@@ -204,6 +206,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--passes", type=int, default=1)
     ap.add_argument("--reuse", action="store_true",
                     help="allow reusing an existing bridge on --port (default: refuse)")
+    ap.add_argument("--bridge-bin", default=None,
+                    help="bridge launcher (default: the gradle install script); use the "
+                         "patched-data wrapper to run the reference engine with the M0 spec data")
     ap.add_argument("--duration", type=int, default=0, help="override manifest duration")
     ap.add_argument("--only", default="", help="comma-separated scenario names")
     args = ap.parse_args(argv)
@@ -212,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
 
     os.makedirs(args.out, exist_ok=True)
     proc = ensure_bridge(args.port, os.path.join(args.out, f"bridge_{args.port}.log"),
-                         reuse=args.reuse)
+                         reuse=args.reuse, bridge_bin=args.bridge_bin)
     endpoint = f"tcp://localhost:{args.port}"
 
     names = [p[:-len(".scenario.json")] for p in sorted(os.listdir(args.scenarios_dir))

@@ -112,9 +112,11 @@ SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
         "spell_hit",
         "fireball on a red knight standing at the red right princess tower: full damage to the "
-        "unit, crown-tower % (207) to the tower; the knight then marches a full lane",
-        (Action(60, 1, 0, 14.5, 8.0, "Knight"),
-         Action(80, 0, 2, 14.5, 8.0, "Fireball")),
+        "unit, crown-tower % (206) to the tower; the knight then marches a full lane "
+        "(deploy at (14.5, 8.5): (14.5, 8.0) is a Java TOWER tile and is rejected by "
+        "Arena.isValidPlacement)",
+        (Action(60, 1, 0, 14.5, 8.5, "Knight"),
+         Action(80, 0, 2, 14.5, 8.5, "Fireball")),
     ),
     Scenario(
         "push_left",

@@ -70,6 +70,7 @@ class CardTable:
     u_loadtime: torch.Tensor | None = None       # hidden loadTime stat (windup pre-charge cap)
 
     card_types: torch.Tensor | None = None      # (C,) 0=TROOP 1=SPELL 2=BUILDING 3=HERO
+    card_spell_as_deploy: torch.Tensor | None = None  # (C,) 1/0: SpellFactory-as-deploy (Log)
     spell_radius: torch.Tensor | None = None     # (C,) tiles (0 for non-spells)
     spell_damage: torch.Tensor | None = None     # (C,) base damage (level 1)
     spell_crown_pct: torch.Tensor | None = None  # (C,) e.g. -70 = deals 30% to crown towers
@@ -115,7 +116,12 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         t.u_range = _cat(t.u_range, float(u.get("range", 1.0)), device)
         t.u_sight = _cat(t.u_sight, float(u.get("sightRange", 5.5)), device)
         t.u_radius = _cat(t.u_radius, float(u.get("collisionRadius", 0.5)), device)
-        t.u_deploy = _cat(t.u_deploy, float(u.get("deployTime", 1.0)), device)
+        # deploy duration = deployTime + deployDelay (Java TroopFactory sets
+        # `deployTimer = stats.getDeployTime() + stats.getDeployDelay()`; 40
+        # units carry a deployDelay, e.g. Musketeer 0.3, Archer 0.4)
+        t.u_deploy = _cat(t.u_deploy,
+                          float(u.get("deployTime", 1.0)) + float(u.get("deployDelay", 0.0)),
+                          device)
         tt = str(u.get("targetType", "ALL")).upper()
         t.u_target_type = _cat(t.u_target_type, {"ALL": 0, "GROUND": 1, "AIR": 2}.get(tt, 0), device)
         t.u_only_buildings = _cat(t.u_only_buildings, float(bool(u.get("targetOnlyBuildings", False))), device)
@@ -142,6 +148,8 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         # card type + spell fields
         ctype = {"TROOP": 0, "SPELL": 1, "BUILDING": 2, "HERO": 3}.get(str(c.get("type", "TROOP")).upper(), 0)
         t.card_types = _cat(t.card_types, ctype, device)
+        t.card_spell_as_deploy = _cat(
+            t.card_spell_as_deploy, float(bool(c.get("spellAsDeploy", False))), device)
         ae = c.get("areaEffect") or {}
         pdata = projectiles.get(c.get("projectile"), {}) if c.get("projectile") else {}
         radius = c.get("radius", ae.get("radius", pdata.get("radius", 0.0)))
@@ -164,8 +172,8 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
     for name in ("u_health", "u_damage", "u_cooldown", "u_speed", "u_range", "u_sight",
                  "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type",
                  "u_proj_speed", "u_proj_radius", "u_loadtime",
-                 "card_types", "spell_radius", "spell_damage", "spell_crown_pct",
-                 "spell_hits_air", "spell_hits_ground", "spell_speed"):
+                 "card_types", "card_spell_as_deploy", "spell_radius", "spell_damage",
+                 "spell_crown_pct", "spell_hits_air", "spell_hits_ground", "spell_speed"):
         tensor = getattr(t, name)
         assert tensor is not None
         setattr(t, name, tensor.to(torch.float32))

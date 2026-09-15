@@ -1,0 +1,45 @@
+{
+ "format": "m4-java-run-v1",
+ "name": "duel_knight",
+ "seed": 7,
+ "ticks_per_step": 1,
+ "duration_ticks": 1500,
+ "bridge": "crforge gym-bridge (clash-training)",
+ "actions_ok": 2,
+ "actions_total": 3,
+ "evidence": [
+  {
+   "tick": 20,
+   "side": "red",
+   "card": "Knight",
+   "slots_differ": [
+    0,
+    3
+   ]
+  },
+  {
+   "tick": 20,
+   "side": "blue",
+   "card": "Knight",
+   "slot": 0,
+   "x": 14.5,
+   "y": 12.0,
+   "elixir_delta": -2.9821,
+   "spent": true,
+   "ok": true
+  },
+  {
+   "tick": 20,
+   "side": "red",
+   "card": "Knight",
+   "slot": 3,
+   "x": 14.5,
+   "y": 20.0,
+   "elixir_delta": -2.9821,
+   "spent": true,
+   "ok": true
+  }
+ ],
+ "deterministic": true,
+ "passes": 2
+}

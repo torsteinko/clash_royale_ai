@@ -1,0 +1,54 @@
+{
+ "format": "m4-java-run-v1",
+ "name": "spell_hit",
+ "seed": 7,
+ "ticks_per_step": 1,
+ "duration_ticks": 1500,
+ "bridge": "crforge gym-bridge (clash-training)",
+ "actions_ok": 1,
+ "actions_total": 4,
+ "evidence": [
+  {
+   "tick": 60,
+   "side": "red",
+   "card": "Knight",
+   "slots_differ": [
+    0,
+    3
+   ]
+  },
+  {
+   "tick": 60,
+   "side": "red",
+   "card": "Knight",
+   "slot": 3,
+   "x": 14.5,
+   "y": 24.0,
+   "elixir_delta": 0.0179,
+   "spent": false,
+   "ok": false
+  },
+  {
+   "tick": 80,
+   "side": "blue",
+   "card": "Fireball",
+   "slots_differ": [
+    2,
+    1
+   ]
+  },
+  {
+   "tick": 80,
+   "side": "blue",
+   "card": "Fireball",
+   "slot": 1,
+   "x": 14.5,
+   "y": 24.0,
+   "elixir_delta": -3.9821,
+   "spent": true,
+   "ok": true
+  }
+ ],
+ "deterministic": true,
+ "passes": 2
+}

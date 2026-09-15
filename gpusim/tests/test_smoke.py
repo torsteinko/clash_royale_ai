@@ -8,9 +8,13 @@ import os
 
 import torch
 
-from gpusim.env import ELIXIR_PERIOD, TICK_DT, make_sim
+from gpusim.env import ELIXIR_PERIOD, SYNC_TROOP_T, TICK_DT, make_sim
 
 DATA = os.environ.get("GPUSIM_DATA", "fidelity/patched")
+
+# Java DeploymentSystem sync delay (PLACEMENT_SYNC_DELAY = 1.0 s): the entity
+# appears at SYNC_TROOP_T = 1.05 s — i.e. after 21 ticks.
+SYNC_TICKS = int(round(SYNC_TROOP_T / TICK_DT))
 
 
 def _sim(b=4):
@@ -39,6 +43,8 @@ def test_deploy_elixir_and_spawn():
     ok = sim.deploy(side=0, card_idx=idx, x=x, y=y)
     assert ok.tolist() == [True, True, False, False], "deploy mask wrong"
     assert abs(float(sim.s.elixir[0, 0]) - 2.0) < 1e-5, "cost 3 not deducted"
+    # Java sync port: the entity appears SYNC_TROOP_T after the play
+    sim.tick(n=SYNC_TICKS)
     assert int(sim.s.u_active[0].sum()) == 1, "knight not spawned"
     assert int(sim.s.u_active[2].sum()) == 0, "no card -> no spawn"
     ci = int(sim.s.u_card[0, sim.s.u_active[0].nonzero()[0]])
@@ -55,6 +61,7 @@ def test_movement_direction():
     sim = _sim()
     knight = sim.t.card_index["knight"]
     sim.deploy(side=0, card_idx=torch.tensor([knight] * 4), x=torch.full((4,), 9.0), y=torch.full((4,), 20.0))
+    sim.tick(n=SYNC_TICKS)  # Java sync port: the unit appears at t=1.05 s
     y0 = float(sim.s.u_y[0, sim.s.u_active[0].nonzero()[0]])
     sim.tick(n=20)  # 1 second
     y1 = float(sim.s.u_y[0, sim.s.u_active[0].nonzero()[0]])
@@ -66,7 +73,8 @@ def test_multi_spawn_stagger():
     sk = sim.t.card_index.get("skeletons")
     assert sk is not None
     sim.deploy(side=0, card_idx=torch.tensor([sk] * 4), x=torch.full((4,), 9.0), y=torch.full((4,), 20.0))
-    assert int(sim.s.u_active[0].sum()) == 1, "first skeleton immediate"
+    sim.tick(n=SYNC_TICKS)  # Java sync port: the first unit appears at t=1.05 s
+    assert int(sim.s.u_active[0].sum()) == 1, "exactly the first skeleton after sync"
     sim.tick(n=10)  # 0.5 s -> at least one more of the 4 staggered spawns
     assert int(sim.s.u_active[0].sum()) >= 2, "staggered spawns should fire"
 

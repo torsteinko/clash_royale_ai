@@ -345,16 +345,56 @@ class BatchedCRSim:
                     s.cycle[e, side, k - 4] = ci
             s.cycle_pos[e, side] = 0
 
+    def _java_tiles(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Point -> Java Arena tile indices.
+
+        Uses integer game units + floor division (GameUnits.tileIndex), and
+        applies the frame flip to the units BEFORE flooring, so a point lands
+        in the same physical tile as the reference (boundary points included).
+        """
+        xu = torch.round(x.double() * 1000.0)
+        yu = torch.round((32.0 - y).double() * 1000.0)  # Java-frame y in units
+        return torch.floor(xu / 1000.0).long(), torch.floor(yu / 1000.0).long()
+
     def _zone_ok(self, side: int, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """Deployment zone rule: own half; enemy-side pocket opens when their princess falls."""
+        """Java `Arena.isValidPlacement` — tile-exact deploy zones.
+
+        Rules ported 1:1 from Arena.java: allowed = own-zone tile (blue Java
+        rows 0..14 / red 17..31) or an opened pocket (4 rows past the river in
+        the lane of the destroyed enemy princess); never on tower tiles (king
+        4x4 never free; princess 3x3 blocked while alive, freed for the owner
+        on death — `freePrincessTowerTiles`), banned tiles (rows 0/31 outside
+        x 6..11) or river/bridge rows (15-16), and never outside the grid.
+        """
         s = self.s
+        tx, ty = self._java_tiles(x, y)
+        out_grid = (tx < 0) | (tx > 17) | (ty < 0) | (ty > 31)
+        # King towers 4x4 (x 7..10, blue y 1..4 / red y 27..30): never deployable
+        king = (tx >= 7) & (tx <= 10) & (((ty >= 1) & (ty <= 4)) | ((ty >= 27) & (ty <= 30)))
+        # Princess towers 3x3 (x 2..4 left, 13..15 right): TOWER tiles
+        plx = (tx >= 2) & (tx <= 4)
+        prx = (tx >= 13) & (tx <= 15)
+        blue_p = (ty >= 5) & (ty <= 7)
+        red_p = (ty >= 24) & (ty <= 26)
+        aLb = s.tower_alive[:, 1]   # blue left princess
+        aRb = s.tower_alive[:, 2]
+        aLr = s.tower_alive[:, 4]   # red left princess
+        aRr = s.tower_alive[:, 5]
+        princess_blocked = ((blue_p & ((plx & aLb) | (prx & aRb)))
+                            | (red_p & ((plx & aLr) | (prx & aRr))))
+        # Banned tiles behind the king towers (rows 0/31, x < 6 or x > 11)
+        banned = ((ty == 0) | (ty == 31)) & ((tx < 6) | (tx > 11))
+        # Own zone rows: blue 0..14, red 17..31 (river/bridge rows 15-16 excluded)
+        own = (ty <= 14) if side == 0 else (ty >= 17)
+        # Pockets (Arena.openPocketZone): blue Java rows 17..20 / red 11..14,
+        # x-range = lane of the destroyed enemy princess (left 0..8, right 9..17)
         if side == 0:
-            base = y >= SIDE_HALF_Y
-            pocket = (~s.tower_alive[:, 4] & (x < 9.0)) | (~s.tower_alive[:, 5] & (x >= 9.0))
+            rows = (ty >= 17) & (ty <= 20)
+            lane = ((tx <= 8) & ~aLr) | ((tx >= 9) & ~aRr)
         else:
-            base = y <= SIDE_HALF_Y
-            pocket = (~s.tower_alive[:, 1] & (x < 9.0)) | (~s.tower_alive[:, 2] & (x >= 9.0))
-        return base | pocket
+            rows = (ty >= 11) & (ty <= 14)
+            lane = ((tx <= 8) & ~aLb) | ((tx >= 9) & ~aRb)
+        return (own | (rows & lane)) & ~out_grid & ~king & ~princess_blocked & ~banned
 
     def play(self, side: int, slot: int, x: torch.Tensor, y: torch.Tensor,
              env_mask: torch.Tensor | None = None) -> torch.Tensor:
@@ -369,6 +409,10 @@ class BatchedCRSim:
         valid = card >= 0
         if env_mask is not None:
             valid = valid & env_mask
+        # Java Match.validateAction: arena.isInBounds applies to every card type
+        xu = torch.round(x.double() * 1000.0)
+        yu = torch.round(y.double() * 1000.0)
+        valid = valid & (xu >= 0) & (xu < 18000.0) & (yu >= 0) & (yu < 32000.0)
         cclamp = card.clamp(0, len(self.t.names) - 1)
         is_spell = valid & (self.t.card_types[cclamp] == 1)
 
@@ -377,9 +421,14 @@ class BatchedCRSim:
         troop_card = torch.where(troop_ok, card, torch.full_like(card, -1))
         ok_troop = self.deploy(side, troop_card, x, y)
 
-        # spells: queue the cast (elixir spent now; Java applies it after the sync delay)
+        # spells: queue the cast (elixir spent now; Java applies it after the sync delay).
+        # Java split: spellAsDeploy spells (The Log) follow the troop deploy-zone
+        # rule (Match.validateAction -> Arena.isValidPlacement); plain spells may
+        # be placed anywhere in bounds.
+        is_sad = is_spell & (self.t.card_spell_as_deploy[cclamp] > 0.5)
+        is_plain = is_spell & ~(self.t.card_spell_as_deploy[cclamp] > 0.5)
         ok_spell = torch.zeros_like(valid)
-        cast_mask = valid & is_spell
+        cast_mask = is_plain | (is_sad & self._zone_ok(side, x, y))
         if bool(cast_mask.any()):
             ok_spell = self._queue_cast(side, card, x, y, cast_mask)
 
@@ -646,6 +695,9 @@ class BatchedCRSim:
         tbo = a_only_b > 0  # targetOnlyBuildings: always retarget nearest building
         new_tgt = torch.where(keep & ~tbo, cur, torch.where(has_any, nearest, torch.full_like(nearest, -1)))
         s.u_tgt = new_tgt
+        # Java Combat.setCurrentTarget: a CHANGED target identity resets the attack
+        # state (windup 0, not attacking); the same target via rescan keeps it.
+        changed = new_tgt != cur
 
         # attack range (edge-to-edge inclusive)
         rng_sq = (rng_u.unsqueeze(2) + rad_u.unsqueeze(2) + t_rad_u.unsqueeze(1)) ** 2
@@ -659,8 +711,9 @@ class BatchedCRSim:
         s.u_windup = torch.where(s.u_attacking, s.u_windup - dt, s.u_windup)
         s.u_load = torch.where(s.u_attacking, s.u_load,
                                torch.minimum(s.u_load + dt, self.t.u_loadtime[s.u_unit]))
-        # cancel an in-progress attack when the target leaves range
-        cancel = s.u_attacking & ~in_range
+        # cancel an in-progress attack when the target leaves range or changes
+        # (Java Combat.setCurrentTarget resets the attack state on retarget)
+        cancel = s.u_attacking & (~in_range | changed)
         s.u_attacking = s.u_attacking & ~cancel
         s.u_windup = torch.where(cancel, torch.zeros_like(s.u_windup), s.u_windup)
         # start a new attack sequence: windup = max(0, cooldown - accumulated load); load consumed
@@ -877,7 +930,7 @@ class BatchedCRSim:
             d2 = dx * dx + dy * dy
             sight_sq = (sight * 1000.0 + rad * 1000.0 + u_rad_u) ** 2
             cand = enemy & (d2 <= sight_sq)
-            cur = s.t_tgt[:, ti]
+            cur = s.t_tgt[:, ti].clone()  # clone: the assignment below writes in place
             cur_idx = cur.clamp(min=0, max=MAX_UNITS - 1)
             cur_valid = (cur >= 0) & (cur < MAX_UNITS)
             ret_sq = (sight * 1000.0 * TARGET_RETENTION + rad * 1000.0 + u_rad_u) ** 2
@@ -888,14 +941,16 @@ class BatchedCRSim:
             has = cand.any(dim=1)
             new_tgt = torch.where(keep, cur, torch.where(has, nearest, torch.full_like(nearest, -1)))
             s.t_tgt[:, ti] = new_tgt
+            # Java Combat.setCurrentTarget: retarget resets the attack state
+            changed = new_tgt != cur
 
             sel = new_tgt.clamp(0, MAX_UNITS - 1)
             d2_sel = torch.gather(d2, 1, sel.unsqueeze(1)).squeeze(1)
             rng_sq = (rng * 1000.0 + rad * 1000.0 + u_rad_u) ** 2
             in_rng = (new_tgt >= 0) & (d2_sel <= torch.gather(rng_sq, 1, sel.unsqueeze(1)).squeeze(1))
 
-            # cancel an in-progress attack when the target leaves range
-            cancel = s.t_attacking[:, ti] & ~in_rng
+            # cancel an in-progress attack when the target leaves range or changes
+            cancel = s.t_attacking[:, ti] & (~in_rng | changed)
             s.t_windup[:, ti] = torch.where(cancel, torch.zeros_like(s.t_windup[:, ti]),
                                             s.t_windup[:, ti])
             s.t_attacking[:, ti] = s.t_attacking[:, ti] & ~cancel
@@ -931,7 +986,10 @@ class BatchedCRSim:
         cur_y = s.u_y.double() * 1000.0
         t_xu = torch.round(t_x.double() * 1000.0)
         t_yu = torch.round(t_y.double() * 1000.0)
-        # goal: current target; targetless units advance toward the enemy king
+        # goal: current target; targetless units advance toward the enemy side
+        # exactly like Java PhysicsSystem.moveTowardEnemySide: the enemy
+        # princess tower in the unit's own lane (x < 9000 units) while it is
+        # alive, otherwise the enemy crown tower.
         sel = s.u_tgt.clamp(0, T - 1)
         gx = torch.gather(t_xu, 1, sel)
         gy = torch.gather(t_yu, 1, sel)
@@ -939,8 +997,24 @@ class BatchedCRSim:
         king_y = torch.full_like(cur_y, KING_POS["red"][1] * 1000.0)
         rk_x = torch.full_like(cur_x, KING_POS["blue"][0] * 1000.0)
         rk_y = torch.full_like(cur_y, KING_POS["blue"][1] * 1000.0)
-        adv_x = torch.where(s.u_side == 0, king_x, rk_x)
-        adv_y = torch.where(s.u_side == 0, king_y, rk_y)
+        # PhysicsSystem.moveTowardEnemySide: lane princess while alive, else crown
+        blue = s.u_side == 0
+        left_lane = cur_x < 9000.0
+        aLb = s.tower_alive[:, 1].unsqueeze(1)
+        aRb = s.tower_alive[:, 2].unsqueeze(1)
+        aLr = s.tower_alive[:, 4].unsqueeze(1)
+        aRr = s.tower_alive[:, 5].unsqueeze(1)
+        princess_alive = torch.where(left_lane,
+                                     torch.where(blue, aLr, aLb),
+                                     torch.where(blue, aRr, aRb))
+        princess_x = torch.where(left_lane, torch.full_like(cur_x, 3500.0),
+                                 torch.full_like(cur_x, 14500.0))
+        princess_y = torch.where(blue, torch.full_like(cur_y, 6500.0),
+                                 torch.full_like(cur_y, 25500.0))
+        adv_x = torch.where(princess_alive, princess_x,
+                            torch.where(blue, king_x, rk_x))
+        adv_y = torch.where(princess_alive, princess_y,
+                            torch.where(blue, king_y, rk_y))
         gx = torch.where(targetless, adv_x, gx)
         gy = torch.where(targetless, adv_y, gy)
         # BasePathfinder port: ground units route via bridges; air flies straight

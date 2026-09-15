@@ -52,9 +52,9 @@
   ],
   "engine": {
     "impl": "gpusim",
-    "commit": "aa3d909ec5e4",
+    "commit": "83b614bd7b5c",
     "device": "cpu"
   },
   "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
-  "created": "2026-09-15T20:35:02+00:00"
+  "created": "2026-09-15T21:12:25+00:00"
 }

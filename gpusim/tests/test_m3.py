@@ -52,21 +52,61 @@ def test_hand_cycle_and_elixir():
 
 
 def test_deployment_zones():
+    """Java `Arena.isValidPlacement` tile rules, ported 1:1 (M4.2b).
+
+    Points are Java tiles: tile = (floor(x), floor(32 - y)) in tiles.
+    """
     sim = _sim(1)
-    sim.set_deck(0, _deck(sim))
-    sim.s.elixir[0, 0] = 10.0
-    # enemy half: rejected (no pocket yet)
+
+    def reset_hand():
+        sim.set_deck(0, _deck(sim))
+        sim.s.elixir[0, 0] = 10.0
+
+    reset_hand()
+    # enemy half: rejected — (9,10) is Java tile (9,22), red zone (no pocket yet)
     ok = sim.play(0, 0, torch.tensor([9.0]), torch.tensor([10.0]))
     assert ok.tolist() == [False], "cannot deploy on the enemy half"
-    # own half: accepted
+    reset_hand()
+    # own half: accepted — (9,20) is Java tile (9,12), blue zone
     ok = sim.play(0, 0, torch.tensor([9.0]), torch.tensor([20.0]))
     assert ok.tolist() == [True]
-    # destroy the red left princess -> that pocket opens
+    reset_hand()
+    # own live princess tower tile: TOWER tiles are never deployable (even the owner)
+    ok = sim.play(0, 0, torch.tensor([3.5]), torch.tensor([25.5]))
+    assert ok.tolist() == [False], "cannot deploy onto a live tower tile"
+    reset_hand()
+    # river row (Java tiles 15/16): not deployable — (9,16.5) is Java tile (9,15)
+    ok = sim.play(0, 0, torch.tensor([9.0]), torch.tensor([16.5]))
+    assert ok.tolist() == [False], "cannot deploy into the river"
+    # destroy the red left princess -> the 4-row pocket in her lane opens
     sim.s.tower_hp[0, 4] = 0.0
     sim.tick(2)
-    sim.s.elixir[0, 0] = 10.0
-    ok = sim.play(0, 0, torch.tensor([4.0]), torch.tensor([10.0]))
+    reset_hand()
+    ok = sim.play(0, 0, torch.tensor([4.0]), torch.tensor([13.5]))
     assert ok.tolist() == [True], "pocket must open after the enemy princess falls"
+    reset_hand()
+    # but only 4 rows past the river (Java pocket rows 17..20 == y 11..14)
+    ok = sim.play(0, 0, torch.tensor([4.0]), torch.tensor([10.0]))
+    assert ok.tolist() == [False], "pocket is 4 rows deep, not the whole enemy half"
+
+
+def test_log_spell_as_deploy_own_side_only():
+    """The Log is `spellAsDeploy` in the reference data: Match.validateAction
+    routes it through Arena.isValidPlacement (own side only), while plain spells
+    (Fireball) may be cast anywhere in bounds."""
+    sim = _sim(1)
+    sim.set_deck(0, _deck_spell(sim))  # slot 0 = Fireball, slot 2 = Log
+    sim.s.elixir[0, 0] = 10.0
+    # Log on the enemy half -> rejected (no elixir spent)
+    ok = sim.play(0, 2, torch.tensor([9.0]), torch.tensor([10.0]))
+    assert ok.tolist() == [False], "spellAsDeploy must respect the own-side rule"
+    assert abs(float(sim.s.elixir[0, 0]) - 10.0) < 1e-6, "rejected cast must not spend elixir"
+    # Log on the own half -> accepted
+    ok = sim.play(0, 2, torch.tensor([9.0]), torch.tensor([20.0]))
+    assert ok.tolist() == [True], "own-side Log cast must succeed"
+    # Fireball (plain spell) on the enemy half -> still accepted
+    ok = sim.play(0, 0, torch.tensor([9.0]), torch.tensor([10.0]))
+    assert ok.tolist() == [True], "plain spells may be placed anywhere in bounds"
 
 
 def test_fireball_spell_damage():

@@ -41,6 +41,32 @@ def test_bridge_routing():
     assert crossed, "unit must reach the other side"
 
 
+def test_targetless_lane_advance_matches_java():
+    """Java PhysicsSystem.moveTowardEnemySide: a targetless troop walks toward
+    the enemy princess tower in ITS OWN LANE (x < 9 -> left princess), not the
+    crown tower. Found by the M4.2b scenario diff (push_left/tower_press)."""
+    from gpusim.env import SYNC_TROOP_T, TICK_DT
+
+    sync = int(round(SYNC_TROOP_T / TICK_DT))
+    sim = _sim()
+    kni = sim.t.card_index["knight"]
+    sim.deploy(0, torch.tensor([kni]), torch.tensor([4.0]), torch.tensor([17.5]))
+    sim.tick(n=sync + 120)  # spawn + deploy anim + walking (== scenario tick 140)
+    i = int(sim.s.u_active[0].nonzero()[0])
+    x, y = float(sim.s.u_x[0, i]), float(sim.s.u_y[0, i])
+    assert y < 16.0, "must advance toward the enemy side"
+    # Java-verified: push_left java trace tick 140 -> (3.911, 13.453); the old
+    # king-advance model drifted the other way (+0.6 by this tick)
+    assert x < 3.98, f"left-lane unit must drift toward the left princess (x={x})"
+    # right lane mirror: drift toward the right princess (14.5), not the king (9)
+    sim2 = _sim()
+    sim2.deploy(0, torch.tensor([kni]), torch.tensor([12.0]), torch.tensor([17.5]))
+    sim2.tick(n=sync + 120)
+    i2 = int(sim2.s.u_active[0].nonzero()[0])
+    x2 = float(sim2.s.u_x[0, i2])
+    assert x2 > 12.5, f"right-lane unit must drift toward the right princess (x={x2})"
+
+
 def test_king_activation_by_damage():
     sim = _sim()
     assert not bool(sim.s.king_active.any())

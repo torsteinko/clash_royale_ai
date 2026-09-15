@@ -8,7 +8,7 @@ import os
 
 import torch
 
-from gpusim.env import TICK_DT, make_sim
+from gpusim.env import SYNC_TROOP_T, TICK_DT, make_sim
 
 DATA = os.environ.get("GPUSIM_DATA", "fidelity/patched")
 PRINCESS_HP = 3052.0
@@ -19,12 +19,13 @@ def _sim(b=2):
 
 
 def _first_hit_time(sim, unit_name):
-    """AttackStateMachine timeline: deploy, then windup = max(0, cd - min(deploy, loadTime))."""
+    """Full Java timeline: DeploymentSystem sync (1.05 s) + deploy anim + windup
+    (= cooldown − load accrued during the deploy anim, capped at loadTime)."""
     ui = sim.t.unit_index[unit_name]
     cd = float(sim.t.u_cooldown[ui])
     loadt = float(sim.t.u_loadtime[ui])
     dep = float(sim.t.u_deploy[ui])
-    return dep + max(0.0, cd - min(dep, loadt))
+    return SYNC_TROOP_T + dep + max(0.0, cd - min(dep, loadt))
 
 
 def test_projectile_flight_time():
