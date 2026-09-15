@@ -19,6 +19,7 @@ configs until then.
 | 15 | Attack windup / loadTime — RESOLVED (AttackStateMachine port: windup = max(0, cd − load)) | DONE | — |
 | 16 | Multiple targets / AOE splash / abilities (charge, dash, reflect, kamikaze, death spawns) not implemented | OPEN | M3 |
 | 17 | Attack cadence: the Java reference accumulates windup in float32 and fires one tick late (25-tick cycles vs the intended 24). GPU sim uses an epsilon to land the intended cadence — diff ≤ 1 tick per attack; accepted within M4 timing tolerance | ACCEPTED | M4 |
+| 18 | First-hit model (`first hit = hit time − load time`, load accrue during deploy/move): implemented from the reference's community-documented "secret stats" model. NOT yet verified against real-game timings — verify spawn→first-hit (e.g. knight 0.5s) via L2 probes/replays | PENDING-VERIFY | M4/L2 |
 
 Resolved: #2 combat (melee/ranged, cooldowns, deaths) — DONE 2026-09-15;
 #8 speed formula (`speed * 1000 / 60` game-units/s, from GameUnits.java) — VERIFIED 2026-09-15;
