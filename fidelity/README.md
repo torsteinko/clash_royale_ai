@@ -72,7 +72,16 @@ So the goal is not bit-perfection. The goal is:
 
 - Giant HP discrepancy (~+21% flagged earlier) — may actually be a
   level-scale mixup in OUR reference (level 9 -> 11 scale change), not an
-  engine error. APK data decides.
+  engine error. APK data decides. **SETTLED 2026-09-15:** both sides are
+  level-1 base values; crforge's bases were simply from an older era —
+  146 values fixed against the current data (`fidelity/patched/`).
+- **`summonCharacterLevelIndex` (discovered 2026-09-15):** Skeleton Army
+  spawns its Skeletons at character level index 5 (×1.6 → 51/51 hp/dmg).
+  The field exists in the game data and in crforge's cards.json but the Java
+  engine **never reads it** — the sim currently spawns base-level skeletons
+  while noff.gg correctly shows 51/51. Sim bug + GPU-port mechanic item
+  (gpusim/DIVERGENCES.md #11). Minion Horde has a similar open question
+  (#12, no supporting field).
 - Missing cards (Minion Giant, Void, Cannon Cart in our id space).
 - xbow bridge placement; overtime/tiebreak rules; log vs goblin barrel.
 

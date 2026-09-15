@@ -17,5 +17,7 @@ configs until then.
 | 8 | Speed units: `speed*dt/20` is a placeholder mapping (crforge speed scale to be verified against the Java tick loop) | OPEN | M4 |
 | 9 | Elixir: single-elixir phase only (no double/triple at 120s/240s) | OPEN | M3 |
 | 10 | Unit spawn overflow (slots > MAX_UNITS) silently dropped | OPEN | M5 |
+| 11 | `summonCharacterLevelIndex` not applied — Skeleton Army spawns base-level (32/32) skeletons instead of its level-index-5 variant (51/51). NOTE: the Java reference sim has the same gap (field parsed into cards.json but unused in its engine) — port the mechanic in both | OPEN | M3 |
+| 12 | Minion Horde per-minion damage: noff shows 46 (+1 level factor) but game data has no level-shift for the horde — resolve via L2 probe before porting anything | OPEN | M3 |
 
 Empty table = the sim is fully equivalent (M4 gate).

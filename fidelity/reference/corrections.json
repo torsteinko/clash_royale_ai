@@ -12,29 +12,29 @@
       "card": "minionhorde",
       "field": "damage",
       "value": 42,
-      "source": "noff internal inconsistency, 2026-09-15",
-      "note": "noff minionhorde row says 46 while its minions row says 42 for the same Minion entity; canonical (minions=42) kept; in-game identical entities."
+      "source": "level-basis ruling, 2026-09-15",
+      "note": "OPEN: noff's horde row shows 46 = 42 x 1.1 (+1 level factor) while its minions row shows 42. No level-shift field exists in the game data for Minion Horde (checked). Verify in L2/in-game: do horde minions really hit for more?"
     },
     {
       "card": "skeletonarmy",
       "field": "health",
       "value": 32,
-      "source": "noff internal inconsistency, 2026-09-15",
-      "note": "noff skeletonarmy row says 51 while skeletons row says 32; canonical kept."
+      "source": "mechanic ruling, 2026-09-15",
+      "note": "Skeleton Army spawns Skeletons at character level index 5 (game data field summonCharacterLevelIndex=5, present only on this card). Level-6 factor 1.6 -> 32x1.6 = 51.2 = noff's displayed 51. Base unit for L1 = 32; the spawn-level shift is a MECHANIC and must be implemented, not baked into the base value."
     },
     {
       "card": "skeletonarmy",
       "field": "damage",
       "value": 32,
-      "source": "noff internal inconsistency, 2026-09-15",
-      "note": "same entity as Skeletons; canonical 32 kept."
+      "source": "mechanic ruling, 2026-09-15",
+      "note": "Same level-index-5 mechanic: 32 x 1.6 = 51.2 = noff's 51. Base unit stays 32."
     },
     {
       "card": "skeletonarmy",
       "field": "attackCooldown",
       "value": 1.1,
-      "source": "noff internal inconsistency, 2026-09-15",
-      "note": "same entity as Skeletons; canonical 1.1 sec kept."
+      "source": "mechanic ruling, 2026-09-15",
+      "note": "OPEN: noff army row shows 1.0s vs skeletons 1.1s. Hit speed is level-independent, so this is either a variant difference or a data error — L2 probe item. Base unit kept at 1.1s."
     }
   ]
 }
