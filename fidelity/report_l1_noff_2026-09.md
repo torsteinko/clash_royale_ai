@@ -2,7 +2,9 @@
 
 - crforge base cards: 130 (+110 hero/evo variants, excluded)
 - reference cards: 127 | card-matched: 110
-- stat mismatches: **152** | elixir-cost mismatches: **4**
+- stat mismatches: **152** | elixir-cost mismatches: **3**
+- level basis: reference = **level 1** (verified: noff base values == 2023 per-level array index 0 for Knight/Giant/Musketeer/Hog Rider); crforge units.json = level-1 base values as well. All comparisons are level-1 vs level-1.
+- manual corrections applied (reference overridden): 1 (see reference/corrections.json)
 
 ## Stat mismatches
 
@@ -165,7 +167,6 @@
 
 | card | crforge | reference |
 |---|---|---|
-| BarbarianHut | 6 | 7 |
 | DarkMagic | 3 | 5 |
 | GoblinPartyHut | 5 | 4 |
 | SkeletonContainerNew | 0 | 3 |

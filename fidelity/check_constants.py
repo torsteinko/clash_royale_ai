@@ -140,6 +140,17 @@ def crapi_stats(card: dict):
     return out
 
 
+def load_corrections(path: Path):
+    """card norm -> {field: value}. Manual verdicts overriding the reference."""
+    if not path.exists():
+        return {}
+    data = json.load(open(path))
+    out = {}
+    for c in data.get("corrections", []):
+        out.setdefault(norm(c["card"]), {})[c["field"]] = c["value"]
+    return out
+
+
 def num(v):
     """Float if v is a plain number (not dict/str/None), else None."""
     if isinstance(v, bool) or not isinstance(v, (int, float)):
@@ -152,12 +163,17 @@ def main():
     ap.add_argument("--crforge", required=True)
     ap.add_argument("--reference", required=True)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--corrections", default=None)
     args = ap.parse_args()
 
     ref_path = Path(args.reference)
     is_noff = ref_path.is_file()
     ref = load_noff(ref_path) if is_noff else load_crapi(ref_path if ref_path.is_dir() else ref_path.parent)
     kind = "noff.gg live dump (2026-09)" if is_noff else "cr-api-data (Oct 2023)"
+    corr = load_corrections(
+        Path(args.corrections) if args.corrections
+        else Path(__file__).parent / "reference" / "corrections.json"
+    )
 
     base_cards, units, variant_count = load_crforge(Path(args.crforge))
     print(f"crforge: {len(base_cards)} base cards (+{variant_count} hero/evo variants) | "
@@ -176,12 +192,18 @@ def main():
     print(f"card-matched: {len(matched)} | crforge-only: {len(no_match)} | ref-only: {len(ref_only)}")
 
     stat_rows, cost_rows = [], []
+    corr_applied = 0
     for key, (c, r) in sorted(matched.items()):
+        corr_here = corr.get(norm(c["name"]), {})
         # cost
         cost = c.get("cost")
         elx = r.get("elixirs")
-        if cost is not None and isinstance(elx, (int, float)) and float(cost) != float(elx):
-            cost_rows.append((c["name"], float(cost), float(elx)))
+        if isinstance(elx, (int, float)):
+            if "cost" in corr_here:
+                elx = corr_here["cost"]
+                corr_applied += 1
+            if cost is not None and float(cost) != float(elx):
+                cost_rows.append((c["name"], float(cost), float(elx)))
 
         # stats (troop/building with unit linkage)
         unit = units.get(norm(c.get("unit", "")))
@@ -193,6 +215,9 @@ def main():
                 cv, rv = num(unit.get(f)), num(rs.get(f))
                 if cv is None or rv is None:
                     continue
+                if f in corr_here:
+                    rv = float(corr_here[f])
+                    corr_applied += 1
                 if abs(cv - rv) > 1e-6:
                     stat_rows.append((c["name"], f, cv, rv))
         else:
@@ -210,6 +235,12 @@ def main():
     lines.append(f"- crforge base cards: {len(base_cards)} (+{variant_count} hero/evo variants, excluded)")
     lines.append(f"- reference cards: {len(ref)} | card-matched: {len(matched)}")
     lines.append(f"- stat mismatches: **{len(stat_rows)}** | elixir-cost mismatches: **{len(cost_rows)}**")
+    lines.append("- level basis: reference = **level 1** (verified: noff base values == 2023 per-level "
+                 "array index 0 for Knight/Giant/Musketeer/Hog Rider); crforge units.json = level-1 base "
+                 "values as well. All comparisons are level-1 vs level-1.")
+    if corr_applied:
+        lines.append(f"- manual corrections applied (reference overridden): {corr_applied} "
+                     "(see reference/corrections.json)")
     lines.append("")
     lines.append("## Stat mismatches")
     lines.append("")

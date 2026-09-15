@@ -1,0 +1,12 @@
+{
+  "note": "Manual verdicts that override the scraped reference. Highest-trust source wins. Applied by check_constants.py at report time; corrections are counted separately, not as mismatches.",
+  "corrections": [
+    {
+      "card": "barbarianhut",
+      "field": "cost",
+      "value": 6,
+      "source": "Olsen, in-game player verdict, 2026-09-15",
+      "note": "noff.gg says 7 (disagreement logged). crforge also has 6. Resolve in-game if it ever matters."
+    }
+  ]
+}
