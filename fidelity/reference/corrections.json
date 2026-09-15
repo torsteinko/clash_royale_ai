@@ -7,6 +7,34 @@
       "value": 6,
       "source": "Olsen, in-game player verdict, 2026-09-15",
       "note": "noff.gg says 7 (disagreement logged). crforge also has 6. Resolve in-game if it ever matters."
+    },
+    {
+      "card": "minionhorde",
+      "field": "damage",
+      "value": 42,
+      "source": "noff internal inconsistency, 2026-09-15",
+      "note": "noff minionhorde row says 46 while its minions row says 42 for the same Minion entity; canonical (minions=42) kept; in-game identical entities."
+    },
+    {
+      "card": "skeletonarmy",
+      "field": "health",
+      "value": 32,
+      "source": "noff internal inconsistency, 2026-09-15",
+      "note": "noff skeletonarmy row says 51 while skeletons row says 32; canonical kept."
+    },
+    {
+      "card": "skeletonarmy",
+      "field": "damage",
+      "value": 32,
+      "source": "noff internal inconsistency, 2026-09-15",
+      "note": "same entity as Skeletons; canonical 32 kept."
+    },
+    {
+      "card": "skeletonarmy",
+      "field": "attackCooldown",
+      "value": 1.1,
+      "source": "noff internal inconsistency, 2026-09-15",
+      "note": "same entity as Skeletons; canonical 1.1 sec kept."
     }
   ]
 }
