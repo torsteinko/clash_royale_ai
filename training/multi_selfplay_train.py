@@ -524,6 +524,19 @@ def main():
     from stable_baselines3.common.evaluation import evaluate_policy
     from stable_baselines3.common.vec_env import SubprocVecEnv
 
+    # Optional: give the PARENT process more torch threads for the PPO update +
+    # per-step policy forward (workers are pinned to 1 thread separately).
+    # The global OMP_NUM_THREADS=1 stays as the safe default; this is opt-in per run.
+    _parent_threads = os.environ.get("CRFORGE_PARENT_THREADS")
+    if _parent_threads:
+        try:
+            import torch as _torch
+
+            _torch.set_num_threads(int(_parent_threads))
+            print(f"  parent torch threads: {_parent_threads}")
+        except Exception as _exc:
+            print(f"  parent torch threads: failed ({_exc!r})")
+
     from crforge_gym import CRForgeEnv
     from crforge_gym.wrappers import ActionMaskedWrapper, EpisodeStatsWrapper
 

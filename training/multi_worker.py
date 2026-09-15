@@ -100,6 +100,15 @@ def multi_worker_main(conn, worker_idx, ports, blue_decks, red_decks,
     """Entry point for one multi-game worker process."""
     from stable_baselines3.common.vec_env.patch_gym import _patch_env
 
+    # Workers stay single-threaded: the parent may have requested more torch
+    # threads for its own update path, and the fork would inherit that setting.
+    try:
+        import torch as _torch_w
+
+        _torch_w.set_num_threads(1)
+    except Exception:
+        pass
+
     k = len(ports)
     label = f"w{worker_idx}p{ports[0]}"
     envs = []
