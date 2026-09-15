@@ -206,7 +206,10 @@ def _serialize_env(hist: list[dict], e: int, names: list[str]) -> list[dict]:
     for i, snap in enumerate(hist):
         rec = {
             "i": i,
-            "t": _r(snap["time"][e], 3),
+            # trace time from the tick index (Java runner: round(i * 0.05, 3));
+            # the fp32 sim clock accumulates a ~0.001 s drift that used to leak
+            # into the trace t field only.
+            "t": _r(i * TICK_DT, 3),
             "el": [_r(snap["elixir"][e, 0], 3), _r(snap["elixir"][e, 1], 3)],
             "th": [_r(v, 2) for v in snap["tower_hp"][e].tolist()],
             "ta": [int(v) for v in snap["tower_alive"][e].tolist()],

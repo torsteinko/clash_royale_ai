@@ -69,14 +69,25 @@ def test_movement_direction():
 
 
 def test_multi_spawn_stagger():
+    # Skeletons: the reference data has no summonDeployDelay -> all 3 units spawn
+    # at the synchronised deploy tick (Java Card.java: "Zero = all at once").
     sim = _sim()
     sk = sim.t.card_index.get("skeletons")
     assert sk is not None
     sim.deploy(side=0, card_idx=torch.tensor([sk] * 4), x=torch.full((4,), 9.0), y=torch.full((4,), 20.0))
-    sim.tick(n=SYNC_TICKS)  # Java sync port: the first unit appears at t=1.05 s
-    assert int(sim.s.u_active[0].sum()) == 1, "exactly the first skeleton after sync"
-    sim.tick(n=10)  # 0.5 s -> at least one more of the 4 staggered spawns
-    assert int(sim.s.u_active[0].sum()) >= 2, "staggered spawns should fire"
+    sim.tick(n=SYNC_TICKS)  # Java sync port: the units appear at t=1.05 s
+    assert int(sim.s.u_active[0].sum()) == 3, "all three skeletons at the sync step"
+    # Minions: summonDeployDelay 0.1 s -> one unit every 2 ticks, Java float32
+    # stagger cadence: ticks 21 / 23 / 25
+    sim2 = _sim()
+    mn = sim2.t.card_index["minions"]
+    sim2.deploy(side=0, card_idx=torch.tensor([mn] * 4), x=torch.full((4,), 9.0), y=torch.full((4,), 20.0))
+    sim2.tick(n=SYNC_TICKS)
+    assert int(sim2.s.u_active[0].sum()) == 1, "first minion after sync"
+    sim2.tick(n=2)
+    assert int(sim2.s.u_active[0].sum()) == 2, "second minion 0.1 s later"
+    sim2.tick(n=2)
+    assert int(sim2.s.u_active[0].sum()) == 3, "third minion 0.2 s after the first"
 
 
 def test_determinism():

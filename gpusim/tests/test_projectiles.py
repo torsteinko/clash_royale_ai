@@ -56,11 +56,19 @@ def test_projectile_damage_value():
     mus = sim.t.card_index["musketeer"]
     dmg = float(sim._dmg[sim.t.unit_index["musketeer"]])
     sim.deploy(0, torch.tensor([mus]), torch.tensor([9.0]), torch.tensor([11.0]))
-    # Java sync port: first impact measured at ~3.10s (sync + deploy + windup + flight);
-    # sample between first impact and the second shot
-    sim.tick(n=int((3.10 + 0.25) / TICK_DT))
+    # Java timeline (deploy = deployTime 1.0 + deployDelay 0.3): the first arrow
+    # fires at t=3.05 (sync + deploy + windup) and lands at t=3.45 (tick 69);
+    # the second follows after the 1.0 s cooldown at t=4.45 (tick 89)
+    sim.tick(68)
+    assert float(sim.s.tower_hp[0, 4]) == PRINCESS_HP, "damage must not land before the arrow"
+    sim.tick(1)
     hp = float(sim.s.tower_hp[0, 4])
     assert abs(hp - (PRINCESS_HP - dmg)) < 1e-3, f"tower hp {hp}, expected {PRINCESS_HP - dmg}"
+    sim.tick(19)  # t=4.40: still one hit (the arrow is in flight)
+    assert abs(float(sim.s.tower_hp[0, 4]) - (PRINCESS_HP - dmg)) < 1e-3
+    sim.tick(1)  # t=4.45: second impact
+    hp2 = float(sim.s.tower_hp[0, 4])
+    assert abs(hp2 - (PRINCESS_HP - 2 * dmg)) < 1e-3, f"second impact: {hp2}"
 
 
 def test_melee_still_instant():

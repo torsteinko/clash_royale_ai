@@ -110,6 +110,8 @@ def test_log_spell_as_deploy_own_side_only():
 
 
 def test_fireball_spell_damage():
+    """M3.3 + M3.4: the fireball flies to the cast point (sync 1.0 s, then
+    10 tiles/s from the blue crown tower) and applies its AOE on arrival."""
     sim = _sim(1)
     deck = _deck_spell(sim)
     sim.set_deck(0, deck)
@@ -122,16 +124,21 @@ def test_fireball_spell_damage():
     fac = sim.fac
     fb_dmg = float(sim.t.spell_damage[_C(sim, "Fireball")]) * fac
     crown = 1.0 + float(sim.t.spell_crown_pct[_C(sim, "Fireball")]) / 100.0
-    # sanity: 269 * 2.5596 = 688.5 -> x0.3 = 206.5 (matches the historical probe)
+    # sanity: 269 * 2.56 = 688.6 -> x0.30 = 206.6 (integer-scaled at impact)
     assert abs(fb_dmg - 688.5) < 1.5 and abs(fb_dmg * crown - 206.5) < 1.5
     ok = sim.play(0, slot_fb, torch.tensor([3.5]), torch.tensor([6.5]))
     assert ok.tolist() == [True]
-    # tower took the reduced (crown) damage; knight took full
-    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - fb_dmg * crown)) < 0.6
-    knight_hp = float(sim._hp[ui_k]) - fb_dmg
+    assert abs(float(sim.s.elixir[0, 0]) - 6.0) < 1e-5  # 10 - 4, spent at cast time
+    # impact tick measured at 66 (20 ticks sync + ~46 ticks flight); no damage
+    # may land before the projectile arrives
+    sim.tick(65)
+    assert float(sim.s.tower_hp[0, 4]) == 3052.0, "damage must wait for the flight"
+    sim.tick(1)
+    # tower took the reduced (crown) damage; knight took the full floor-scaled 688
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 206.0)) < 0.6
+    knight_hp = 1766.0 - 688.0  # floor(690 * 2.56) - floor(269 * 2.56)
     k_idx = int(sim.s.u_active[0].nonzero()[0, 0])
     assert abs(float(sim.s.u_hp[0, k_idx]) - knight_hp) < 0.6
-    assert abs(float(sim.s.elixir[0, 0]) - 6.0) < 1e-5  # 10 - 4
 
 
 def test_zap_crown_percent():
@@ -145,7 +152,12 @@ def test_zap_crown_percent():
     crown = 1.0 + float(sim.t.spell_crown_pct[zap]) / 100.0
     ok = sim.play(0, slot_zap, torch.tensor([3.5]), torch.tensor([6.5]))
     assert ok.tolist() == [True]
-    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - dmg * crown)) < 0.6
+    # Zap is a direct area spell (no projectile): the AreaEffect applies one
+    # sync step later -> first damage lands on tick 21; floor(floor(75*2.56)*0.3) = 57
+    sim.tick(20)
+    assert float(sim.s.tower_hp[0, 4]) == 3052.0, "damage must wait for the sync step"
+    sim.tick(1)
+    assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 57.0)) < 0.6
 
 
 def test_full_cycle_draw_order_no_empty_slots():

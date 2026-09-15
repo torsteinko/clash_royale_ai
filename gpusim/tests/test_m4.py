@@ -93,15 +93,17 @@ def test_determinism_two_runs_identical():
 def test_duel_knight_mirror_mutual_ko():
     runs, _ = _runs()
     recs = runs["duel_knight"]["records"]
-    cadence = [109, 133, 157, 181, 205, 229, 253, 277]  # 1.2 s attack cooldown
+    # Java sync timeline: 25-tick attack cycles, first hit at t=6.45 — verified
+    # against the java_patched reference trace (byte-identical at this revision)
+    cadence = [129, 154, 179, 204, 229, 254, 279, 304]
     for side in (0, 1):
         ev = _unit_events(recs, side, "knight")
         assert [t for t, _ in ev] == cadence, f"side {side}: {ev}"
-        assert all(abs(d - 202.21) < 0.05 for _, d in ev), f"side {side} damage values"
-    # identical cadence -> both knights die on the same tick (t=15.05)
+        assert all(abs(d - 202.0) < 0.05 for _, d in ev), f"side {side} damage values"
+    # identical cadence -> both knights die on the same tick (mutual KO at t=16.45)
     for side in (0, 1):
         present = _present(recs, side, "knight")
-        assert present[0] == 21 and present[-1] == 300, f"side {side}: {present[0]}..{present[-1]}"
+        assert present[0] == 41 and present[-1] == 328, f"side {side}: {present[0]}..{present[-1]}"
     # the duel happened mid-bridge, no tower was touched
     assert recs[-1]["th"] == recs[0]["th"] and recs[-1]["cr"] == [0, 0]
 
@@ -110,17 +112,17 @@ def test_duel_musketeer_projectiles_and_tower_trade():
     runs, _ = _runs()
     recs = runs["duel_musketeer"]["records"]
     ev = _unit_events(recs, 1, "knight")
-    proj = [(t, d) for t, d in ev if abs(d - 263.64) < 0.1]
+    proj = [(t, d) for t, d in ev if abs(d - 263.0) < 0.1]
     tower_fire = [(t, d) for t, d in ev if abs(d - 109.0) < 0.1]
-    assert [t for t, _ in proj] == [80, 99, 118, 137, 156], f"projectile hits: {proj}"
-    assert [t for t, _ in tower_fire] == [130, 146, 162], f"blue-tower hits: {tower_fire}"
-    assert _present(recs, 1, "knight")[-1] == 175  # dead at 176 (t=8.80)
-    # musketeer survives the duel, then lands exactly 3 hits on red princess-R
+    assert [t for t, _ in proj] == [105, 123, 142, 161, 180], f"projectile hits: {proj}"
+    assert [t for t, _ in tower_fire] == [176, 193], f"blue-tower hits: {tower_fire}"
+    assert _present(recs, 1, "knight")[-1] == 199  # dead at 200 (t=10.00)
+    # musketeer survives the duel, then lands exactly 5 hits on red princess-R
     tev = _tower_events(recs, 5)
-    assert [t for t, _ in tev] == [320, 340, 360], f"tower hits: {tev}"
-    assert all(abs(d - 263.64) < 0.1 for _, d in tev)
-    assert abs(recs[-1]["th"][5] - (3052.0 - 3 * 263.64)) < 0.05
-    assert _present(recs, 0, "musketeer")[-1] == 362  # dead at 363 (t=18.15)
+    assert [t for t, _ in tev] == [346, 366, 386, 406, 426], f"tower hits: {tev}"
+    assert all(abs(d - 263.0) < 0.1 for _, d in tev)
+    assert abs(recs[-1]["th"][5] - (3052.0 - 5 * 263.0)) < 0.05
+    assert _present(recs, 0, "musketeer")[-1] == 420  # dead at 421 (t=21.05)
     assert recs[-1]["th"][:3] == recs[0]["th"][:3], "blue towers must be untouched"
 
 
@@ -128,12 +130,12 @@ def test_tower_press_melee_vs_tower():
     runs, _ = _runs()
     recs = runs["tower_press"]["records"]
     tev = _tower_events(recs, 4)  # red left princess tower
-    assert [t for t, _ in tev] == [221, 245, 269, 293, 317], f"tower hits: {tev}"
-    assert all(abs(d - 202.21) < 0.05 for _, d in tev)
-    assert abs(recs[-1]["th"][4] - (3052.0 - 5 * 202.21)) < 0.05
+    assert [t for t, _ in tev] == [238, 263, 288, 313, 338, 363, 388], f"tower hits: {tev}"
+    assert all(abs(d - 202.0) < 0.05 for _, d in tev)
+    assert abs(recs[-1]["th"][4] - (3052.0 - 7 * 202.0)) < 0.05
     ev = _unit_events(recs, 0, "knight")
     assert len(ev) == 16 and all(abs(d - 109.0) < 0.05 for _, d in ev), "tower fire only"
-    assert _present(recs, 0, "knight")[-1] == 336  # dead at 337 (t=16.85)
+    assert _present(recs, 0, "knight")[-1] == 391  # dead at 392 (t=19.60)
     # 3 elixir spent on the knight between tick 20 and 21
     assert abs((recs[20]["el"][0] - recs[21]["el"][0]) - (3.0 - 0.017857)) < 1e-3
     assert recs[-1]["th"][:3] == recs[0]["th"][:3]
@@ -143,18 +145,20 @@ def test_spell_hit_fireball_crown_damage():
     runs, _ = _runs()
     recs = runs["spell_hit"]["records"]
     # deploy at tick 60 (red knight), fireball cast between tick 80 and 81.
-    # (M3.3 instant-cast behaviour; when M3.4 spell flight time lands, the
-    # impact shifts a few ticks and these constants must move with it.)
-    assert _present(recs, 1, "knight")[0] == 61
-    hp80 = [x["hp"] for x in recs[80]["u"] if x["c"] == "knight"][0]
-    hp81 = [x["hp"] for x in recs[81]["u"] if x["c"] == "knight"][0]
-    assert abs(hp80 - 1766.12) < 0.05 and abs((hp80 - hp81) - 688.53) < 0.1  # 269 * 2.5596
-    assert abs((recs[80]["th"][5] - recs[81]["th"][5]) - 206.56) < 0.1      # x0.30 vs towers
+    # M3.4 flight: the cast fires after the 1.0 s sync, flies from the crown
+    # tower at 10 tiles/s and detonates at tick 142 (t=7.10) — Java-verified:
+    # the java_patched spell_hit trace matches byte-for-byte.
+    assert _present(recs, 1, "knight")[0] == 81
+    hp141 = [x["hp"] for x in recs[141]["u"] if x["c"] == "knight"][0]
+    hp142 = [x["hp"] for x in recs[142]["u"] if x["c"] == "knight"][0]
+    assert abs(hp141 - 1766.0) < 0.05 and abs((hp141 - hp142) - 688.0) < 0.1  # floor(269 * 2.56)
+    assert abs((recs[141]["th"][5] - recs[142]["th"][5]) - 206.0) < 0.1      # floor(688 * 0.30)
     assert abs((recs[80]["el"][0] - recs[81]["el"][0]) - (4.0 - 0.017857)) < 1e-3
-    # knight survives and marches the full lane; one melee hit on blue princess-R
+    # knight survives and marches the full lane; two melee hits on blue princess-R
     tev = _tower_events(recs, 2)
-    assert [t for t, _ in tev] == [390] and abs(tev[0][1] - 202.21) < 0.05
-    assert _present(recs, 1, "knight")[-1] == 393  # dead at 394 (t=19.70)
+    assert [t for t, _ in tev] == [397, 422], f"tower hits: {tev}"
+    assert all(abs(d - 202.0) < 0.05 for _, d in tev)
+    assert _present(recs, 1, "knight")[-1] == 431  # dead at 432 (t=21.60)
 
 
 def test_push_left_tower_falls_and_hp_floor():
@@ -162,11 +166,11 @@ def test_push_left_tower_falls_and_hp_floor():
     recs = runs["push_left"]["records"]
     # red left princess tower: knight damage, then musketeer finishes; hp floors at 0
     first_dead = next(r["i"] for r in recs if r["ta"][4] == 0)
-    assert first_dead == 444, f"tower should fall at tick 444 (t=22.20), got {first_dead}"
+    assert first_dead == 450, f"tower should fall at tick 450 (t=22.50), got {first_dead}"
     assert recs[first_dead]["th"][4] == 0.0 and recs[first_dead]["cr"] == [1, 0]
     assert all(r["th"][4] >= 0.0 for r in recs), "no negative tower hp anywhere (overkill clamp)"
     # both attackers die; blue keeps the crown
-    assert _present(recs, 0, "knight")[-1] == 336 and _present(recs, 0, "musketeer")[-1] == 522
+    assert _present(recs, 0, "knight")[-1] == 391 and _present(recs, 0, "musketeer")[-1] == 628
     assert recs[-1]["cr"] == [1, 0] and recs[-1]["w"] == -1
 
 

@@ -8,7 +8,7 @@ import os
 
 import torch
 
-from gpusim.env import MAX_UNITS, TICK_DT, make_sim
+from gpusim.env import MAX_UNITS, SYNC_TROOP_T, TICK_DT, make_sim
 
 DATA = os.environ.get("GPUSIM_DATA", "fidelity/patched")
 
@@ -35,25 +35,33 @@ def test_melee_duel_deterministic_ttk():
     sim = _sim(2)
     knight = sim.t.card_index["knight"]
     ui = sim.t.unit_index["knight"]
-    dmg = float(sim._dmg[ui])            # 202.2 at lvl 11
-    hp = float(sim._hp[ui])              # 1766 at lvl 11
+    dmg = float(sim._dmg[ui])            # 202 at lvl 11: floor(79 * 2.56)
+    hp = float(sim._hp[ui])              # 1766 at lvl 11: floor(690 * 2.56)
     cd = float(sim.t.u_cooldown[ui])
     loadt = float(sim.t.u_loadtime[ui])
     dep = float(sim.t.u_deploy[ui])
-    first = dep + max(0.0, cd - min(dep, loadt))  # AttackStateMachine: windup = cd - load
+    # Java timeline: sync 1.05 s + deploy 1.0 s + windup (cd - load accrued
+    # during deploy) -> first hit at 2.55 s = tick 51
+    first = SYNC_TROOP_T + dep + max(0.0, cd - min(dep, loadt))
+    assert abs(first - 2.55) < 0.01, first
+    # Java cadence: 25 ticks per attack (the fp32 late-fire residue lands on the
+    # same tick as the reference, see DIVERGENCES #17)
+    cad = 1.25
     # deploy 2 tiles apart (edge range 1.2+0.5+0.5=2.2 => in range immediately)
     sim.deploy(0, torch.tensor([knight, knight]), torch.full((2,), 9.0), torch.full((2,), 20.0))
     sim.deploy(1, torch.tensor([knight, knight]), torch.full((2,), 9.0), torch.full((2,), 18.0))
     t = 10.0
-    n_hits = int((t - 0.06 - first) / cd + 1e-9) + 1   # hits landed safely by t (~1-tick margin)
+    # hits landed by t=10 s: first at 2.55 s, then every 1.25 s -> 6 hits
+    n_hits = 1 + int((t - first) / cad + 1e-9)
+    assert n_hits == 6
     sim.tick(n=int(t / TICK_DT))
     st = _unit_state(sim, 0)
     assert len(st) == 2, f"both knights must survive to 10s: {st}"
     hp_exp = hp - n_hits * dmg
     for _, uhp, _, _ in st:
         assert abs(uhp - hp_exp) < 2.5, f"hp {uhp} vs expected ~{hp_exp}"
-    # symmetric duel: both land the killing hit -> double KO
-    t_kill = first + (math.ceil(hp / dmg) - 1) * cd
+    # symmetric duel: both land the killing hit -> double KO at 12.55 s (tick 251)
+    t_kill = first + (math.ceil(hp / dmg) - 1) * cad
     assert t_kill > t
     sim.tick(n=int((t_kill - t + 0.3) / TICK_DT))
     assert len(_unit_state(sim, 0)) == 0, "symmetric duel ends in a double KO"

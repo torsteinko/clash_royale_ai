@@ -53,8 +53,8 @@ T_PRINCESS_HP = 3052.0
 T_PRINCESS_DMG = 109.0
 T_PRINCESS_CD = 0.8
 T_PRINCESS_RANGE = 7.5
-T_RADIUS = 1.0            # princess collision radius
-KING_RADIUS = 1.5
+T_RADIUS = 1.0            # princess collision radius (Tower.PRINCESS_COLLISION_RADIUS)
+KING_RADIUS = 1.4         # crown tower collision radius (Tower.CROWN_COLLISION_RADIUS = 1400)
 T_KING_DMG = 109.0
 T_KING_CD = 1.0
 T_KING_RANGE = 7.0        # Tower.CROWN_RANGE
@@ -255,8 +255,13 @@ class BatchedCRSim:
     # ------------------------------------------------------------ deployment
     def _stagger_ticks(self, ci: int) -> int:
         """Java stagger: unit k of a card spawns k * ceil(summonDeployDelay / dt)
-        ticks after the synchronised first unit."""
-        delay = float(self.t.summon_delay[ci])
+        ticks after the synchronised first unit.
+
+        The delay is stored as float32, so 0.1 comes back as 0.1000000015 —
+        round to the data's 4-decimal precision first, or the ceil() lands one
+        tick late (Java: 0.1f = exactly 2 * 0.05f).
+        """
+        delay = round(float(self.t.summon_delay[ci]), 4)
         if delay <= 0.0:
             return 0
         return int(math.ceil(delay / TICK_DT - 1e-9))
@@ -567,9 +572,12 @@ class BatchedCRSim:
                 + (s.time > TRIPLE_ELIXIR_T + TICK_DT + 1e-4).float())
         s.elixir = torch.clamp(s.elixir + (dt / ELIXIR_PERIOD) * rate.unsqueeze(-1), max=ELIXIR_MAX)
 
-        # staggered spawns
+        # staggered spawns. Fire when the timer is within half a tick of zero:
+        # the float32 decrement residue can leave a timer that is due this tick
+        # at a few ulps above 0 (the reference's float32 path lands the exact
+        # tick for the data's 0.05-multiple delays — minion cadence 21/23/25).
         s.spawn_timer = torch.clamp(s.spawn_timer - dt, min=0)
-        fired = (s.spawn_timer <= 0) & (s.spawn_pending >= 0)
+        fired = (s.spawn_timer <= TICK_DT * 0.5) & (s.spawn_pending >= 0)
         if bool(fired.any()):
             for e, side, j in torch.nonzero(fired, as_tuple=False).tolist():
                 ci = int(s.spawn_pending[e, side, j])
