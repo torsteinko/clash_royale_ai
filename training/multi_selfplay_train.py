@@ -411,10 +411,15 @@ def main():
     parser.add_argument("--num-envs", type=int, default=5)
     parser.add_argument("--steps", type=int, default=2_000_000)
     parser.add_argument("--base-port", type=int, default=9890)
-    parser.add_argument("--blue-deck", choices=["hog", "default"], default="hog")
+    parser.add_argument("--blue-deck", choices=["hog", "default"], default="hog",
+                        help="(legacy) single blue deck selector; prefer --blue-pool")
+    parser.add_argument("--blue-pool", default=None,
+                        help="Blue deck(s) for the learner: one name, a comma list for per-worker "
+                             "rotation (e.g. hog,yard,lava -> the net also learns to PLAY those "
+                             "decks, not just face them), or 'all'. Default: 'hog'.")
     parser.add_argument("--red-pool", default="all",
                         help="all = six archetypes (worker i gets RED_POOL[i%%6]); hog/giant/logb/"
-                             "xbow/lava/yard = single deck only (useful for debugging one matchup)")
+                             "xbow/lava/yard = single deck, or a comma list (e.g. hog,yard,lava)")
     parser.add_argument("--opponent", choices=["selfplay", "rule_based", "random"], default="selfplay",
                         help="selfplay = snapshot-reloading self-play (default); rule_based/random = fixed opponents")
     parser.add_argument("--save", default="models/ppo_multi")
@@ -437,21 +442,24 @@ def main():
     from crforge_gym import CRForgeEnv
     from crforge_gym.wrappers import ActionMaskedWrapper, EpisodeStatsWrapper
 
-    blue = HOG if args.blue_deck == "hog" else DEFAULT_DECK
     deck_by_name = {"hog": HOG, "giant": GIANT, "logb": LOGB,
-                    "xbow": XBOW, "lava": LAVA, "yard": YARD}
-    if args.red_pool == "all":
-        pool = RED_POOL
-    elif args.red_pool in deck_by_name:
-        pool = [deck_by_name[args.red_pool]]
-    elif "," in args.red_pool and all(
-        part.strip() in deck_by_name for part in args.red_pool.split(",")
-    ):
-        # Custom subset pool, e.g. --red-pool hog,yard,lava (curriculum staging)
-        pool = [deck_by_name[part.strip()] for part in args.red_pool.split(",")]
-    else:
-        print(f"Error: unknown --red-pool '{args.red_pool}'.")
+                    "xbow": XBOW, "lava": LAVA, "yard": YARD, "default": DEFAULT_DECK}
+
+    def parse_pool(spec: str):
+        if spec == "all":
+            return RED_POOL
+        if spec in deck_by_name:
+            return [deck_by_name[spec]]
+        parts = [p.strip() for p in spec.split(",") if p.strip()]
+        if parts and all(p in deck_by_name for p in parts):
+            return [deck_by_name[p] for p in parts]
+        print(f"Error: unknown deck pool '{spec}'.")
         sys.exit(1)
+
+    pool = parse_pool(args.red_pool)
+    blue_spec = args.blue_pool or ("hog" if args.blue_deck == "hog" else "default")
+    blue_pool = parse_pool(blue_spec)
+    blue = blue_pool[0]
 
     snapshot_dir = os.path.dirname(args.save) or "."
     os.makedirs(snapshot_dir, exist_ok=True)
@@ -471,11 +479,18 @@ def main():
     deck_name_by_tuple = {tuple(d): n for n, d in
                           (("hog", HOG), ("giant", GIANT), ("logb", LOGB),
                            ("xbow", XBOW), ("lava", LAVA), ("yard", YARD))}
-    worker_decks = [deck_name_by_tuple.get(tuple(pool[i % len(pool)]), f"w{i}")
-                    for i in range(args.num_envs)]
+    worker_labels = []
+    for i in range(args.num_envs):
+        bn = deck_name_by_tuple.get(tuple(blue_pool[i % len(blue_pool)]), f"b{i}")
+        rn = deck_name_by_tuple.get(tuple(pool[i % len(pool)]), f"r{i}")
+        worker_labels.append(bn if bn == rn else f"{bn}>{rn}")
+    if len(blue_pool) > 1:
+        print("  worker decks (blue>red): " + " | ".join(worker_labels))
+    worker_decks = worker_labels
 
     env_fns = [
-        make_worker(args.base_port + i, blue, pool[i % len(pool)], snapshot_path, args.opponent)
+        make_worker(args.base_port + i, blue_pool[i % len(blue_pool)], pool[i % len(pool)],
+                    snapshot_path, args.opponent)
         for i in range(args.num_envs)
     ]
     # NOTE: on some distros (Debian 13 / Python 3.13) the default start method is
@@ -512,9 +527,10 @@ def main():
         )
         train_steps = args.steps
 
+    blue_names = ",".join(dict.fromkeys(deck_name_by_tuple.get(tuple(d), "?") for d in blue_pool))
+    red_names = ",".join(dict.fromkeys(deck_name_by_tuple.get(tuple(d), "?") for d in pool))
     print(f"\nTraining {train_steps} steps on {args.num_envs} parallel simulators "
-          f"(blue: {'Hog 2.6' if args.blue_deck == 'hog' else 'default'}; "
-          f"opponent: {args.opponent}; red pool: {len(pool)} deck(s))...")
+          f"(blue: {blue_names}; opponent: {args.opponent}; red: {red_names})...")
     t0 = time.time()
     model.learn(total_timesteps=train_steps,
                 callback=CallbackList(build_callbacks(snapshot_path, args.snapshot_interval,
