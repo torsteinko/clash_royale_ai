@@ -267,15 +267,19 @@ class BatchedCRSim:
             pocket = (~s.tower_alive[:, 1] & (x < 9.0)) | (~s.tower_alive[:, 2] & (x >= 9.0))
         return base | pocket
 
-    def play(self, side: int, slot: int, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """Play hand-slot `slot` for `side` in every env (spells: anywhere; troops: own half).
+    def play(self, side: int, slot: int, x: torch.Tensor, y: torch.Tensor,
+             env_mask: torch.Tensor | None = None) -> torch.Tensor:
+        """Play hand-slot `slot` for `side` (spells: anywhere; troops: own half).
 
-        Returns a (B,) success mask. On success the played card rotates to the back.
+        `env_mask` (B,) optionally restricts which envs may act. Returns a (B,)
+        success mask. On success the played card rotates to the back.
         """
         s, dev = self.s, self.device
         assert side in (0, 1) and 0 <= slot < 4
         card = s.hand[:, side, slot]
         valid = card >= 0
+        if env_mask is not None:
+            valid = valid & env_mask
         cclamp = card.clamp(0, len(self.t.names) - 1)
         is_spell = valid & (self.t.card_types[cclamp] == 1)
 
