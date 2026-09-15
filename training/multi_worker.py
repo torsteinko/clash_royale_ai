@@ -26,8 +26,8 @@ import time
 import numpy as np
 
 
-def _make_selfplay_opponent(snapshot_path: str, label: str):
-    """Self-play opponent that reloads the trainer snapshot when its mtime changes."""
+def _make_selfplay_opponent_UNUSED(snapshot_path: str, label: str):
+    """Legacy per-env self-play opponent (superseded by _SharedModelHolder)."""
     import os
 
     from crforge_gym.opponents import SelfPlayOpponent
@@ -71,14 +71,90 @@ def _make_selfplay_opponent(snapshot_path: str, label: str):
     return ReloadingSelfPlayOpponent()
 
 
+class _SharedModelHolder:
+    """Loads the self-play snapshot ONCE per worker and shares it across its games.
+
+    Before: every env's opponent kept its own MaskablePPO copy and reloaded it
+    independently on each snapshot change (K loads per worker per snapshot =
+    periodic CPU storms + K model copies in RAM). Now: one load per worker and
+    every game shares the same model/fast-path objects.
+    """
+
+    def __init__(self, snapshot_path: str):
+        self.snapshot_path = snapshot_path
+        self.model = None
+        self.fast = None
+        self.loaded_mtime = None
+        self.last_check = 0.0
+        self.announced = False
+
+    def get(self):
+        import os
+
+        now = time.time()
+        if now - self.last_check < 2.0:
+            return self.model, self.fast
+        self.last_check = now
+        try:
+            mtime = os.path.getmtime(self.snapshot_path)
+        except OSError:
+            return self.model, self.fast
+        if self.loaded_mtime is not None and mtime <= self.loaded_mtime:
+            return self.model, self.fast
+        from sb3_contrib import MaskablePPO
+
+        try:
+            model = MaskablePPO.load(self.snapshot_path, device="cpu")
+            fast = None
+            try:
+                from crforge_gym.opponents import _FastNumpyPolicy
+
+                fast = _FastNumpyPolicy(model)
+            except Exception:
+                fast = None
+            self.model = model
+            self.fast = fast
+            self.loaded_mtime = mtime
+            if not self.announced:
+                self.announced = True
+                print("[multi-worker] self-play opponent loaded snapshot (shared)", flush=True)
+        except Exception:
+            pass  # file mid-write; retry on next check
+        return self.model, self.fast
+
+
+class _SharedReloadingOpponent:
+    """Per-env opponent shim that consults the worker-shared model holder."""
+
+    def __init__(self, holder: _SharedModelHolder, label: str):
+        from crforge_gym.opponents import SelfPlayOpponent
+
+        self._holder = holder
+        self._label = label
+        # A plain SelfPlayOpponent instance for the actual acting logic; its
+        # model/_fast fields are re-bound from the holder on every reload.
+        self._actor = SelfPlayOpponent(model=None)
+        self._actor.model = None
+        self._actor._fast = None
+
+    def act(self, obs_raw, player="red", obs_flat=None):
+        model, fast = self._holder.get()
+        if model is None:
+            return None
+        if self._actor.model is not model:
+            self._actor.model = model
+            self._actor._fast = fast
+        return self._actor.act(obs_raw, player=player, obs_flat=obs_flat)
+
+
 def build_env(port: int, blue_deck, red_deck, opponent_mode: str,
-              snapshot_path: str | None, label: str):
+              snapshot_path: str | None, label: str, holder=None):
     """Build one fully wrapped CRForgeEnv (identical stack to the single-game path)."""
     from crforge_gym import CRForgeEnv
     from crforge_gym.wrappers import ActionMaskedWrapper, EpisodeStatsWrapper
 
     if opponent_mode == "selfplay":
-        opponent = _make_selfplay_opponent(snapshot_path or "", label)
+        opponent = _SharedReloadingOpponent(holder, label)
     else:
         opponent = opponent_mode  # built-in name: "random" / "rule_based" / "noop"
 
@@ -111,10 +187,13 @@ def multi_worker_main(conn, worker_idx, ports, blue_decks, red_decks,
 
     k = len(ports)
     label = f"w{worker_idx}p{ports[0]}"
+    holder = None
+    if opponent_mode == "selfplay":
+        holder = _SharedModelHolder(snapshot_path or "")
     envs = []
     for i in range(k):
         env = build_env(ports[i], blue_decks[i], red_decks[i], opponent_mode,
-                        snapshot_path, f"{label}e{i}")
+                        snapshot_path, f"{label}e{i}", holder=holder)
         envs.append(_patch_env(env))
 
     conn.send(("ready", envs[0].observation_space, envs[0].action_space))

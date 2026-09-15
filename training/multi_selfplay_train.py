@@ -351,6 +351,56 @@ def make_worker(port: int, blue_deck: list, red_deck: list, snapshot_path: str,
     return _init
 
 
+def _async_eval(steps, model, endpoint, targets, blue):
+    """Child-process eval: fixed-seed games vs the random bot, one line per round.
+
+    Runs in a forked child so the trainer never blocks. The child is forked from
+    the live process, so it holds the CURRENT weights (copy-on-write) without
+    loading any checkpoint. First two seeds per deck are identical to the earlier
+    synchronous eval (plus two extra games) so the curve stays comparable.
+    """
+    import time as _time
+
+    import numpy as np
+
+    try:
+        import torch as _torch
+
+        _torch.set_num_threads(1)
+    except Exception:
+        pass
+
+    from crforge_gym import CRForgeEnv
+    from crforge_gym.wrappers import ActionMaskedWrapper as _AMW
+    from crforge_gym.wrappers import EpisodeStatsWrapper as _ESW
+
+    n_games = 4
+    parts = []
+    for idx, (nm, dk) in enumerate(targets or []):
+        try:
+            el = CRForgeEnv(endpoint=endpoint, ticks_per_step=15, opponent="random",
+                            binary_obs=True, blue_deck=blue, red_deck=dk)
+            el = _ESW(el)
+            el = _AMW(el)
+            tot = 0.0
+            for k in range(n_games):
+                obs, _info = el.reset(seed=90000 + idx * 11 + k)
+                for _ in range(900):
+                    mask = el.action_masks()
+                    action, _st = model.predict(obs, deterministic=True, action_masks=mask)
+                    obs, reward, term, trunc, _info = el.step(
+                        np.asarray(action, dtype=np.int64))
+                    tot += float(reward)
+                    if term or trunc:
+                        break
+            parts.append(f"{nm} {tot / n_games:+.0f}")
+            el.close()
+            _time.sleep(0.2)  # gentle gap between sessions (PAIR teardown)
+        except Exception as exc:
+            parts.append(f"{nm} ERR({exc!r})")
+    print(f"[eval@{steps} vs random] " + " | ".join(parts), flush=True)
+
+
 # ---------------------------------------------------------------------------
 # Callbacks
 # ---------------------------------------------------------------------------
@@ -435,42 +485,33 @@ def build_callbacks(snapshot_path: str, snapshot_interval: int, total_steps: int
         def __init__(self):
             super().__init__(0)
             self._last = 0
+            self._proc = None
+            self._started_at = 0.0
 
         def _on_step(self):
             if not eval_every or self.num_timesteps - self._last < eval_every:
                 return True
             self._last = self.num_timesteps
-            import numpy as _np
+            import multiprocessing as mp
 
-            from crforge_gym import CRForgeEnv
-            from crforge_gym.wrappers import ActionMaskedWrapper as _AMW
-            from crforge_gym.wrappers import EpisodeStatsWrapper as _ESW
-
-            parts = []
-            for idx, (nm, dk) in enumerate(eval_targets or []):
-                try:
-                    el = CRForgeEnv(endpoint=eval_endpoint, ticks_per_step=15, opponent="random",
-                                    binary_obs=True, blue_deck=eval_blue, red_deck=dk)
-                    el = _ESW(el)
-                    el = _AMW(el)
-                    tot = 0.0
-                    for k in range(2):
-                        obs, _info = el.reset(seed=90000 + idx * 11 + k)
-                        for _ in range(900):
-                            mask = el.action_masks()
-                            action, _st = self.model.predict(obs, deterministic=True,
-                                                             action_masks=mask)
-                            obs, reward, term, trunc, _info = el.step(
-                                _np.asarray(action, dtype=_np.int64))
-                            tot += float(reward)
-                            if term or trunc:
-                                break
-                    parts.append(f"{nm} {tot / 2.0:+.0f}")
-                    el.close()
-                    time.sleep(0.3)  # gentle gap between sessions (PAIR teardown)
-                except Exception as exc:
-                    parts.append(f"{nm} ERR({exc!r})")
-            print(f"[eval@{self.num_timesteps} vs random] " + " | ".join(parts), flush=True)
+            # Async: one forked child per round inherits the CURRENT model weights
+            # via copy-on-write (no checkpoint staleness, no parent blocking).
+            if self._proc is not None:
+                if self._proc.is_alive() and time.time() - self._started_at < 900:
+                    print(f"[eval@{self.num_timesteps}] previous eval still running; "
+                          f"skipping round", flush=True)
+                    return True
+                if self._proc.is_alive():
+                    self._proc.terminate()
+                self._proc.join(timeout=5)
+            ctx = mp.get_context("fork")
+            self._proc = ctx.Process(
+                target=_async_eval,
+                args=(self.num_timesteps, self.model, eval_endpoint, eval_targets, eval_blue),
+                daemon=True,
+            )
+            self._proc.start()
+            self._started_at = time.time()
             return True
 
     cbs = [SnapshotCallback(), LogCallback()]
