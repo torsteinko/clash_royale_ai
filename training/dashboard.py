@@ -280,6 +280,73 @@ def series_for(name: str, limit: int = 320) -> dict:
     return {"win": win, "reward": rew, "tables": tabs, "tail": r["tail"]}
 
 
+REPLAYS = HOME / "replays"
+MATCH_RE = re.compile(r"([a-z0-9]+)(?:>([a-z0-9]+))? (\d+)%\((\d+)\)")
+EVAL_RE = re.compile(r"\[eval@(\d+) vs random\] (.+)$")
+_REPLAY_CACHE: dict = {}
+
+
+def parse_matchup(run_name: str) -> dict:
+    """Per-pair win% + game counts (last per-deck line) and eval history."""
+    lines = [ln for ln in read_tail(RUNS / f"{run_name}.log", 1_500_000) if "per-deck" in ln or "eval@" in ln]
+    cells: list[dict] = []
+    evals: list[dict] = []
+    for ln in lines:
+        m = EVAL_RE.search(ln)
+        if m:
+            vals = {}
+            for part in m.group(2).split("|"):
+                part = part.strip()
+                mm = re.match(r"([a-z0-9]+) ([+-]?\d+)", part)
+                if mm:
+                    vals[mm.group(1)] = int(mm.group(2))
+            evals.append({"step": int(m.group(1)), "vals": vals})
+            continue
+        if "per-deck" in ln:
+            cells = []
+            for b, r, win, n in MATCH_RE.findall(ln):
+                cells.append({"b": b, "r": r or b, "win": int(win), "n": int(n)})
+    totals: dict[str, int] = {}
+    for c in cells:
+        totals[c["b"]] = totals.get(c["b"], 0) + c["n"]
+    return {"cells": cells, "evals": evals, "totals": totals,
+            "grand_total": sum(totals.values())}
+
+
+def list_replays() -> list[dict]:
+    out = []
+    if not REPLAYS.exists():
+        return out
+    for p in sorted(REPLAYS.glob("*.json"), key=lambda q: q.stat().st_mtime, reverse=True)[:60]:
+        try:
+            mtime = p.stat().st_mtime
+            cached = _REPLAY_CACHE.get(p.name)
+            if cached and cached["mtime"] == mtime:
+                out.append(cached["meta"])
+                continue
+            with open(p) as fh:
+                d = json.load(fh)
+            meta = d.get("meta", {})
+            meta.pop("cards", None)  # keep the listing payload small
+            meta["file"] = p.name
+            meta["mtime"] = mtime
+            _REPLAY_CACHE[p.name] = {"mtime": mtime, "meta": meta}
+            out.append(meta)
+        except Exception:
+            continue
+    return out
+
+
+def load_replay(name: str):
+    if "/" in name or ".." in name or not name.endswith(".json"):
+        return None
+    p = REPLAYS / name
+    if not p.exists():
+        return None
+    with open(p) as fh:
+        return json.load(fh)
+
+
 HTML = r"""<!DOCTYPE html>
 <html lang="no"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -347,6 +414,20 @@ canvas{width:100%;height:150px;display:block}
     <h2 style="margin-top:12px" id="tail-h">Siste logglinjer</h2>
     <pre id="tail">–</pre>
   </div>
+  <div class="card c12">
+    <h2>Matchup-matrise — seier% for blå mot rød (antall kamper)</h2>
+    <div id="matrix" style="overflow-x:auto"></div>
+    <div class="legend" id="matrix-sub">–</div>
+  </div>
+  <div class="card c6">
+    <h2>Eval vs random per deck</h2>
+    <canvas id="ch-eval" style="height:180px"></canvas>
+    <div class="legend" id="eval-legend"></div>
+  </div>
+  <div class="card c6">
+    <h2>Replays <span class="dim" style="text-transform:none;letter-spacing:0">(klikk for å se kampen)</span></h2>
+    <div id="replays" style="max-height:270px;overflow-y:auto">–</div>
+  </div>
   <div class="card c6">
     <h2>Win% over episoder</h2>
     <canvas id="ch-win"></canvas>
@@ -413,6 +494,48 @@ async function series(){
   const th=$("tail-h");if(th)th.textContent="Siste logglinjer · "+(ACTIVE||"–");
   $("tail").textContent=(act.tail||[]).slice(-12).join("\n");
 }
+const DECKS=["hog","giant","logb","xbow","lava","yard","rg","golem","miner","mortar","balloon","pekka"];
+async function matchup(){
+  try{
+    const d=await (await fetch("api/matchup")).json();
+    const cell={};d.cells.forEach(c=>cell[c.b+">"+c.r]=c);
+    let h="<table style='border-collapse:separate;border-spacing:2px;font-size:12px'><tr><td></td>";
+    DECKS.forEach(r=>h+="<td style='padding:3px 6px;color:#8b93a7;text-align:center'>"+r+"</td>");
+    h+="<td style='padding:3px 6px;color:#8b93a7;text-align:center'>kamper</td></tr>";
+    DECKS.forEach(b=>{
+      h+="<tr><td style='padding:3px 6px;color:#8b93a7;text-align:right'>"+b+"</td>";
+      DECKS.forEach(r=>{
+        const c=cell[b+">"+r];
+        if(!c){h+="<td style='padding:3px 6px;text-align:center;color:#2a3143'>·</td>";return;}
+        const col=c.win>=50?"74,222,128":"248,113,113";
+        const a=(0.10+Math.min(0.40,Math.abs(c.win-50)/50*0.40)).toFixed(2);
+        h+="<td style='padding:3px 6px;text-align:center;border-radius:5px;background:rgba("+col+","+a+")'>"+
+           c.win+"%<span style='color:#8b93a7;font-size:10px'> ("+c.n+")</span></td>";
+      });
+      h+="<td style='padding:3px 6px;text-align:center;color:#8b93a7'>"+(d.totals[b]||0)+"</td></tr>";
+    });
+    h+="</table>";
+    $("matrix").innerHTML=h;
+    $("matrix-sub").textContent="Totalt "+d.grand_total+" kamper · blå = policyen (rotasjonsworkere) · rød = snapshot av samme nett";
+    const names=[...new Set(d.evals.flatMap(e=>Object.keys(e.vals)))];
+    const pal=["#f87171","#fb923c","#facc15","#a3e635","#4ade80","#34d399","#2dd4bf","#38bdf8","#818cf8","#c084fc","#f472b6","#e879f9"];
+    const series=names.map((n,i)=>[d.evals.map(e=>[e.step,e.vals[n]]).filter(p=>p[1]!==undefined),pal[i%pal.length]]);
+    draw("ch-eval",series,{unit:""});
+    $("eval-legend").innerHTML=names.map((n,i)=>'<span class="dot" style="background:'+pal[i%pal.length]+';margin-left:8px"></span>'+n).join("");
+  }catch(e){}
+}
+async function replays(){
+  try{
+    const d=await (await fetch("api/replays")).json();
+    const el=$("replays");
+    if(!d.length){el.innerHTML='<div class="legend">Ingen replays ennå — opptakeren fyller på snart.</div>';return;}
+    el.innerHTML=d.map(m=>{
+      const res=m.result=="win"?'<span class="pill done">seier</span>':m.result=="loss"?'<span class="pill running">tap</span>':'<span class="pill">draw</span>';
+      return '<div class="qrow"><span><a href="replay/'+encodeURIComponent(m.file)+'" target="_blank" style="color:#5eead4;text-decoration:none">'+
+        m.blue_deck+' vs '+m.red_deck+'</a> <span class="dim" style="font-size:11px">· mot '+m.opponent+' · '+m.steps+'f</span></span>'+res+'</div>';
+    }).join("");
+  }catch(e){}
+}
 function bounds(seriesList,dash){
   let xs=[],ys=[];
   for(const [d] of seriesList)for(const p of d){xs.push(p[0]);ys.push(p[1]);}
@@ -440,7 +563,152 @@ function draw(id,seriesList,dash){
     d.forEach((p,i)=>{const px=X(p[0]),py=Y(p[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke();
   }
 }
-status();series();setInterval(status,15000);setInterval(series,15000);
+status();series();matchup();replays();setInterval(status,15000);setInterval(series,15000);setInterval(matchup,30000);setInterval(replays,60000);
+</script></body></html>
+"""
+
+
+REPLAY_HTML = r"""<!DOCTYPE html>
+<html lang="no"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>replay · crforge</title>
+<style>
+:root{--bg:#0b0e14;--line:#1f2637;--tx:#e8ecf4;--dim:#8b93a7;--acc:#5eead4}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:16px}
+a{color:var(--acc);text-decoration:none}
+h1{font-size:15px;margin-bottom:4px}
+.meta{color:var(--dim);font-size:12px;margin-bottom:12px}
+.wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+canvas{background:#0e1e14;border:1px solid var(--line);border-radius:10px;display:block}
+.side{width:320px;min-width:280px;flex:1;max-width:420px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+button{background:#131722;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--acc)}
+input[type=range]{width:100%;accent-color:#2dd4bf}
+.feed{height:300px;overflow-y:auto;background:#0f1320;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
+.feed div{padding:2px 4px;border-radius:4px;color:var(--dim)}
+.feed div.cur{background:#134e4a55;color:var(--acc)}
+.chip{background:#0f1320;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
+</style></head><body>
+<div><a href="/">← dashboard</a></div>
+<h1 id="title">laster …</h1>
+<div class="meta" id="meta"></div>
+<div class="wrap">
+  <canvas id="cv" width="392" height="668"></canvas>
+  <div class="side">
+    <div class="row">
+      <button id="play">⏸ pause</button>
+      <button id="spd">2×</button>
+      <span class="chip" id="clock">–</span>
+      <span class="chip" id="elix">–</span>
+    </div>
+    <input type="range" id="scrub" min="0" max="0" value="0">
+    <div class="feed" id="feed"></div>
+  </div>
+</div>
+<script>
+const file = location.pathname.split("/").pop();
+let D=null, idx=0, playing=true, speed=2, lastTs=0, acc=0;
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+const W=cv.width, H=cv.height, MX=14, MY=14;
+const px=x=>MX+(x/18)*(W-2*MX);
+const py=y=>MY+(1-(y/32))*(H-2*MY);
+const TEAM=[["#38bdf8","#0284c7"],["#f87171","#b91c1c"]];
+const fmtT=t=>{const s=t*0.75;return String(Math.floor(s/60)).padStart(2,"0")+":"+String(Math.floor(s%60)).padStart(2,"0");};
+function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fill();}
+async function load(){
+  const r=await fetch("/api/replay/"+encodeURIComponent(file));
+  if(!r.ok){document.getElementById("title").textContent="fant ikke replayen";return;}
+  D=await r.json();
+  const m=D.meta;
+  document.getElementById("title").textContent=
+    m.blue_deck+" vs "+m.red_deck+"  —  mot "+m.opponent+"  —  "+
+    (m.result=="win"?"SEIER":m.result=="loss"?"tap":"uavgjort");
+  document.getElementById("meta").textContent="seed "+m.seed+" · "+m.steps+" frames · spilt inn "+m.recorded;
+  const sc=document.getElementById("scrub");sc.max=D.frames.length-1;
+  sc.oninput=()=>{idx=+sc.value;acc=0;};
+  const feed=document.getElementById("feed");
+  D.acts.forEach(a=>{const d=document.createElement("div");d.id="a"+a[0];
+    d.textContent=fmtT(a[0])+"  "+a[1]+" @ ("+a[2]+", "+a[3]+")";feed.appendChild(d);});
+  requestAnimationFrame(tick);
+}
+let lastFeed=null;
+function tick(ts){
+  if(!D){requestAnimationFrame(tick);return;}
+  const dur=750/speed;
+  if(playing){
+    if(lastTs){acc+=ts-lastTs;}
+    lastTs=ts;
+    while(acc>=dur){acc-=dur;if(idx<D.frames.length-1){idx++;}else{playing=false;document.getElementById("play").textContent="▶︎ spill";acc=0;break;}}
+  } else {lastTs=ts;}
+  draw(idx,Math.min(1,acc/dur));
+  document.getElementById("scrub").value=idx;
+  document.getElementById("clock").textContent=fmtT(D.frames[idx].t)+" / "+fmtT(D.frames[D.frames.length-1].t);
+  requestAnimationFrame(tick);
+}
+function draw(i,fr){
+  const f0=D.frames[i], f1=D.frames[Math.min(i+1,D.frames.length-1)];
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="#0e1e14";ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#0a1610";ctx.fillRect(0,py(16),W,H-py(16));
+  ctx.fillStyle="#1b3b4f";ctx.fillRect(0,py(16.9),(W),py(15.1)-py(16.9)+ (0));
+  ctx.fillStyle="#274b60";ctx.fillRect(0,py(16.9),W,Math.max(3,py(15.1)-py(16.9)));
+  ctx.fillStyle="#8b6f47";ctx.fillRect(px(3.0),py(16.9),px(4.6)-px(3.0),Math.max(2,py(15.1)-py(16.9)));
+  ctx.fillStyle="#8b6f47";ctx.fillRect(px(13.4),py(16.9),px(15.0)-px(13.4),Math.max(2,py(15.1)-py(16.9)));
+  const pos1={};f1.ents.forEach(e=>pos1[e[0]]=e);
+  ctx.font="9px monospace";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const e of f0.ents){
+    const id=e[0];const p1=pos1[id];
+    let x=e[1],y=e[2],hp=e[3];
+    if(p1){x=e[1]+(p1[1]-e[1])*fr;y=e[2]+(p1[2]-e[2])*fr;hp=e[3]+(p1[3]-e[3])*fr;}
+    const c=D.meta.cards[id]||{name:"?",team:0,type:"TROOP",maxHp:1};
+    const X=px(x),Y=py(y);
+    const fill=TEAM[c.team][0], dark=TEAM[c.team][1];
+    if(c.type==="TOWER"){
+      ctx.fillStyle=dark;rr(X-12,Y-12,24,24,5);
+      ctx.fillStyle=fill;rr(X-9,Y-9,18,18,4);
+      ctx.fillStyle="#0b0e14";ctx.fillText("♜",X,Y+1);
+    } else if(c.type==="BUILDING"){
+      ctx.fillStyle=dark;rr(X-8,Y-8,16,16,3);
+      ctx.fillStyle=fill;rr(X-6,Y-6,12,12,2);
+    } else {
+      ctx.beginPath();ctx.arc(X,Y,c.mov==="AIR"?5:6,0,7);ctx.fillStyle=dark;ctx.fill();
+      ctx.beginPath();ctx.arc(X,Y,c.mov==="AIR"?3.2:4,0,7);ctx.fillStyle=fill;ctx.fill();
+    }
+    const frac=Math.max(0,Math.min(1,hp/(c.maxHp||1)));
+    if(c.type!=="TOWER"||frac<1){
+      ctx.fillStyle="#05080d";ctx.fillRect(X-8,Y+8,16,3);
+      ctx.fillStyle=frac>0.5?"#4ade80":frac>0.25?"#facc15":"#f87171";
+      ctx.fillRect(X-8,Y+8,16*frac,3);
+    }
+    if(c.type==="TOWER"||(c.maxHp||0)>=1200){
+      ctx.fillStyle="rgba(232,236,244,0.75)";ctx.fillText(c.name.slice(0,10),X,Y-(c.type==="TOWER"?18:11));
+    }
+  }
+  for(const a of D.acts){
+    if(a[0]===f0.t){
+      const X=px(a[2]),Y=py(a[3]);
+      const ph=Math.min(1,fr*1.2);
+      ctx.strokeStyle="rgba(94,234,212,"+(1-ph).toFixed(2)+")";ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(X,Y,6+ph*16,0,7);ctx.stroke();
+      ctx.fillStyle="#5eead4";ctx.fillText(a[1],X,Y-16);
+    }
+  }
+  document.getElementById("elix").textContent="elixir b:"+f0.be+" r:"+f0.re;
+  const cur=[...D.acts].reverse().find(a=>a[0]<=f0.t);
+  if(cur&&lastFeed!==cur[0]){
+    if(lastFeed!==null){const el=document.getElementById("a"+lastFeed);if(el)el.classList.remove("cur");}
+    const el=document.getElementById("a"+cur[0]);if(el){el.classList.add("cur");el.scrollIntoView({block:"nearest"});}
+    lastFeed=cur[0];
+  }
+}
+document.getElementById("play").onclick=function(){playing=!playing;this.textContent=playing?"⏸ pause":"▶︎ spill";};
+document.getElementById("spd").onclick=function(){
+  speed = speed>=8?1:speed*2;this.textContent=speed+"×";
+};
+document.addEventListener("keydown",e=>{if(e.code==="Space"){e.preventDefault();document.getElementById("play").click();}});
+load();
 </script></body></html>
 """
 
@@ -466,6 +734,20 @@ class H(BaseHTTPRequestHandler):
             elif self.path.startswith("/api/series"):
                 q = self.path.split("run=", 1)[1].split("&")[0] if "run=" in self.path else "fixed_bar"
                 self._send(200, json.dumps(series_for(q)).encode(), "application/json")
+            elif self.path.startswith("/api/matchup"):
+                q = self.path.split("run=", 1)[1].split("&")[0] if "run=" in self.path else "pool12"
+                self._send(200, json.dumps(parse_matchup(q)).encode(), "application/json")
+            elif self.path.startswith("/api/replays"):
+                self._send(200, json.dumps(list_replays()).encode(), "application/json")
+            elif self.path.startswith("/api/replay/"):
+                name = self.path[len("/api/replay/"):].split("?")[0]
+                d = load_replay(name)
+                if d is None:
+                    self._send(404, b'{"error":"not found"}', "application/json")
+                else:
+                    self._send(200, json.dumps(d).encode(), "application/json")
+            elif self.path.startswith("/replay/"):
+                self._send(200, REPLAY_HTML.encode(), "text/html; charset=utf-8")
             else:
                 self._send(404, b"not found", "text/plain")
         except BrokenPipeError:
