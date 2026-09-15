@@ -1,0 +1,1733 @@
+{
+ "format": "m4-replay-diff-v1",
+ "generated": "2026-09-15 19:58:19",
+ "data_dir": "fidelity/patched",
+ "tolerances": {
+  "tower_hp": 1.0,
+  "elixir": 1.5
+ },
+ "replays": [
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-080002_hog-vs-giant_rule_based_s7000.json",
+   "blue_deck": "hog",
+   "red_deck": "giant",
+   "seed": 7000,
+   "recorded_result": "win",
+   "steps": 241,
+   "blue_actions_applied": 35,
+   "red_actions_applied": 4,
+   "blue_labels_total": 36,
+   "blue_labels_model_match": 35,
+   "blue_labels_model_fail": [
+    {
+     "step": 124,
+     "label": "Cannon",
+     "model_hand": [
+      "fireball",
+      "hogrider",
+      "musketeer",
+      "zap"
+     ]
+    }
+   ],
+   "flags": [
+    {
+     "step": 124,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    }
+   ],
+   "red_skipped": [
+    {
+     "step": 76,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 85,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 87,
+     "name": "Giant",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 95,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 104,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 114,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 128,
+     "name": "Valkyrie",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 145,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 169,
+     "name": "Witch",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 172,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 181,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 185,
+     "name": "Giant",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 191,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 198,
+     "name": "Valkyrie",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 200,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 205,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 210,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 212,
+     "name": "Witch",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 215,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 221,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 223,
+     "name": "Giant",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 224,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 234,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 240,
+     "name": "Valkyrie",
+     "reason": "not-in-red-hand"
+    }
+   ],
+   "tower_hp": {
+    "max_abs_diff": 3584.0,
+    "first_divergent_step": 9,
+    "steps_over_tol": 233
+   },
+   "blue_elixir": {
+    "max_abs_diff": 2.054,
+    "first_divergent_step": 123,
+    "steps_over_tol": 1
+   },
+   "red_elixir": {
+    "max_abs_diff": 8.321,
+    "first_divergent_step": 11,
+    "steps_over_tol": 206
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     true,
+     false,
+     false,
+     false
+    ],
+    "crowns": [
+     5,
+     0
+    ],
+    "winner": 0,
+    "units_alive": 23
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 11.8
+  },
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-080228_hog-vs-xbow_rule_based_s7002.json",
+   "blue_deck": "hog",
+   "red_deck": "xbow",
+   "seed": 7002,
+   "recorded_result": "win",
+   "steps": 401,
+   "blue_actions_applied": 75,
+   "red_actions_applied": 4,
+   "blue_labels_total": 86,
+   "blue_labels_model_match": 75,
+   "blue_labels_model_fail": [
+    {
+     "step": 58,
+     "label": "Skeletons",
+     "model_hand": [
+      "log",
+      "musketeer",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 59,
+     "label": "Skeletons",
+     "model_hand": [
+      "log",
+      "musketeer",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 153,
+     "label": "Skeletons",
+     "model_hand": [
+      "log",
+      "musketeer",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 154,
+     "label": "Skeletons",
+     "model_hand": [
+      "log",
+      "musketeer",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 186,
+     "label": "Musketeer",
+     "model_hand": [
+      "log",
+      "hogrider",
+      "fireball",
+      "zap"
+     ]
+    }
+   ],
+   "flags": [
+    {
+     "step": 57,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
+    },
+    {
+     "step": 58,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
+    },
+    {
+     "step": 152,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
+    },
+    {
+     "step": 153,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
+    },
+    {
+     "step": 185,
+     "kind": "blue_play_rejected",
+     "detail": "Musketeer @(9.0,29.0)"
+    },
+    {
+     "step": 205,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
+    },
+    {
+     "step": 207,
+     "kind": "blue_play_rejected",
+     "detail": "Musketeer @(9.0,29.0)"
+    },
+    {
+     "step": 256,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
+    },
+    {
+     "step": 303,
+     "kind": "blue_play_rejected",
+     "detail": "Skeletons @(9.0,29.0)"
+    },
+    {
+     "step": 342,
+     "kind": "blue_label_unresolved",
+     "detail": "Skeletons"
+    },
+    {
+     "step": 361,
+     "kind": "blue_label_unresolved",
+     "detail": "Musketeer"
+    }
+   ],
+   "red_skipped": [
+    {
+     "step": 47,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 77,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 85,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 137,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 156,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 175,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 188,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 193,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 198,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 213,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 227,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 231,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 234,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 254,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 266,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 270,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 273,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 292,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 299,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 311,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 312,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 324,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 344,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 351,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 352,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 363,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 372,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 378,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 379,
+     "name": "Xbow",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 391,
+     "name": "Tesla",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 397,
+     "name": "Archer",
+     "reason": "not-in-red-hand"
+    }
+   ],
+   "tower_hp": {
+    "max_abs_diff": 4824.0,
+    "first_divergent_step": 35,
+    "steps_over_tol": 367
+   },
+   "blue_elixir": {
+    "max_abs_diff": 3.25,
+    "first_divergent_step": 360,
+    "steps_over_tol": 2
+   },
+   "red_elixir": {
+    "max_abs_diff": 10.0,
+    "first_divergent_step": 5,
+    "steps_over_tol": 346
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     true,
+     false,
+     false,
+     false
+    ],
+    "crowns": [
+     5,
+     0
+    ],
+    "winner": 0,
+    "units_alive": 49
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 19.2
+  },
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-080232_hog-vs-golem_rule_based_s7006.json",
+   "blue_deck": "hog",
+   "red_deck": "golem",
+   "seed": 7006,
+   "recorded_result": "win",
+   "steps": 241,
+   "blue_actions_applied": 33,
+   "red_actions_applied": 18,
+   "blue_labels_total": 41,
+   "blue_labels_model_match": 33,
+   "blue_labels_model_fail": [
+    {
+     "step": 40,
+     "label": "Cannon",
+     "model_hand": [
+      "fireball",
+      "musketeer",
+      "zap",
+      "log"
+     ]
+    },
+    {
+     "step": 41,
+     "label": "Cannon",
+     "model_hand": [
+      "fireball",
+      "musketeer",
+      "zap",
+      "log"
+     ]
+    },
+    {
+     "step": 90,
+     "label": "Cannon",
+     "model_hand": [
+      "fireball",
+      "musketeer",
+      "zap",
+      "log"
+     ]
+    },
+    {
+     "step": 137,
+     "label": "Cannon",
+     "model_hand": [
+      "fireball",
+      "musketeer",
+      "zap",
+      "log"
+     ]
+    },
+    {
+     "step": 138,
+     "label": "Cannon",
+     "model_hand": [
+      "fireball",
+      "musketeer",
+      "zap",
+      "log"
+     ]
+    }
+   ],
+   "flags": [
+    {
+     "step": 40,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 41,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 90,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 137,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 138,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 139,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 220,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 221,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    }
+   ],
+   "red_skipped": [
+    {
+     "step": 68,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 74,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 81,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 88,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 96,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 98,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 170,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 172,
+     "name": "Golemite",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 176,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 183,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 190,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 196,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 197,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 203,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 209,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 231,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 237,
+     "name": "Golemite",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 237,
+     "name": "Bat",
+     "reason": "not-in-red-deck"
+    }
+   ],
+   "tower_hp": {
+    "max_abs_diff": 2370.58,
+    "first_divergent_step": 28,
+    "steps_over_tol": 214
+   },
+   "blue_elixir": {
+    "max_abs_diff": 2.572,
+    "first_divergent_step": 39,
+    "steps_over_tol": 8
+   },
+   "red_elixir": {
+    "max_abs_diff": 8.839,
+    "first_divergent_step": 3,
+    "steps_over_tol": 18
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     false,
+     true,
+     false,
+     true
+    ],
+    "crowns": [
+     1,
+     1
+    ],
+    "winner": -1,
+    "units_alive": 10
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 11.6
+  },
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-080234_hog-vs-mortar_rule_based_s7008.json",
+   "blue_deck": "hog",
+   "red_deck": "mortar",
+   "seed": 7008,
+   "recorded_result": "loss",
+   "steps": 241,
+   "blue_actions_applied": 23,
+   "red_actions_applied": 3,
+   "blue_labels_total": 53,
+   "blue_labels_model_match": 28,
+   "blue_labels_model_fail": [
+    {
+     "step": 17,
+     "label": "HogRider",
+     "model_hand": [
+      "cannon",
+      "icespirits",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 31,
+     "label": "Musketeer",
+     "model_hand": [
+      "cannon",
+      "skeletons",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 51,
+     "label": "Log",
+     "model_hand": [
+      "cannon",
+      "hogrider",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 56,
+     "label": "HogRider",
+     "model_hand": [
+      "cannon",
+      "icespirits",
+      "fireball",
+      "zap"
+     ]
+    },
+    {
+     "step": 57,
+     "label": "HogRider",
+     "model_hand": [
+      "cannon",
+      "icespirits",
+      "fireball",
+      "zap"
+     ]
+    }
+   ],
+   "flags": [
+    {
+     "step": 16,
+     "kind": "blue_play_rejected",
+     "detail": "HogRider @(14.5,25.5)"
+    },
+    {
+     "step": 30,
+     "kind": "blue_play_rejected",
+     "detail": "Musketeer @(9.0,29.0)"
+    },
+    {
+     "step": 51,
+     "kind": "blue_label_unresolved",
+     "detail": "Log"
+    },
+    {
+     "step": 55,
+     "kind": "blue_play_rejected",
+     "detail": "HogRider @(14.5,25.5)"
+    },
+    {
+     "step": 56,
+     "kind": "blue_play_rejected",
+     "detail": "HogRider @(14.5,25.5)"
+    },
+    {
+     "step": 71,
+     "kind": "blue_play_rejected",
+     "detail": "Cannon @(9.0,29.0)"
+    },
+    {
+     "step": 107,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 108,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 109,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 110,
+     "kind": "blue_play_rejected",
+     "detail": "Musketeer @(5.5,14.5)"
+    },
+    {
+     "step": 125,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 126,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 127,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 160,
+     "kind": "blue_label_unresolved",
+     "detail": "IceSpirits"
+    },
+    {
+     "step": 166,
+     "kind": "blue_label_unresolved",
+     "detail": "Skeletons"
+    },
+    {
+     "step": 171,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 172,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 173,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 177,
+     "kind": "blue_label_unresolved",
+     "detail": "HogRider"
+    },
+    {
+     "step": 186,
+     "kind": "blue_label_unresolved",
+     "detail": "Musketeer"
+    },
+    {
+     "step": 192,
+     "kind": "blue_label_unresolved",
+     "detail": "Skeletons"
+    },
+    {
+     "step": 196,
+     "kind": "blue_play_rejected",
+     "detail": "Cannon @(14.5,25.5)"
+    },
+    {
+     "step": 203,
+     "kind": "blue_label_unresolved",
+     "detail": "HogRider"
+    },
+    {
+     "step": 211,
+     "kind": "blue_label_unresolved",
+     "detail": "IceSpirits"
+    },
+    {
+     "step": 212,
+     "kind": "blue_label_unresolved",
+     "detail": "Musketeer"
+    },
+    {
+     "step": 213,
+     "kind": "blue_label_unresolved",
+     "detail": "Musketeer"
+    },
+    {
+     "step": 220,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 221,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 235,
+     "kind": "blue_label_unresolved",
+     "detail": "IceSpirits"
+    },
+    {
+     "step": 240,
+     "kind": "blue_label_unresolved",
+     "detail": "Skeletons"
+    }
+   ],
+   "red_skipped": [
+    {
+     "step": 12,
+     "name": "Mortar",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 36,
+     "name": "Princess",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 58,
+     "name": "Goblin",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 107,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 116,
+     "name": "Goblin",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 131,
+     "name": "Mortar",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 152,
+     "name": "Princess",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 168,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 174,
+     "name": "Goblin",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 181,
+     "name": "Mortar",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 190,
+     "name": "Princess",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 203,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 208,
+     "name": "Goblin",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 210,
+     "name": "Mortar",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 223,
+     "name": "Princess",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 228,
+     "name": "Knight",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 236,
+     "name": "Goblin",
+     "reason": "not-in-red-deck"
+    }
+   ],
+   "tower_hp": {
+    "max_abs_diff": 4824.0,
+    "first_divergent_step": 6,
+    "steps_over_tol": 236
+   },
+   "blue_elixir": {
+    "max_abs_diff": 9.0,
+    "first_divergent_step": 50,
+    "steps_over_tol": 129
+   },
+   "red_elixir": {
+    "max_abs_diff": 10.0,
+    "first_divergent_step": 9,
+    "steps_over_tol": 226
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     true,
+     false,
+     false,
+     true
+    ],
+    "crowns": [
+     4,
+     0
+    ],
+    "winner": 0,
+    "units_alive": 4
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 10.7
+  },
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-080236_giant-vs-hog_rule_based_s7011.json",
+   "blue_deck": "giant",
+   "red_deck": "hog",
+   "seed": 7011,
+   "recorded_result": "win",
+   "steps": 200,
+   "blue_actions_applied": 20,
+   "red_actions_applied": 1,
+   "blue_labels_total": 20,
+   "blue_labels_model_match": 20,
+   "blue_labels_model_fail": [],
+   "flags": [],
+   "red_skipped": [
+    {
+     "step": 25,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    }
+   ],
+   "tower_hp": {
+    "max_abs_diff": 1895.444,
+    "first_divergent_step": 15,
+    "steps_over_tol": 186
+   },
+   "blue_elixir": {
+    "max_abs_diff": 1.304,
+    "first_divergent_step": null,
+    "steps_over_tol": 0
+   },
+   "red_elixir": {
+    "max_abs_diff": 7.0,
+    "first_divergent_step": 9,
+    "steps_over_tol": 48
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     true,
+     false,
+     false,
+     false
+    ],
+    "crowns": [
+     5,
+     0
+    ],
+    "winner": 0,
+    "units_alive": 5
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 8.3
+  },
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-080238_xbow-vs-hog_rule_based_s7013.json",
+   "blue_deck": "xbow",
+   "red_deck": "hog",
+   "seed": 7013,
+   "recorded_result": "win",
+   "steps": 224,
+   "blue_actions_applied": 33,
+   "red_actions_applied": 2,
+   "blue_labels_total": 39,
+   "blue_labels_model_match": 33,
+   "blue_labels_model_fail": [
+    {
+     "step": 51,
+     "label": "Archer",
+     "model_hand": [
+      "log",
+      "fireball",
+      "knight",
+      "xbow"
+     ]
+    },
+    {
+     "step": 93,
+     "label": "Archer",
+     "model_hand": [
+      "log",
+      "fireball",
+      "knight",
+      "xbow"
+     ]
+    },
+    {
+     "step": 139,
+     "label": "Archer",
+     "model_hand": [
+      "log",
+      "fireball",
+      "knight",
+      "xbow"
+     ]
+    },
+    {
+     "step": 172,
+     "label": "Archer",
+     "model_hand": [
+      "log",
+      "fireball",
+      "knight",
+      "xbow"
+     ]
+    },
+    {
+     "step": 194,
+     "label": "Archer",
+     "model_hand": [
+      "log",
+      "fireball",
+      "knight",
+      "xbow"
+     ]
+    }
+   ],
+   "flags": [
+    {
+     "step": 50,
+     "kind": "blue_play_rejected",
+     "detail": "Archer @(9.0,29.0)"
+    },
+    {
+     "step": 92,
+     "kind": "blue_play_rejected",
+     "detail": "Archer @(9.0,29.0)"
+    },
+    {
+     "step": 138,
+     "kind": "blue_play_rejected",
+     "detail": "Archer @(9.0,29.0)"
+    },
+    {
+     "step": 170,
+     "kind": "blue_play_rejected",
+     "detail": "Archer @(9.0,29.0)"
+    },
+    {
+     "step": 193,
+     "kind": "blue_play_rejected",
+     "detail": "Archer @(9.0,29.0)"
+    },
+    {
+     "step": 216,
+     "kind": "blue_play_rejected",
+     "detail": "Archer @(9.0,29.0)"
+    }
+   ],
+   "red_skipped": [],
+   "tower_hp": {
+    "max_abs_diff": 4746.0,
+    "first_divergent_step": 17,
+    "steps_over_tol": 208
+   },
+   "blue_elixir": {
+    "max_abs_diff": 1.161,
+    "first_divergent_step": null,
+    "steps_over_tol": 0
+   },
+   "red_elixir": {
+    "max_abs_diff": 7.839,
+    "first_divergent_step": 3,
+    "steps_over_tol": 44
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     true,
+     true,
+     false,
+     true
+    ],
+    "crowns": [
+     1,
+     0
+    ],
+    "winner": -1,
+    "units_alive": 14
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 10.9
+  },
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-080239_golem-vs-hog_rule_based_s7014.json",
+   "blue_deck": "golem",
+   "red_deck": "hog",
+   "seed": 7014,
+   "recorded_result": "win",
+   "steps": 366,
+   "blue_actions_applied": 49,
+   "red_actions_applied": 0,
+   "blue_labels_total": 55,
+   "blue_labels_model_match": 53,
+   "blue_labels_model_fail": [
+    {
+     "step": 27,
+     "label": "Tornado",
+     "model_hand": [
+      "lightning",
+      "babydragon",
+      "golem",
+      "darkwitch"
+     ]
+    },
+    {
+     "step": 42,
+     "label": "Tornado",
+     "model_hand": [
+      "lightning",
+      "babydragon",
+      "golem",
+      "minions"
+     ]
+    }
+   ],
+   "flags": [
+    {
+     "step": 27,
+     "kind": "blue_label_unresolved",
+     "detail": "Tornado"
+    },
+    {
+     "step": 28,
+     "kind": "blue_play_rejected",
+     "detail": "DarkWitch @(5.5,14.5)"
+    },
+    {
+     "step": 42,
+     "kind": "blue_label_unresolved",
+     "detail": "Tornado"
+    },
+    {
+     "step": 50,
+     "kind": "blue_label_unresolved",
+     "detail": "Minions"
+    },
+    {
+     "step": 62,
+     "kind": "blue_label_unresolved",
+     "detail": "Skeletons"
+    },
+    {
+     "step": 69,
+     "kind": "blue_label_unresolved",
+     "detail": "Valkyrie"
+    }
+   ],
+   "red_skipped": [
+    {
+     "step": 31,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 46,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 60,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 93,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 97,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 122,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 148,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 169,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 179,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 193,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 203,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 204,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 220,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 226,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 233,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 256,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 263,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 270,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 288,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 295,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 298,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 318,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 325,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 329,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 339,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 345,
+     "name": "HogRider",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 355,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 364,
+     "name": "Cannon",
+     "reason": "not-in-red-hand"
+    }
+   ],
+   "tower_hp": {
+    "max_abs_diff": 3044.0,
+    "first_divergent_step": 10,
+    "steps_over_tol": 357
+   },
+   "blue_elixir": {
+    "max_abs_diff": 10.0,
+    "first_divergent_step": 26,
+    "steps_over_tol": 334
+   },
+   "red_elixir": {
+    "max_abs_diff": 10.0,
+    "first_divergent_step": 9,
+    "steps_over_tol": 351
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     true,
+     false,
+     false,
+     false
+    ],
+    "crowns": [
+     5,
+     0
+    ],
+    "winner": 0,
+    "units_alive": 64
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 15.1
+  },
+  {
+   "format": "m4-replay-diff-v1",
+   "file": "0915-120343_hog-vs-giant_rule_based_s7000.json",
+   "blue_deck": "hog",
+   "red_deck": "giant",
+   "seed": 7000,
+   "recorded_result": "loss",
+   "steps": 241,
+   "blue_actions_applied": 36,
+   "red_actions_applied": 4,
+   "blue_labels_total": 42,
+   "blue_labels_model_match": 40,
+   "blue_labels_model_fail": [
+    {
+     "step": 68,
+     "label": "IceSpirits",
+     "model_hand": [
+      "fireball",
+      "musketeer",
+      "zap",
+      "cannon"
+     ]
+    },
+    {
+     "step": 202,
+     "label": "Cannon",
+     "model_hand": [
+      "fireball",
+      "hogrider",
+      "skeletons",
+      "musketeer"
+     ]
+    }
+   ],
+   "flags": [
+    {
+     "step": 67,
+     "kind": "blue_play_rejected",
+     "detail": "IceSpirits @(9.0,20.5)"
+    },
+    {
+     "step": 202,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 203,
+     "kind": "blue_play_rejected",
+     "detail": "HogRider @(7.5,10.5)"
+    },
+    {
+     "step": 224,
+     "kind": "blue_label_unresolved",
+     "detail": "Cannon"
+    },
+    {
+     "step": 234,
+     "kind": "blue_label_unresolved",
+     "detail": "Skeletons"
+    },
+    {
+     "step": 237,
+     "kind": "blue_label_unresolved",
+     "detail": "IceSpirits"
+    }
+   ],
+   "red_skipped": [
+    {
+     "step": 76,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 85,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 87,
+     "name": "Giant",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 95,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 104,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 114,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 128,
+     "name": "Valkyrie",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 145,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 169,
+     "name": "Witch",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 172,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 181,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 185,
+     "name": "Giant",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 198,
+     "name": "Valkyrie",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 205,
+     "name": "Musketeer",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 212,
+     "name": "Witch",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 215,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 223,
+     "name": "Giant",
+     "reason": "not-in-red-hand"
+    },
+    {
+     "step": 224,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 234,
+     "name": "Skeleton",
+     "reason": "not-in-red-deck"
+    },
+    {
+     "step": 240,
+     "name": "Valkyrie",
+     "reason": "not-in-red-hand"
+    }
+   ],
+   "tower_hp": {
+    "max_abs_diff": 4824.0,
+    "first_divergent_step": 12,
+    "steps_over_tol": 230
+   },
+   "blue_elixir": {
+    "max_abs_diff": 6.0,
+    "first_divergent_step": 201,
+    "steps_over_tol": 32
+   },
+   "red_elixir": {
+    "max_abs_diff": 8.321,
+    "first_divergent_step": 11,
+    "steps_over_tol": 206
+   },
+   "final": {
+    "towers_alive": [
+     true,
+     true,
+     false,
+     false,
+     false,
+     false
+    ],
+    "crowns": [
+     5,
+     1
+    ],
+    "winner": 0,
+    "units_alive": 14
+   },
+   "tol": {
+    "tower_hp": 1.0,
+    "elixir": 1.5
+   },
+   "seconds": 11.1
+  }
+ ]
+}

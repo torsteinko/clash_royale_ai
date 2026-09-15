@@ -108,6 +108,30 @@ def test_zap_crown_percent():
     assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - dmg * crown)) < 0.6
 
 
+def test_full_cycle_draw_order_no_empty_slots():
+    """Regression: playing past 4 cards must draw the played cards back in FIFO
+    order (exact Java Hand semantics). The old `cycle_pos % 8` walked off the
+    4-slot queue into uninitialised slots — hand slots became -1 (found by the
+    M4.2 replay diff; see reports/m4_replay_diff.md)."""
+    sim = _sim(1)
+    deck = _deck(sim)  # hand = deck[0:4], draw queue = deck[4:8]
+    sim.set_deck(0, deck)
+    drawn = []
+    for _ in range(8):
+        sim.s.elixir[0, 0] = 10.0
+        ok = sim.play(0, 0, torch.full((1,), 9.0), torch.full((1,), 20.0))
+        assert bool(ok[0])
+        hand = sim.s.hand[0, 0].tolist()
+        assert all(c >= 0 for c in hand), f"hand must never contain -1: {hand}"
+        drawn.append(int(sim.s.hand[0, 0, 0]))
+    # queue drains deck[4:8], then the played cards return in play order
+    assert drawn[0:4] == deck[4:8]
+    assert drawn[4] == deck[0], "first played card must come back after the queue drains"
+    assert drawn[5] == deck[4], "then the card played on the second draw"
+    # cycle_pos stays a 4-slot ring
+    assert int(sim.s.cycle_pos[0, 0]) == 0  # 8 plays -> (0+8) % 4
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:
