@@ -18,9 +18,9 @@ configs until then.
 | 14 | Projectiles: homing flight + radius impact DONE; remaining: non-homing/arc shots (gravity), AOE-on-impact, scatter/pierce/returning projectiles, tower shots still instant | PARTIAL | M2/M3 |
 | 15 | Attack windup / loadTime — RESOLVED (AttackStateMachine port: windup = max(0, cd − load)) | DONE | — |
 | 16 | Multiple targets / AOE splash / abilities (charge, dash, reflect, kamikaze, death spawns) not implemented | OPEN | M3 |
-| 17 | Attack cadence: the Java reference accumulates windup in float32 and fires one tick late (25-tick cycles vs the intended 24). GPU sim uses an epsilon to land the intended cadence — diff ≤ 1 tick per attack; accepted within M4 timing tolerance | ACCEPTED | M4 |
-| 18 | First-hit model (`first hit = hit time − load time`, load accrue during deploy/move): implemented from the reference's community-documented "secret stats" model. NOT yet verified against real-game timings — verify spawn→first-hit (e.g. knight 0.5s) via L2 probes/replays | PENDING-VERIFY | M4/L2 |
-| 19 | Same-tick resolution: all attacks of a tick apply, deaths resolve at end of tick — mirror duel (`duel_knight`) ends in a mutual KO on the identical tick. Java source shows the same shape (`gameState.processDeaths()` after combat, no mid-tick alive re-check) — confirm via the M4.2 trace diff (canary: both knights must die at tick 301 in both sims) | PENDING-VERIFY | M4 |
+| 17 | Attack cadence: the Java reference accumulates windup in float32 and fires one tick late (25-tick cycles vs the intended 24). **RESOLVED 2026-09-15 (M4.2b): gpusim reproduces the reference's float32 late-fire exactly — the duel_knight scenario trace is byte-identical (attack ticks [129, 154, 179, 204, 229, 254, 279, 304] on both sides)** | DONE | — |
+| 18 | First-hit model (`first hit = hit time − load time`, load accrue during deploy/move): implemented from the reference's community-documented "secret stats" model. Reference-sim parity confirmed byte-identical (M4.2b, 2026-09-15: sync + deploy + windup timelines match the java_patched traces exactly); the remaining check is against real-game timings (e.g. knight 0.5s) via L2 probes/replays | PENDING-VERIFY | M4/L2 |
+| 19 | Same-tick resolution: all attacks of a tick apply, deaths resolve at end of tick — mirror duel (`duel_knight`) ends in a mutual KO on the identical tick. Java source shows the same shape (`gameState.processDeaths()` after combat, no mid-tick alive re-check) — **VERIFIED 2026-09-15 (M4.2b): the java_patched duel_knight trace is byte-identical; both knights die on the same tick (last present 328, KO at 329)** | DONE | — |
 | 20 | Overkill: damage could push HP below 0 (tower ran to −68 on the killing blow) — FIXED in M4.1: damage clamps at 0, matching Java `Health.takeDamage` (`current -= min(damage, current)`); covered by test_m4 (`push_left` tower ends at exactly 0.0) | DONE | — |
 | 21 | Java shuffles each player's deck at reset (`Hand.java`: `Collections.shuffle`, blue = `Random(seed)`, red = `Random(seed+1)` via `GameSession.reset`). gpusim takes the deck order as given — the caller may shuffle, and training uses a fixed order by design. Replicated bit-exactly for replay work in `fidelity/java_random.py` (verified against 8 recorded replays: the model explains ≥90 % of the recorded hand labels, the remainder being consecutive-duplicate label artifacts in the recorded files) | DONE (documented) | — |
 | 22 | Unit-level difference flagged by the M4.2 replay diff (`giant-vs-hog s7011`): blue Minions die ~4–5 steps earlier in gpusim than in the recording, moving the first tower-HP divergence to step 15; air pathing matches (both fly direct), so the suspects are tower-vs-flying-unit targeting/range geometry and shot cadence (#17). Verify with a per-tick unit trace in M4.2b/M4.3 before claiming equivalence | PENDING-VERIFY | M4.2b/M4.3 |
@@ -29,5 +29,17 @@ Resolved: #2 combat (melee/ranged, cooldowns, deaths) — DONE 2026-09-15;
 #8 speed formula (`speed * 1000 / 60` game-units/s, from GameUnits.java) — VERIFIED 2026-09-15;
 #9 elixir phases (double at 120s, triple at 240s) — DONE; #11/#12 data rulings applied;
 #13 king activation + king attacks — DONE; #15 windup/loadTime (AttackStateMachine port) — DONE.
+
+### M4.2b fixes (2026-09-15) — the scenario set is now fully byte-equivalent
+* Crown tower collision radius 1.5 → 1.4 (`Tower.CROWN_COLLISION_RADIUS = 1400`,
+  `gpusim/env.py`). Symptom: units stopped ~0.1 tile early at max attack range
+  (push_left: musketeer froze at d=7.96 vs the reference 7.86 from the king).
+* Multi-spawn stagger: the float32-stored 0.1 s delay made `ceil(0.1/0.05)` land
+  on 3 ticks (Java: `0.1f = exactly 2 * 0.05f`); fixed in `_stagger_ticks`
+  (4-decimal round) plus a half-tick snap against the float32 decrement residue
+  in the spawn fire condition. Minions: ticks 21/23/25. Skeletons: no
+  `summonDeployDelay` in the data → all three at once (`Card.java`).
+* Trace `t` written from the tick index (was the fp32 sim clock → 0.001 s diff
+  from tick 1031 onward). All five `java_patched` traces are now `cmp`-identical.
 
 Empty table = the sim is fully equivalent (M4 gate).

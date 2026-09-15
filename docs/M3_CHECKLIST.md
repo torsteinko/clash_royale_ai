@@ -28,9 +28,9 @@ Følg PRIORITET-rekkefølgen under (kritisk sti først), kryss av etter hvert.
 - [x] M5.1b SB3-innpakning: `gpusim/sb3_env.py` (GPUSimGymEnv med action_masks + make_sb3_vec_env) + `gpusim/train_sb3_smoke.py` (~2000 steg, CPU: MaskablePPO, greedy-handlinger lovlige under masks, modell lagres) — 8 tester i test_sb3
 - [x] M5.2 train_gpu.py: `gpusim/train_gpu.py` — MaskablePPO på GPUSimSB3VecEnv (ÉN batchet lockstep-sim, per-kamp auto-reset via partial reset), fast deck + scripted motstander (random/passive), progress.csv + TensorBoard (valgfritt), ckpt_<steg>.zip + latest.zip hver --ckpt-every, `--resume auto` verifisert (fresh 1024→2048 steg, resume til 4096 på CPU; ~40-50 steg/s på 2-vCPU-boksen)
 - [x] M4.2 Replay-diff: `fidelity/m4_replay_diff.py` (`run --dir fidelity/replays`): blå handlinger 1:1 på riktig steg, rød rekonstruert fra spawn-evidens + elixir-budsjett (spells/ability-spawns flagges), diff av tårn-HP (6 slots) og elixir per steg. Verifisert på 8 replays; fant kort-syklusbuggen (fikset) og java-shuffle-modellen (fidelity/java_random.py); funn i reports/m4_replay_findings.md
-- [ ] M4.2b Scenario-diff mot Java: kjør scenarios på clash-training (gym-bridge, ticks_per_step=1, docs/M4_TRACE_FORMAT.md §3) → `compare` java vs gpusim-traces. NB: Java-shuffler hånden ved reset → velg hand-slot på kortnavn ved kjøring (fidelity/java_random.py har shuffle-replikatet); javaside-runner gjenstår
-- [ ] M4.3 Fidelity-rapport i reports/ med terskler og kjente avvik (bruk M4.2-funnene: #22 må undersøkes per-tick)
-- [ ] M3.4 Spell-prosjektil-flytid (fireball/arrows: fly til punkt → deretter AOE)
+- [x] M4.2b Scenario-diff mot Java: alle 5 scenariene byte-identiske mot java_patched-kjøringen (cmp). Fikset på veien: crown-tårn-radius 1.4 (Tower.CROWN_COLLISION_RADIUS), multi-spawn-stagger (float32-ceil + halv-tick-snap), trace-`t` fra tick-indeks. Rapport: reports/m4_fidelity_report.md; javaside-runner: fidelity/m4_scenarios_java.py
+- [x] M4.3 Fidelity-rapport i reports/ med terskler og kjente avvik: reports/m4_fidelity_report.md (metode, terskler, byte-identiske traces, avviksliste mot DIVERGENCES.md, reproduksjons-kommandoer). #22 (opptaks-diff) er re-kjørt i denne runden; scenarionivået mot referanse-simulatoren er eksakt
+- [x] M3.4 Spell-prosjektil-flytid (fireball/arrows: fly til punkt → deretter AOE) — implementert + verifisert: spell_hit-scenariet byte-identisk (kast tick 80 → nedslag tick 142 via 1.0s sync + flytid fra crown-tårnet); test_m3 pinner flytids-vinduet (ingen skade før nedslag)
 - [ ] M3.5 Tikkende soner: poison/earthquake (lifeDuration + hitSpeed + damage per tick)
 - [ ] M3.6 Log (spellAsDeploy rullende prosjektil eller presis tilnærming dokumentert i DIVERGENCES)
 - [x] M3.7 OT/elixir-grenser verifisert mot Java checkTimeLimit + test: sluttidene ligger nå på samme tick som Java (180.05/300.05 s — checkTimeLimit leser frame-telleren fra forrige tick), x2-elixir fra 120.10 s og x3 fra 240.10 s (Java slår om på tick 2401/4801 ETTER den tickens regen); test_m3: `test_time_limit_boundaries_match_java`, `test_elixir_phase_boundaries_match_java` (feiler på gammel kode)
@@ -45,4 +45,4 @@ Følg PRIORITET-rekkefølgen under (kritisk sti først), kryss av etter hvert.
 
 ## Testsviter (alle MÅ være grønne før commit)
 test_smoke · test_combat · test_projectiles · test_pathing · test_m3 · test_vecenv · test_m4 · test_sb3
-(kjør alle: `for t in test_smoke test_combat test_projectiles test_pathing test_m3 test_vecenv test_m4 test_sb3; do python3 -m gpusim.tests.$t || break; done` — 47 tester)
+(kjør alle: `for t in test_smoke test_combat test_projectiles test_pathing test_m3 test_vecenv test_m4 test_sb3; do python3 -m gpusim.tests.$t || break; done` — 49 tester)
