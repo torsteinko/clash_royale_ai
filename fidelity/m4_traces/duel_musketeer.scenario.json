@@ -1,0 +1,69 @@
+{
+  "format": "m4-scenario-v1",
+  "name": "duel_musketeer",
+  "desc": "ranged vs melee duel (musketeer vs knight): projectile flight kills the knight; the musketeer then lands one hit on the red right princess tower before tower fire kills it",
+  "source": "gpusim",
+  "level": 11,
+  "dt": 0.05,
+  "duration_ticks": 1500,
+  "trace_format": "m4-trace-v1",
+  "trace_file": "duel_musketeer.gpusim.jsonl",
+  "tick_semantics": "record i = state after i ticks (t = i*dt, t=0 before any tick); an action with at_tick=k is applied between record k and record k+1, i.e. during tick k+1 (= Java side: submit it in step call number k+1, ticks_per_step=1)",
+  "tower_slots": [
+    "king_blue",
+    "princess_blue_left",
+    "princess_blue_right",
+    "king_red",
+    "princess_red_left",
+    "princess_red_right"
+  ],
+  "decks": {
+    "blue": [
+      "Knight",
+      "Musketeer",
+      "Fireball",
+      "Archer",
+      "Giant",
+      "Zap",
+      "Log",
+      "Cannon"
+    ],
+    "red": [
+      "Knight",
+      "Musketeer",
+      "Fireball",
+      "Archer",
+      "Giant",
+      "Zap",
+      "Log",
+      "Cannon"
+    ]
+  },
+  "actions": [
+    {
+      "at_tick": 20,
+      "side": 0,
+      "side_name": "blue",
+      "slot": 1,
+      "x": 14.5,
+      "y": 21.0,
+      "card": "Musketeer"
+    },
+    {
+      "at_tick": 20,
+      "side": 1,
+      "side_name": "red",
+      "slot": 0,
+      "x": 14.5,
+      "y": 12.0,
+      "card": "Knight"
+    }
+  ],
+  "engine": {
+    "impl": "gpusim",
+    "commit": "c91fbc0481a6",
+    "device": "cpu"
+  },
+  "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
+  "created": "2026-09-15T19:15:21+00:00"
+}

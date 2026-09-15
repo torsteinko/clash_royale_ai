@@ -329,7 +329,8 @@ class BatchedCRSim:
         type_ok = torch.where(mt == 1, hits_air.unsqueeze(1), hits_ground.unsqueeze(1))
         hit_u = enemy & fire.unsqueeze(1) & type_ok & (d2 <= eff)
         if bool(hit_u.any()):
-            s.u_hp = s.u_hp - torch.where(hit_u, dmg.unsqueeze(1), torch.zeros_like(s.u_hp))
+            # Java Health.takeDamage: current -= min(damage, current) -> HP floors at 0
+            s.u_hp = (s.u_hp - torch.where(hit_u, dmg.unsqueeze(1), torch.zeros_like(s.u_hp))).clamp(min=0.0)
 
         # enemy towers: crown-tower damage percent applies
         crown_mult = 1.0 + self.t.spell_crown_pct[cclamp] / 100.0
@@ -342,7 +343,7 @@ class BatchedCRSim:
         enemy_t = self.tower_side.unsqueeze(0) == (1 - side)
         hit_t = s.tower_alive & enemy_t & fire.unsqueeze(1) & (d2_t <= eff_t)
         if bool(hit_t.any()):
-            s.tower_hp = s.tower_hp - torch.where(hit_t, dmg_t.unsqueeze(1), torch.zeros_like(s.tower_hp))
+            s.tower_hp = (s.tower_hp - torch.where(hit_t, dmg_t.unsqueeze(1), torch.zeros_like(s.tower_hp))).clamp(min=0.0)
         return fire
 
     # ------------------------------------------------------------------ tick
@@ -496,13 +497,13 @@ class BatchedCRSim:
             if bool(unit_tgt.any()):
                 b_idx, s_idx = torch.nonzero(unit_tgt, as_tuple=True)
                 tgt_slot = sel[b_idx, s_idx]
-                s.u_hp[b_idx, tgt_slot] = s.u_hp[b_idx, tgt_slot] - dmg[b_idx, s_idx]
+                s.u_hp[b_idx, tgt_slot] = (s.u_hp[b_idx, tgt_slot] - dmg[b_idx, s_idx]).clamp(min=0.0)
             # direct damage: tower targets
             tw_tgt = direct & (sel >= MAX_UNITS)
             if bool(tw_tgt.any()):
                 b_idx, s_idx = torch.nonzero(tw_tgt, as_tuple=True)
                 t_idx = sel[b_idx, s_idx] - MAX_UNITS
-                s.tower_hp[b_idx, t_idx] = s.tower_hp[b_idx, t_idx] - dmg[b_idx, s_idx]
+                s.tower_hp[b_idx, t_idx] = (s.tower_hp[b_idx, t_idx] - dmg[b_idx, s_idx]).clamp(min=0.0)
             # projectiles
             if bool(via_proj.any()):
                 for e, i in torch.nonzero(via_proj, as_tuple=False).tolist():
@@ -558,12 +559,12 @@ class BatchedCRSim:
             if bool(unit_hits.any()):
                 b_idx, j_idx = torch.nonzero(unit_hits, as_tuple=True)
                 tgt_slot = idx[b_idx, j_idx]
-                s.u_hp[b_idx, tgt_slot] = s.u_hp[b_idx, tgt_slot] - s.p_dmg[b_idx, j_idx]
+                s.u_hp[b_idx, tgt_slot] = (s.u_hp[b_idx, tgt_slot] - s.p_dmg[b_idx, j_idx]).clamp(min=0.0)
             tower_hits = hit & (idx >= MAX_UNITS)
             if bool(tower_hits.any()):
                 b_idx, j_idx = torch.nonzero(tower_hits, as_tuple=True)
                 t_idx = idx[b_idx, j_idx] - MAX_UNITS
-                s.tower_hp[b_idx, t_idx] = s.tower_hp[b_idx, t_idx] - s.p_dmg[b_idx, j_idx]
+                s.tower_hp[b_idx, t_idx] = (s.tower_hp[b_idx, t_idx] - s.p_dmg[b_idx, j_idx]).clamp(min=0.0)
         # lifetime expiry
         s.p_life = s.p_life - dt
         s.p_active = s.p_active & ~hit & (s.p_life > 0)
@@ -595,7 +596,7 @@ class BatchedCRSim:
             if bool(firem.any()):
                 bidx = torch.nonzero(firem, as_tuple=False).flatten()
                 tgt = nearest[bidx]
-                s.u_hp[bidx, tgt] = s.u_hp[bidx, tgt] - dmg
+                s.u_hp[bidx, tgt] = (s.u_hp[bidx, tgt] - dmg).clamp(min=0.0)
                 s.tower_cd[bidx, t_idx] = cd
 
     def _movement(self, dt: float) -> None:

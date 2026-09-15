@@ -1,0 +1,406 @@
+{
+  "format": "m4-report-v1",
+  "source": "gpusim",
+  "engine": {
+    "impl": "gpusim",
+    "commit": "c91fbc0481a6"
+  },
+  "generated": "2026-09-15T19:15:21+00:00",
+  "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
+  "level": 11,
+  "dt": 0.05,
+  "duration_ticks": 1500,
+  "deterministic": true,
+  "scenarios": [
+    {
+      "name": "duel_knight",
+      "desc": "mirror melee duel on the right bridge lane: identical cadence, mutual KO on the same tick (t=15.05) \u2014 canary for same-tick damage/death resolution vs the Java reference",
+      "ticks": 1501,
+      "sha256": "a593874b13bdf082650d13aa35f00540f0ef3c61848af96d00bd11513ea8e1f9",
+      "checkpoints": [
+        {
+          "tick": 0,
+          "t": 0.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 300,
+          "t": 15.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 600,
+          "t": 30.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 900,
+          "t": 45.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 1200,
+          "t": 59.999,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 1500,
+          "t": 75.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        }
+      ],
+      "first_damage": {
+        "blue": null,
+        "red": null
+      },
+      "unit_deaths": 1,
+      "final": {
+        "tower_hp": [
+          4824.0,
+          3052.0,
+          3052.0,
+          4824.0,
+          3052.0,
+          3052.0
+        ],
+        "towers_alive": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "crowns": [
+          0,
+          0
+        ],
+        "winner": -1,
+        "units_alive": 0
+      }
+    },
+    {
+      "name": "duel_musketeer",
+      "desc": "ranged vs melee duel (musketeer vs knight): projectile flight kills the knight; the musketeer then lands one hit on the red right princess tower before tower fire kills it",
+      "ticks": 1501,
+      "sha256": "4e9455afae2fe357fed07a087835eb90f0db395c1f5e65557f41592c91687d98",
+      "checkpoints": [
+        {
+          "tick": 0,
+          "t": 0.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 300,
+          "t": 15.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 600,
+          "t": 30.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10137.08
+        },
+        {
+          "tick": 900,
+          "t": 45.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10137.08
+        },
+        {
+          "tick": 1200,
+          "t": 59.999,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10137.08
+        },
+        {
+          "tick": 1500,
+          "t": 75.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10137.08
+        }
+      ],
+      "first_damage": {
+        "blue": null,
+        "red": {
+          "tick": 320,
+          "t": 16.0,
+          "tower": "princess_red_right",
+          "hp": 2788.36
+        }
+      },
+      "unit_deaths": 2,
+      "final": {
+        "tower_hp": [
+          4824.0,
+          3052.0,
+          3052.0,
+          4824.0,
+          3052.0,
+          2261.08
+        ],
+        "towers_alive": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "crowns": [
+          0,
+          0
+        ],
+        "winner": -1,
+        "units_alive": 0
+      }
+    },
+    {
+      "name": "tower_press",
+      "desc": "single knight marches the left lane into the red left princess tower: first melee hit at t=11.05, tower fire kills the knight at t=16.85 (5 hits dealt)",
+      "ticks": 1501,
+      "sha256": "60909544cf36598aca2a85be000266982cc6b36bf8d8c722523792de304e7725",
+      "checkpoints": [
+        {
+          "tick": 0,
+          "t": 0.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 300,
+          "t": 15.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10119.17
+        },
+        {
+          "tick": 600,
+          "t": 30.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 9916.96
+        },
+        {
+          "tick": 900,
+          "t": 45.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 9916.96
+        },
+        {
+          "tick": 1200,
+          "t": 59.999,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 9916.96
+        },
+        {
+          "tick": 1500,
+          "t": 75.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 9916.96
+        }
+      ],
+      "first_damage": {
+        "blue": null,
+        "red": {
+          "tick": 221,
+          "t": 11.05,
+          "tower": "princess_red_left",
+          "hp": 2849.79
+        }
+      },
+      "unit_deaths": 1,
+      "final": {
+        "tower_hp": [
+          4824.0,
+          3052.0,
+          3052.0,
+          4824.0,
+          2040.96,
+          3052.0
+        ],
+        "towers_alive": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "crowns": [
+          0,
+          0
+        ],
+        "winner": -1,
+        "units_alive": 0
+      }
+    },
+    {
+      "name": "spell_hit",
+      "desc": "fireball on a red knight standing at the red right princess tower: full damage to the unit, crown-tower % (207) to the tower; the knight then marches a full lane",
+      "ticks": 1501,
+      "sha256": "9f15536d831394fd245223239fc19673fabdb17e4c4b89e5c7d9b3e2b958122c",
+      "checkpoints": [
+        {
+          "tick": 0,
+          "t": 0.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 300,
+          "t": 15.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10721.44
+        },
+        {
+          "tick": 600,
+          "t": 30.0,
+          "tower_hp_blue": 10725.79,
+          "tower_hp_red": 10721.44
+        },
+        {
+          "tick": 900,
+          "t": 45.0,
+          "tower_hp_blue": 10725.79,
+          "tower_hp_red": 10721.44
+        },
+        {
+          "tick": 1200,
+          "t": 59.999,
+          "tower_hp_blue": 10725.79,
+          "tower_hp_red": 10721.44
+        },
+        {
+          "tick": 1500,
+          "t": 75.0,
+          "tower_hp_blue": 10725.79,
+          "tower_hp_red": 10721.44
+        }
+      ],
+      "first_damage": {
+        "blue": {
+          "tick": 390,
+          "t": 19.5,
+          "tower": "princess_blue_right",
+          "hp": 2849.79
+        },
+        "red": {
+          "tick": 81,
+          "t": 4.05,
+          "tower": "princess_red_right",
+          "hp": 2845.44
+        }
+      },
+      "unit_deaths": 1,
+      "final": {
+        "tower_hp": [
+          4824.0,
+          3052.0,
+          2849.79,
+          4824.0,
+          3052.0,
+          2845.44
+        ],
+        "towers_alive": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "crowns": [
+          0,
+          0
+        ],
+        "winner": -1,
+        "units_alive": 0
+      }
+    },
+    {
+      "name": "push_left",
+      "desc": "knight + musketeer push the left lane: the red left princess tower falls (crown 1-0) before both attackers die to tower fire",
+      "ticks": 1501,
+      "sha256": "fcb25d186f74610a77e358406538b531996ff07818caf651ba0ed5b409129694",
+      "checkpoints": [
+        {
+          "tick": 0,
+          "t": 0.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 300,
+          "t": 15.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10119.17
+        },
+        {
+          "tick": 600,
+          "t": 30.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 7876.0
+        },
+        {
+          "tick": 900,
+          "t": 45.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 7876.0
+        },
+        {
+          "tick": 1200,
+          "t": 59.999,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 7876.0
+        },
+        {
+          "tick": 1500,
+          "t": 75.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 7876.0
+        }
+      ],
+      "first_damage": {
+        "blue": null,
+        "red": {
+          "tick": 221,
+          "t": 11.05,
+          "tower": "princess_red_left",
+          "hp": 2849.79
+        }
+      },
+      "unit_deaths": 2,
+      "final": {
+        "tower_hp": [
+          4824.0,
+          3052.0,
+          3052.0,
+          4824.0,
+          0.0,
+          3052.0
+        ],
+        "towers_alive": [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        "crowns": [
+          1,
+          0
+        ],
+        "winner": -1,
+        "units_alive": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "format": "m4-scenario-v1",
+  "name": "push_left",
+  "desc": "knight + musketeer push the left lane: the red left princess tower falls (crown 1-0) before both attackers die to tower fire",
+  "source": "gpusim",
+  "level": 11,
+  "dt": 0.05,
+  "duration_ticks": 1500,
+  "trace_format": "m4-trace-v1",
+  "trace_file": "push_left.gpusim.jsonl",
+  "tick_semantics": "record i = state after i ticks (t = i*dt, t=0 before any tick); an action with at_tick=k is applied between record k and record k+1, i.e. during tick k+1 (= Java side: submit it in step call number k+1, ticks_per_step=1)",
+  "tower_slots": [
+    "king_blue",
+    "princess_blue_left",
+    "princess_blue_right",
+    "king_red",
+    "princess_red_left",
+    "princess_red_right"
+  ],
+  "decks": {
+    "blue": [
+      "Knight",
+      "Musketeer",
+      "Fireball",
+      "Archer",
+      "Giant",
+      "Zap",
+      "Log",
+      "Cannon"
+    ],
+    "red": [
+      "Knight",
+      "Musketeer",
+      "Fireball",
+      "Archer",
+      "Giant",
+      "Zap",
+      "Log",
+      "Cannon"
+    ]
+  },
+  "actions": [
+    {
+      "at_tick": 20,
+      "side": 0,
+      "side_name": "blue",
+      "slot": 0,
+      "x": 4.0,
+      "y": 17.5,
+      "card": "Knight"
+    },
+    {
+      "at_tick": 140,
+      "side": 0,
+      "side_name": "blue",
+      "slot": 1,
+      "x": 4.0,
+      "y": 20.0,
+      "card": "Musketeer"
+    }
+  ],
+  "engine": {
+    "impl": "gpusim",
+    "commit": "c91fbc0481a6",
+    "device": "cpu"
+  },
+  "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
+  "created": "2026-09-15T19:15:21+00:00"
+}
