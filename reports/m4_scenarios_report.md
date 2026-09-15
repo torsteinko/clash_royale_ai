@@ -1,6 +1,6 @@
 # M4 scenario report — gpusim (M4.1)
 
-generated: 2026-09-15T22:19:20+00:00 · engine: gpusim@ce7f41412527 · data: `/home/torromh_gmail_com/clash_royale_ai/fidelity/patched` · level 11 · dt 0.05s · 1500 ticks (75s)
+generated: 2026-09-15T23:00:08+00:00 · engine: gpusim@20bbd03b5a96 · data: `/home/torromh_gmail_com/clash_royale_ai/fidelity/patched` · level 11 · dt 0.05s · 1500 ticks (75s)
 
 **determinism: PASS — two full runs byte-identical**
 
@@ -11,8 +11,9 @@ generated: 2026-09-15T22:19:20+00:00 · engine: gpusim@ce7f41412527 · data: `/h
 | tower_press | 0ee2097b6302 | t=11.90 princess_red_left | — | 1 | 0-0 |
 | spell_hit | f67e3172301c | t=7.10 princess_red_right | t=19.85 princess_blue_right | 1 | 0-0 |
 | push_left | f2c81857aa23 | t=11.90 princess_red_left | — | 2 | 1-0 |
-| poison_zone | eba174f96982 | t=4.25 princess_red_left | t=17.90 princess_blue_left | 2 | 0-0 |
-| earthquake_zone | f45ea7debf82 | t=4.10 princess_red_left | t=15.45 princess_blue_left | 4 | 0-1 |
+| poison_zone | ce148fe4aa6a | t=4.25 princess_red_left | t=17.90 princess_blue_left | 2 | 0-0 |
+| earthquake_zone | eabd0922652a | t=4.10 princess_red_left | t=15.45 princess_blue_left | 4 | 0-1 |
+| log_roll | dcadb8f118b4 | t=7.35 princess_red_left | t=16.90 princess_blue_left | 2 | 0-0 |
 
 Tower HP checkpoints (sum of living towers, seconds):
 
@@ -25,6 +26,7 @@ Tower HP checkpoints (sum of living towers, seconds):
 | push_left | 10928 / 10928 / 10928 / 10928 / 10928 / 10928 | 10928 / 10322 / 7087 / 6561 / 6561 / 6561 |
 | poison_zone | 10928 / 10928 / 9716 / 9716 / 9716 / 9716 | 10928 / 10768 / 10768 / 10768 / 10768 / 10768 |
 | earthquake_zone | 10928 / 10928 / 6699 / 6592 / 6592 / 6592 | 10928 / 10328 / 10328 / 10328 / 10328 / 10328 |
+| log_roll | 10928 / 10928 / 7954 / 7954 / 7954 / 7954 | 10928 / 10888 / 10888 / 10888 / 10888 / 10888 |
 
 Raw numbers: `reports/m4_scenarios_report.json`. Per-tick traces: `fidelity/m4_traces/`.
 Diff against the Java-side run: `python3 fidelity/m4_scenarios.py compare <java>.jsonl <gpusim>.jsonl`.

@@ -1,13 +1,13 @@
 {
   "format": "m4-scenario-v1",
-  "name": "spell_hit",
-  "desc": "fireball on a red knight standing at the red right princess tower: full damage to the unit, crown-tower % (206) to the tower; the knight then marches a full lane (deploy at (14.5, 8.5): (14.5, 8.0) is a Java TOWER tile and is rejected by Arena.isValidPlacement)",
+  "name": "log_roll",
+  "desc": "M3.6 The Log (spellAsDeploy two-stage chain): the deploy projectile spawns AT the deploy point (not the crown tower) and travels 3 game units, then the rolling sub-projectile (105 base, 10.1 tiles, minDistance 2.5 tiles) hits the red knight once with directional pushback, passes the flying red MegaMinion untouched (air immune) and lands 15 % crown damage on the red left princess tower",
   "source": "gpusim",
   "level": 11,
   "dt": 0.05,
   "duration_ticks": 1500,
   "trace_format": "m4-trace-v1",
-  "trace_file": "spell_hit.gpusim.jsonl",
+  "trace_file": "log_roll.gpusim.jsonl",
   "tick_semantics": "record i = state after i ticks (t = i*dt, t=0 before any tick); an action with at_tick=k is applied between record k and record k+1, i.e. during tick k+1 (= Java side: submit it in step call number k+1, ticks_per_step=1)",
   "tower_slots": [
     "king_blue",
@@ -19,34 +19,43 @@
   ],
   "decks": {
     "blue": [
+      "MegaMinion",
+      "Fireball",
+      "Log",
       "Knight",
       "Musketeer",
-      "Fireball",
-      "Archer",
       "Giant",
-      "Zap",
-      "Log",
-      "Cannon"
+      "Archer",
+      "Zap"
     ],
     "red": [
+      "MegaMinion",
+      "Fireball",
+      "Log",
       "Knight",
       "Musketeer",
-      "Fireball",
-      "Archer",
       "Giant",
-      "Zap",
-      "Log",
-      "Cannon"
+      "Archer",
+      "Zap"
     ]
   },
   "actions": [
     {
-      "at_tick": 60,
+      "at_tick": 20,
       "side": 1,
       "side_name": "red",
       "slot": 0,
-      "x": 14.5,
-      "y": 8.5,
+      "x": 5.0,
+      "y": 9.0,
+      "card": "MegaMinion"
+    },
+    {
+      "at_tick": 80,
+      "side": 1,
+      "side_name": "red",
+      "slot": 3,
+      "x": 4.0,
+      "y": 12.5,
       "card": "Knight"
     },
     {
@@ -54,9 +63,9 @@
       "side": 0,
       "side_name": "blue",
       "slot": 2,
-      "x": 14.5,
-      "y": 8.5,
-      "card": "Fireball"
+      "x": 4.0,
+      "y": 17.2,
+      "card": "Log"
     }
   ],
   "engine": {

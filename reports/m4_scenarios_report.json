@@ -3,9 +3,9 @@
   "source": "gpusim",
   "engine": {
     "impl": "gpusim",
-    "commit": "ce7f41412527"
+    "commit": "20bbd03b5a96"
   },
-  "generated": "2026-09-15T22:19:20+00:00",
+  "generated": "2026-09-15T23:00:08+00:00",
   "data_dir": "/home/torromh_gmail_com/clash_royale_ai/fidelity/patched",
   "level": 11,
   "dt": 0.05,
@@ -406,7 +406,7 @@
       "name": "poison_zone",
       "desc": "M3.5 ticking zone vs the Java reference: blue poisons the red left princess lane; the red knight and minions walk through the zone (poison hits ground AND air)",
       "ticks": 1501,
-      "sha256": "eba174f9698272673b2571afd3792b4eea0864c23734c9d326073348a1727a2f",
+      "sha256": "ce148fe4aa6a386bcf810a4493a26344f4b32bcea52bbf741b64a650bb59044a",
       "checkpoints": [
         {
           "tick": 0,
@@ -489,7 +489,7 @@
       "name": "earthquake_zone",
       "desc": "M3.5 ticking zone (hitsAir false): the red knight takes earthquake ticks, the minions fly through unharmed; the princess tower takes the building bonus (x4.5) + crown %",
       "ticks": 1501,
-      "sha256": "f45ea7debf823818fb22b0a0c60b33469b72f84479f85a7aacc925ef6e9fa185",
+      "sha256": "eabd0922652ac2645fff5b0f9b029721b2a0b320944f4ce30e0e739a3189c246",
       "checkpoints": [
         {
           "tick": 0,
@@ -563,6 +563,89 @@
         "crowns": [
           0,
           1
+        ],
+        "winner": -1,
+        "units_alive": 0
+      }
+    },
+    {
+      "name": "log_roll",
+      "desc": "M3.6 The Log (spellAsDeploy two-stage chain): the deploy projectile spawns AT the deploy point (not the crown tower) and travels 3 game units, then the rolling sub-projectile (105 base, 10.1 tiles, minDistance 2.5 tiles) hits the red knight once with directional pushback, passes the flying red MegaMinion untouched (air immune) and lands 15 % crown damage on the red left princess tower",
+      "ticks": 1501,
+      "sha256": "dcadb8f118b4257c51825ac151783a71d2b32260a2b9bd248951dbd33401d39f",
+      "checkpoints": [
+        {
+          "tick": 0,
+          "t": 0.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10928.0
+        },
+        {
+          "tick": 300,
+          "t": 15.0,
+          "tower_hp_blue": 10928.0,
+          "tower_hp_red": 10888.0
+        },
+        {
+          "tick": 600,
+          "t": 30.0,
+          "tower_hp_blue": 7954.0,
+          "tower_hp_red": 10888.0
+        },
+        {
+          "tick": 900,
+          "t": 45.0,
+          "tower_hp_blue": 7954.0,
+          "tower_hp_red": 10888.0
+        },
+        {
+          "tick": 1200,
+          "t": 60.0,
+          "tower_hp_blue": 7954.0,
+          "tower_hp_red": 10888.0
+        },
+        {
+          "tick": 1500,
+          "t": 75.0,
+          "tower_hp_blue": 7954.0,
+          "tower_hp_red": 10888.0
+        }
+      ],
+      "first_damage": {
+        "blue": {
+          "tick": 338,
+          "t": 16.9,
+          "tower": "princess_blue_left",
+          "hp": 2676.0
+        },
+        "red": {
+          "tick": 147,
+          "t": 7.35,
+          "tower": "princess_red_left",
+          "hp": 3012.0
+        }
+      },
+      "unit_deaths": 2,
+      "final": {
+        "tower_hp": [
+          4824.0,
+          78.0,
+          3052.0,
+          4824.0,
+          3012.0,
+          3052.0
+        ],
+        "towers_alive": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "crowns": [
+          0,
+          0
         ],
         "winner": -1,
         "units_alive": 0

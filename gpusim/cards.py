@@ -78,6 +78,19 @@ class CardTable:
     spell_hits_air: torch.Tensor | None = None   # (C,) 1/0
     spell_hits_ground: torch.Tensor | None = None
     spell_speed: torch.Tensor | None = None      # (C,) tiles/s; > 0 = flying spell (projectile)
+    # spellAsDeploy chain (The Log, M3.6): the deploy projectile spawns a
+    # rolling piercing sub-projectile on impact (SpellFactory + ProjectileHitProcessor).
+    spell_fwd: torch.Tensor | None = None        # (C,) deploy-projectile forward travel, game units
+    spell_sub_present: torch.Tensor | None = None  # (C,) 1/0: has a spawnProjectile chain
+    spell_sub_dmg: torch.Tensor | None = None    # (C,) sub-projectile base damage (level 1)
+    spell_sub_speed: torch.Tensor | None = None  # (C,) sub speed, game units/s (float32-exact)
+    spell_sub_range: torch.Tensor | None = None  # (C,) piercing travel range, game units
+    spell_sub_radius: torch.Tensor | None = None  # (C,) hit radius, game units
+    spell_sub_mind: torch.Tensor | None = None   # (C,) min travel before hits, game units
+    spell_sub_push: torch.Tensor | None = None   # (C,) directional pushback, game units
+    spell_sub_crown: torch.Tensor | None = None  # (C,) crown-tower damage percent
+    spell_sub_hg: torch.Tensor | None = None     # (C,) 1/0 aoeToGround
+    spell_sub_ha: torch.Tensor | None = None     # (C,) 1/0 aoeToAir
     # ticking area-effect zones (poison/earthquake/tornado; M3.5)
     spell_life: torch.Tensor | None = None       # (C,) zone lifeDuration (s; 0 = one-shot)
     spell_hitspeed: torch.Tensor | None = None   # (C,) zone tick interval (s; 0 = one-shot)
@@ -98,6 +111,11 @@ def _norm(name: str) -> str:
     import re
 
     return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
+def _tiles_units(v) -> float:
+    """Java `GameUnits.tiles(x)` = round(x * 1000) game units (Math.round, half up)."""
+    return float(math.floor(float(v or 0.0) * 1000.0 + 0.5))
 
 
 def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
@@ -195,6 +213,36 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         # Flying spells (projectile-based): speed in tiles/s (raw value 60 = 1 tile/s)
         praw = float(pdata.get("speed", 0.0)) if pdata else 0.0
         t.spell_speed = _cat(t.spell_speed, praw / 60.0, device)
+
+        # spellAsDeploy chain (The Log, M3.6), ported 1:1 from SpellFactory
+        # (deploy projectile forward travel) + ProjectileHitProcessor.processSpawnProjectile
+        # (rolling sub-projectile) + ProjectileStats loading (tiles -> game units).
+        mind_u = _tiles_units(pdata.get("minDistance", 0.0) if pdata else 0.0)
+        # legacy arithmetic: forward = round(minDistance / UNITS_PER_TILE), default 3 tiles
+        fwd = (math.floor(mind_u / 1000.0 + 0.5) if mind_u > 0.0 else 3000.0)
+        sub_name = pdata.get("spawnProjectile") if pdata else None
+        sp = projectiles.get(sub_name, {}) if isinstance(sub_name, str) else {}
+        sub_speed_raw = float(sp.get("speed", 0.0)) if sp else 0.0
+        # hit radius: projectileRadius when present, else radius (both tiles in the data);
+        # ProjectileLoader converts to game units via tiles()
+        sub_radius_t = ((float(sp.get("projectileRadius", 0.0) or 0.0)
+                         or float(sp.get("radius", 0.0) or 0.0)) if sp else 0.0)
+        # ProjectileLoader: speed via GameUnits.rawSpeedToUnitsPerSecond (float32 math)
+        sub_speed_u = float(torch.tensor([sub_speed_raw * 1000.0], dtype=torch.float32)
+                            / torch.tensor([60.0], dtype=torch.float32))
+        sub_range_u = _tiles_units(sp.get("projectileRange", 0.0)) if sp else 0.0
+        sub_mind_u = _tiles_units(sp.get("minDistance", 0.0)) if sp else 0.0
+        t.spell_fwd = _cat(t.spell_fwd, float(fwd), device)
+        t.spell_sub_present = _cat(t.spell_sub_present, float(bool(sp)), device)
+        t.spell_sub_dmg = _cat(t.spell_sub_dmg, float(sp.get("damage", 0.0)) if sp else 0.0, device)
+        t.spell_sub_speed = _cat(t.spell_sub_speed, sub_speed_u, device)
+        t.spell_sub_range = _cat(t.spell_sub_range, float(sub_range_u), device)
+        t.spell_sub_radius = _cat(t.spell_sub_radius, _tiles_units(sub_radius_t), device)
+        t.spell_sub_mind = _cat(t.spell_sub_mind, float(sub_mind_u), device)
+        t.spell_sub_push = _cat(t.spell_sub_push, float(sp.get("pushback", 0.0) or 0.0), device)
+        t.spell_sub_crown = _cat(t.spell_sub_crown, float(sp.get("crownTowerDamagePercent", 0.0) or 0.0), device)
+        t.spell_sub_hg = _cat(t.spell_sub_hg, float(bool(sp.get("aoeToGround", False))) if sp else 0.0, device)
+        t.spell_sub_ha = _cat(t.spell_sub_ha, float(bool(sp.get("aoeToAir", False))) if sp else 0.0, device)
 
     assert t.costs is not None and t.unit_of_card is not None and t.spawn_count is not None and t.summon_delay is not None
     t.costs = t.costs.to(torch.float32)

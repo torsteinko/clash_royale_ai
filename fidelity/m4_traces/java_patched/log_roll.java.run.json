@@ -1,0 +1,74 @@
+{
+ "format": "m4-java-run-v1",
+ "name": "log_roll",
+ "seed": 7,
+ "ticks_per_step": 1,
+ "duration_ticks": 1500,
+ "bridge": "crforge gym-bridge (clash-training)",
+ "actions_ok": 3,
+ "actions_total": 3,
+ "evidence": [
+  {
+   "tick": 20,
+   "side": "red",
+   "card": "MegaMinion",
+   "slots_differ": [
+    0,
+    3
+   ]
+  },
+  {
+   "tick": 20,
+   "side": "red",
+   "card": "MegaMinion",
+   "slot": 3,
+   "x": 5.0,
+   "y": 23.0,
+   "elixir_delta": -2.9821,
+   "spent": true,
+   "ok": true
+  },
+  {
+   "tick": 80,
+   "side": "red",
+   "card": "Knight",
+   "slots_differ": [
+    3,
+    0
+   ]
+  },
+  {
+   "tick": 80,
+   "side": "blue",
+   "card": "Log",
+   "slots_differ": [
+    2,
+    1
+   ]
+  },
+  {
+   "tick": 80,
+   "side": "blue",
+   "card": "Log",
+   "slot": 1,
+   "x": 4.0,
+   "y": 14.8,
+   "elixir_delta": -1.9821,
+   "spent": true,
+   "ok": true
+  },
+  {
+   "tick": 80,
+   "side": "red",
+   "card": "Knight",
+   "slot": 0,
+   "x": 4.0,
+   "y": 19.5,
+   "elixir_delta": -2.9821,
+   "spent": true,
+   "ok": true
+  }
+ ],
+ "deterministic": true,
+ "passes": 2
+}

@@ -48,6 +48,24 @@ PROJ_HIT_SLACK_T = 0.0007071
 # Projectile.DEFAULT_SPEED = 15000 game units/s => 15 tiles/s
 DEFAULT_PROJ_SPEED_T = 15.0
 
+# SpellFactory.DEFAULT_DEPLOY_SPELL_FORWARD (3 tiles) and
+# ProjectileHitProcessor.DEFAULT_SPAWN_PROJECTILE_RANGE (10 tiles), game units
+DEPLOY_FWD_DEFAULT = 3000.0
+DEF_SPAWN_RANGE = 10000.0
+# KnockbackHelper: displacement duration / speed base (distance / maxTime)
+KNOCKBACK_DURATION = 0.5
+KNOCKBACK_MAX_TIME = 1.0
+# Position.SUBUNITS_PER_UNIT (fixed-point movement carry)
+SUBPU = 65536.0
+
+
+def _f32(v: float) -> float:
+    """Round a double to float32 (Java float semantics for scalar math)."""
+    return float(torch.tensor(v, dtype=torch.float32))
+
+
+DT32 = _f32(_f32(1.0) / _f32(20.0))  # GameEngine.DELTA_TIME = 1.0f/20 (0.05f), exact float32
+
 # Tower stats — exact from reference Tower.java + LevelScaling (DEFAULT_TOWER_LEVEL 11)
 T_KING_HP = 4824.0
 T_PRINCESS_HP = 3052.0
@@ -152,6 +170,30 @@ class SimState:
     p_tx: torch.Tensor           # (B, MAX_PROJ) last known target pos / destination x
     p_ty: torch.Tensor
     p_life: torch.Tensor         # (B, MAX_PROJ) seconds remaining
+
+    # spellAsDeploy sub-projectile chain + piercing projectiles (The Log, M3.6)
+    p_card: torch.Tensor         # (B, MAX_PROJ) long — source card idx (-1 none)
+    p_ox: torch.Tensor           # (B, MAX_PROJ) origin (deploy point for spellAsDeploy)
+    p_oy: torch.Tensor
+    p_pierce: torch.Tensor       # (B, MAX_PROJ) bool — piercing projectile
+    p_dirx: torch.Tensor         # (B, MAX_PROJ) piercing direction
+    p_diry: torch.Tensor
+    p_step: torch.Tensor         # (B, MAX_PROJ) per-tick move, game units (float32 semantics)
+    p_trv: torch.Tensor          # (B, MAX_PROJ) distance traveled, game units (float32 sum)
+    p_range: torch.Tensor        # (B, MAX_PROJ) piercing range, game units
+    p_mind: torch.Tensor         # (B, MAX_PROJ) min travel before hits register, game units
+    p_push: torch.Tensor         # (B, MAX_PROJ) pushback distance, game units
+    p_hg: torch.Tensor           # (B, MAX_PROJ) bool — hits ground/building
+    p_ha: torch.Tensor           # (B, MAX_PROJ) bool — hits air
+    p_fx: torch.Tensor           # (B, MAX_PROJ) fixed-point position, float64 sub-units
+    p_fy: torch.Tensor
+    p_hit: torch.Tensor          # (B, MAX_PROJ, MAX_UNITS + N_TOWERS) bool — hit-once marks
+
+    # knockback displacement (Movement.startKnockback / tickKnockback)
+    u_kb_time: torch.Tensor      # (B, MAX_UNITS) seconds remaining (float32)
+    u_kb_dx: torch.Tensor        # (B, MAX_UNITS) direction (unit vector)
+    u_kb_dy: torch.Tensor
+    u_kb_speed: torch.Tensor     # (B, MAX_UNITS) game units/s
 
     hand: torch.Tensor           # (B, 2, 4) card idx (-1 empty)
     cycle: torch.Tensor          # (B, 2, 8) the 8-card rotation queue
@@ -266,6 +308,26 @@ class BatchedCRSim:
             p_tx=torch.zeros(b, MAX_PROJ, device=dev),
             p_ty=torch.zeros(b, MAX_PROJ, device=dev),
             p_life=torch.zeros(b, MAX_PROJ, device=dev),
+            p_card=torch.full((b, MAX_PROJ), -1, dtype=torch.long, device=dev),
+            p_ox=torch.zeros(b, MAX_PROJ, device=dev),
+            p_oy=torch.zeros(b, MAX_PROJ, device=dev),
+            p_pierce=torch.zeros(b, MAX_PROJ, dtype=torch.bool, device=dev),
+            p_dirx=torch.zeros(b, MAX_PROJ, device=dev),
+            p_diry=torch.zeros(b, MAX_PROJ, device=dev),
+            p_step=torch.zeros(b, MAX_PROJ, device=dev),
+            p_trv=torch.zeros(b, MAX_PROJ, device=dev),
+            p_range=torch.zeros(b, MAX_PROJ, device=dev),
+            p_mind=torch.zeros(b, MAX_PROJ, device=dev),
+            p_push=torch.zeros(b, MAX_PROJ, device=dev),
+            p_hg=torch.zeros(b, MAX_PROJ, dtype=torch.bool, device=dev),
+            p_ha=torch.zeros(b, MAX_PROJ, dtype=torch.bool, device=dev),
+            p_fx=torch.zeros(b, MAX_PROJ, dtype=torch.float64, device=dev),
+            p_fy=torch.zeros(b, MAX_PROJ, dtype=torch.float64, device=dev),
+            p_hit=torch.zeros(b, MAX_PROJ, MAX_UNITS + N_TOWERS, dtype=torch.bool, device=dev),
+            u_kb_time=torch.zeros(b, MAX_UNITS, device=dev),
+            u_kb_dx=torch.zeros(b, MAX_UNITS, device=dev),
+            u_kb_dy=torch.zeros(b, MAX_UNITS, device=dev),
+            u_kb_speed=torch.zeros(b, MAX_UNITS, device=dev),
             hand=torch.full((b, 2, 4), -1, dtype=torch.long, device=dev),
             cycle=torch.full((b, 2, 8), -1, dtype=torch.long, device=dev),
             cycle_pos=torch.zeros(b, 2, dtype=torch.long, device=dev),
@@ -314,6 +376,14 @@ class BatchedCRSim:
             interval = self._stagger_ticks(ci) * TICK_DT
             for k in range(count):
                 ox, oy = offs[k % len(offs)] if offs else (0.0, 0.0)
+                # DeployFormation (TroopFactory): the data offsets are blue-side in
+                # the java frame (+y forward, +x right); red mirrors the formation
+                # (-dx, -dy). This sim's frame is y-flipped vs java, so blue applies
+                # (dx, -dy) and red (-dx, +dy) here.
+                if side == 0:
+                    oy = -oy
+                else:
+                    ox = -ox
                 xx, yy = float(x[e]) + ox, float(y[e]) + oy
                 # Java sync delay: the first unit exists SYNC_TROOP_T after the
                 # request (1.0 s countdown + one tick of pending visibility);
@@ -532,7 +602,8 @@ class BatchedCRSim:
             self._spawn_zone(e, side, ci, x, y, life, hitspeed)
             return
         if speed > 0.0:
-            self._spawn_spell_projectile(e, side, x, y, dmg, rad, crown, speed)
+            sad = float(self.t.card_spell_as_deploy[ci]) > 0.5
+            self._spawn_spell_projectile(e, side, ci, x, y, dmg, rad, crown, speed, sad)
         else:
             self._apply_spell_aoe(e, side, x, y, dmg, rad, crown)
 
@@ -566,18 +637,40 @@ class BatchedCRSim:
             dmg_t = dmg if crown == 0.0 else max(1.0, float(math.floor(dmg * (100.0 + crown) / 100.0)))
             s.tower_hp[e, hit_t] = (s.tower_hp[e, hit_t] - dmg_t).clamp(min=0.0)
 
-    def _spawn_spell_projectile(self, e: int, side: int, x: float, y: float,
-                                dmg: float, rad: float, crown: float, speed: float) -> None:
-        """Position-targeted spell projectile from the caster's crown tower."""
+    def _spawn_spell_projectile(self, e: int, side: int, ci: int, x: float, y: float,
+                                dmg: float, rad: float, crown: float, speed: float,
+                                spell_as_deploy: bool = False) -> None:
+        """Position-targeted spell projectile (Java SpellFactory.castSpell).
+
+        Standard spells fly from the caster's crown tower to the cast point.
+        spellAsDeploy spells (The Log) spawn AT the deploy point and travel
+        `forward` game units toward the enemy side — the preserved legacy
+        arithmetic ``round(minDistance / UNITS_PER_TILE)`` (3 game units for the
+        Log's 3-tile minDistance), default 3 tiles when minDistance is absent.
+        """
         s = self.s
         free = (~s.p_active[e]).nonzero(as_tuple=False).flatten()
         if free.numel() == 0:
             return  # overflow: drop (DIVERGENCES #10 policy)
         j = int(free[0])
-        sx, sy = KING_POS["blue"] if side == 0 else KING_POS["red"]
+        if spell_as_deploy:
+            sx, sy = float(x), float(y)
+            # blue advances toward -y in the sim frame (Java: +y), red +y
+            fwd = float(self.t.spell_fwd[ci]) / 1000.0
+            ty_off = fwd if side == 1 else -fwd
+            tx = math.floor(x * 1000.0 + 0.5) / 1000.0
+            ty = math.floor((y + ty_off) * 1000.0 + 0.5) / 1000.0
+        else:
+            sx, sy = KING_POS["blue"] if side == 0 else KING_POS["red"]
+            tx = math.floor(x * 1000.0 + 0.5) / 1000.0
+            ty = math.floor(y * 1000.0 + 0.5) / 1000.0
         s.p_active[e, j] = True
         s.p_is_spell[e, j] = True
+        s.p_pierce[e, j] = False
         s.p_side[e, j] = side
+        s.p_card[e, j] = int(ci)
+        s.p_ox[e, j] = sx
+        s.p_oy[e, j] = sy
         s.p_x[e, j] = sx
         s.p_y[e, j] = sy
         s.p_dmg[e, j] = dmg
@@ -585,9 +678,147 @@ class BatchedCRSim:
         s.p_radius[e, j] = rad
         s.p_crown[e, j] = crown
         s.p_target[e, j] = -1
-        s.p_tx[e, j] = math.floor(x * 1000.0 + 0.5) / 1000.0
-        s.p_ty[e, j] = math.floor(y * 1000.0 + 0.5) / 1000.0
+        s.p_tx[e, j] = tx
+        s.p_ty[e, j] = ty
         s.p_life[e, j] = 10.0
+
+    def _spawn_spell_sub(self, e: int, j: int, ci: int) -> None:
+        """Spawn the spellAsDeploy rolling sub-projectile (Java
+        ProjectileHitProcessor.processSpawnProjectile, single-projectile branch).
+
+        The impact point is the deploy projectile's destination; the direction is
+        computed from its origin (the deploy point). The sub-projectile is a
+        piercing projectile (projectileRange > 0) that hits every enemy entity in
+        its path once, with directional pushback and crown-tower damage reduction.
+        """
+        s = self.s
+        free = (~s.p_active[e]).nonzero(as_tuple=False).flatten()
+        if free.numel() == 0:
+            return  # overflow: drop (same policy as the projectile queues)
+        k = int(free[0])
+        t = self.t
+        hitx_u = math.floor(float(s.p_tx[e, j]) * 1000.0 + 0.5)
+        hity_u = math.floor(float(s.p_ty[e, j]) * 1000.0 + 0.5)
+        ox_u = math.floor(float(s.p_ox[e, j]) * 1000.0 + 0.5)
+        oy_u = math.floor(float(s.p_oy[e, j]) * 1000.0 + 0.5)
+        dx = float(hitx_u - ox_u)
+        dy = float(hity_u - oy_u)
+        dist = math.sqrt(dx * dx + dy * dy)
+        dirx = dx / dist if dist > 0.0 else 0.0
+        diry = dy / dist if dist > 0.0 else 1.0
+        rng = float(t.spell_sub_range[ci])
+        range_u = rng if rng > 0.0 else DEF_SPAWN_RANGE
+        rad_u = float(t.spell_sub_radius[ci])
+        # sub-projectile damage: LevelScaling.scaleCard(damage, spell level)
+        dmg = self._scaled_scalar(float(t.spell_sub_dmg[ci]))
+        # float32 per-tick step (Java: float speed * float deltaTime)
+        spd = float(t.spell_sub_speed[ci])
+        step = _f32(spd * DT32)
+        s.p_active[e, k] = True
+        s.p_is_spell[e, k] = True
+        s.p_pierce[e, k] = True
+        s.p_side[e, k] = int(s.p_side[e, j])
+        s.p_card[e, k] = -1
+        s.p_ox[e, k] = float(s.p_ox[e, j])
+        s.p_oy[e, k] = float(s.p_oy[e, j])
+        s.p_x[e, k] = hitx_u / 1000.0
+        s.p_y[e, k] = hity_u / 1000.0
+        s.p_fx[e, k] = hitx_u * SUBPU
+        s.p_fy[e, k] = hity_u * SUBPU
+        s.p_dmg[e, k] = dmg
+        s.p_speed[e, k] = spd / 1000.0  # tiles/s (display only; motion uses p_step)
+        s.p_radius[e, k] = rad_u / 1000.0
+        s.p_crown[e, k] = float(t.spell_sub_crown[ci])
+        s.p_push[e, k] = float(t.spell_sub_push[ci])
+        s.p_hg[e, k] = float(t.spell_sub_hg[ci]) > 0.5
+        s.p_ha[e, k] = float(t.spell_sub_ha[ci]) > 0.5
+        s.p_dirx[e, k] = dirx
+        s.p_diry[e, k] = diry
+        s.p_step[e, k] = step
+        s.p_trv[e, k] = 0.0
+        s.p_range[e, k] = range_u
+        s.p_mind[e, k] = float(t.spell_sub_mind[ci])
+        s.p_target[e, k] = -1
+        s.p_tx[e, k] = (hitx_u + math.floor(dirx * range_u + 0.5)) / 1000.0
+        s.p_ty[e, k] = (hity_u + math.floor(diry * range_u + 0.5)) / 1000.0
+        s.p_life[e, k] = 100.0
+        s.p_hit[e, k, :] = False
+
+    def _update_piercing(self, e: int, j: int) -> None:
+        """Piercing projectile tick (Java Projectile.updatePiercing +
+        PiercingHitDetector.processPiercingHits): move in the fixed direction
+        (fixed-point position carry + float32 travel sum), deactivate when the
+        range is exhausted (no hits that tick), then register hits once the
+        minDistance gate has been passed."""
+        s = self.s
+        step = float(s.p_step[e, j])
+        dxu = _f32(float(s.p_dirx[e, j]) * step)
+        dyu = _f32(float(s.p_diry[e, j]) * step)
+        s.p_fx[e, j] += math.floor(dxu * SUBPU + 0.5)
+        s.p_fy[e, j] += math.floor(dyu * SUBPU + 0.5)
+        trv = _f32(float(s.p_trv[e, j]) + step)
+        s.p_trv[e, j] = trv
+        if trv >= float(s.p_range[e, j]):
+            s.p_active[e, j] = False
+            return
+        if trv < float(s.p_mind[e, j]):
+            return
+        self._piercing_hits(e, j)
+
+    def _piercing_hits(self, e: int, j: int) -> None:
+        """One tick of piercing hit detection (Java PiercingHitDetector):
+        enemy units (ground/air filter), then enemy towers; each entity is hit
+        at most once per projectile; directional knockback for non-buildings."""
+        s = self.s
+        side = int(s.p_side[e, j])
+        px_u = math.floor((float(s.p_fx[e, j]) + SUBPU / 2.0) / SUBPU)
+        py_u = math.floor((float(s.p_fy[e, j]) + SUBPU / 2.0) / SUBPU)
+        rad_u = math.floor(float(s.p_radius[e, j]) * 1000.0 + 0.5)
+        dmg = float(s.p_dmg[e, j])
+        crown = float(s.p_crown[e, j])
+        hg = bool(s.p_hg[e, j])
+        ha = bool(s.p_ha[e, j])
+        # units (deployed buildings count as ground-level targets)
+        enemy = s.u_active[e] & (s.u_side[e] == (1 - side))
+        move = self.t.u_move_type[s.u_unit[e]]
+        ok_type = ((move == 1) & ha) | ((move != 1) & hg)
+        u_rad_u = torch.round(self._radius[s.u_unit[e]].double() * 1000.0)
+        dx = torch.round(s.u_x[e].double() * 1000.0) - px_u
+        dy = torch.round(s.u_y[e].double() * 1000.0) - py_u
+        hit = enemy & ok_type & ~s.p_hit[e, j, :MAX_UNITS] & ((dx * dx + dy * dy) <= (rad_u + u_rad_u) ** 2)
+        if bool(hit.any()):
+            for sl in hit.nonzero(as_tuple=False).flatten().tolist():
+                s.p_hit[e, j, sl] = True
+                s.u_hp[e, sl] = max(0.0, float(s.u_hp[e, sl]) - dmg)
+                if float(s.p_push[e, j]) > 0.0 and int(move[sl]) != 2:
+                    self._start_knockback(e, sl, float(s.p_dirx[e, j]),
+                                          float(s.p_diry[e, j]), float(s.p_push[e, j]))
+        # towers
+        t_rad_u = torch.where(self.tower_king,
+                              torch.full((N_TOWERS,), KING_RADIUS * 1000.0, device=self.device),
+                              torch.full((N_TOWERS,), T_RADIUS * 1000.0, device=self.device))
+        dx_t = torch.round(self.tower_pos[e, :, 0].double() * 1000.0) - px_u
+        dy_t = torch.round(self.tower_pos[e, :, 1].double() * 1000.0) - py_u
+        enemy_t = self.tower_side == (1 - side)
+        hit_t = (s.tower_alive[e] & enemy_t
+                 & ~s.p_hit[e, j, MAX_UNITS:MAX_UNITS + N_TOWERS]
+                 & ((dx_t * dx_t + dy_t * dy_t) <= (rad_u + t_rad_u) ** 2))
+        if bool(hit_t.any()):
+            for ti in hit_t.nonzero(as_tuple=False).flatten().tolist():
+                s.p_hit[e, j, MAX_UNITS + ti] = True
+                d = dmg if crown == 0.0 else max(1.0, float(math.floor(dmg * (100.0 + crown) / 100.0)))
+                s.tower_hp[e, ti] = max(0.0, float(s.tower_hp[e, ti]) - d)
+
+    def _start_knockback(self, e: int, sl: int, dirx: float, diry: float,
+                         distance: float) -> None:
+        """Java Movement.startKnockback(dirX, dirY, distance, 0.5, 1.0):
+        speed = distance / maxTime, displacement for 0.5 s; overrides any
+        in-progress knockback."""
+        s = self.s
+        s.u_kb_dx[e, sl] = dirx
+        s.u_kb_dy[e, sl] = diry
+        s.u_kb_speed[e, sl] = _f32(distance / KNOCKBACK_MAX_TIME)
+        s.u_kb_time[e, sl] = _f32(KNOCKBACK_DURATION)
 
     # ------------------------------------------------------------------ zones
     def _spawn_zone(self, e: int, side: int, ci: int, x: float, y: float,
@@ -787,6 +1018,8 @@ class BatchedCRSim:
         T = MAX_UNITS + N_TOWERS
         b = s.elixir.shape[0]
         t_alive, t_side, t_x, t_y, t_rad, t_move = self._target_pads()
+        # entities being knocked back do not attack (Java processEntityCombat)
+        kb = s.u_kb_time > 0
 
         # attacker-side tensors
         a_active = s.u_active & (s.u_deploy <= 0)
@@ -870,17 +1103,21 @@ class BatchedCRSim:
         s.u_attacking = s.u_attacking & ~cancel
         s.u_windup = torch.where(cancel, torch.zeros_like(s.u_windup), s.u_windup)
         # start a new attack sequence: windup = max(0, cooldown - accumulated load); load consumed
-        start = in_range & a_active & ~s.u_attacking & (s.u_atk <= 0)
+        start = in_range & a_active & ~s.u_attacking & (s.u_atk <= 0) & ~kb
         s.u_windup = torch.where(start, torch.clamp(self.t.u_cooldown[s.u_unit] - s.u_load, min=0), s.u_windup)
         s.u_load = torch.where(start, torch.zeros_like(s.u_load), s.u_load)
         s.u_attacking = s.u_attacking | start
+        # Java: a knocked-back entity resets any in-progress attack (windup 0)
+        # and does not attack this tick (its cooldown keeps ticking above)
+        s.u_attacking = s.u_attacking & ~kb
+        s.u_windup = torch.where(kb, torch.zeros_like(s.u_windup), s.u_windup)
 
         # execute attack: melee hits instantly; every ranged unit fires a flying
         # projectile (Java CombatSystem.fireRangedAttack: Projectile with the
         # combat's projectile stats, or the default 15 tiles/s when it has none).
         # Fire condition mirrors Java `isWindingUp() = windup > 0`: no epsilon —
         # the fp32 residue lands the same tick as the reference (#17 revisited).
-        fire = s.u_attacking & (s.u_windup <= 0) & in_range & a_active
+        fire = s.u_attacking & (s.u_windup <= 0) & in_range & a_active & ~kb
         if bool(fire.any()):
             dmg = self._dmg[s.u_unit]
             proj_speed = self.t.u_proj_speed[s.u_unit]
@@ -921,6 +1158,8 @@ class BatchedCRSim:
         j = int(free[0])
         s.p_active[e, j] = True
         s.p_is_spell[e, j] = False
+        s.p_pierce[e, j] = False
+        s.p_card[e, j] = -1
         s.p_side[e, j] = int(s.u_side[e, i])
         s.p_x[e, j] = math.floor(float(s.u_x[e, i]) * 1000.0 + 0.5) / 1000.0
         s.p_y[e, j] = math.floor(float(s.u_y[e, i]) * 1000.0 + 0.5) / 1000.0
@@ -943,6 +1182,8 @@ class BatchedCRSim:
         j = int(free[0])
         s.p_active[e, j] = True
         s.p_is_spell[e, j] = False
+        s.p_pierce[e, j] = False
+        s.p_card[e, j] = -1
         s.p_side[e, j] = int(self.tower_side[ti])
         s.p_x[e, j] = float(self.tower_pos[e, ti, 0])
         s.p_y[e, j] = float(self.tower_pos[e, ti, 1])
@@ -970,6 +1211,9 @@ class BatchedCRSim:
         for e, j in torch.nonzero(s.p_active, as_tuple=False).tolist():
             if not bool(s.p_active[e, j]):
                 continue  # deactivated earlier in this loop
+            if bool(s.p_pierce[e, j]):
+                self._update_piercing(e, j)
+                continue
             step = float(s.p_speed[e, j]) * dt
             if bool(s.p_is_spell[e, j]):
                 self._update_spell_projectile(e, j, step)
@@ -997,6 +1241,11 @@ class BatchedCRSim:
             self._apply_spell_aoe(e, int(s.p_side[e, j]), tx, ty,
                                   float(s.p_dmg[e, j]), float(s.p_radius[e, j]),
                                   float(s.p_crown[e, j]))
+            ci = int(s.p_card[e, j])
+            if ci >= 0 and float(self.t.card_spell_as_deploy[ci]) > 0.5:
+                # spellAsDeploy impact: the deploy projectile spawns the rolling
+                # sub-projectile on the same tick (Java ProjectileHitProcessor)
+                self._spawn_spell_sub(e, j, ci)
             s.p_active[e, j] = False
         else:
             r = step / dist
@@ -1125,14 +1374,27 @@ class BatchedCRSim:
         lattice exactly like the reference, so range checks land on the same ticks."""
         s, dev = self.s, self.device
         T = MAX_UNITS + N_TOWERS
+        # knockback displacement first (Java PhysicsSystem.applyMovement: knockback
+        # overrides all normal movement — for deploying units too; Position.move
+        # carries the fraction in the fixed-point accumulator)
+        kb = s.u_kb_time > 0
+        if bool(kb.any()):
+            for e, i in torch.nonzero(kb, as_tuple=False).tolist():
+                dxu = _f32(_f32(float(s.u_kb_dx[e, i]) * float(s.u_kb_speed[e, i])) * DT32)
+                dyu = _f32(_f32(float(s.u_kb_dy[e, i]) * float(s.u_kb_speed[e, i])) * DT32)
+                s.u_fx[e, i] += math.floor(dxu * SUBPU + 0.5)
+                s.u_fy[e, i] += math.floor(dyu * SUBPU + 0.5)
+            # Java tickKnockback: decrement each active knockback (may go slightly
+            # negative on the last tick; isKnockedBack is a strict > 0 test)
+            s.u_kb_time = torch.where(kb, s.u_kb_time - dt, s.u_kb_time)
         t_alive, t_side, t_x, t_y, t_rad, t_move = self._target_pads()
-        go_move = s.u_active & (s.u_deploy <= 0) & ~s.u_locked
+        go_move = s.u_active & (s.u_deploy <= 0) & ~s.u_locked & ~kb
         # buildings don't move
         go_move = go_move & (self.t.u_move_type[s.u_unit] != 2)
         has_target = s.u_tgt >= 0
         moving = go_move & has_target
         targetless = go_move & ~has_target
-        if not bool(moving.any()) and not bool(targetless.any()):
+        if not bool(moving.any()) and not bool(targetless.any()) and not bool(kb.any()):
             return
         # whole game-unit coordinates (float64, all values integer-valued)
         cur_x = s.u_x.double() * 1000.0

@@ -24,6 +24,10 @@ def _C(sim, name):
 
 SDECK = ["Fireball", "Zap", "Log", "Knight", "Archer", "Giant", "Musketeer", "Cannon"]
 
+# M3.6 Log tests: the deck's first four are the opening hand (Log at slot 2,
+# Knight slot 3, MegaMinion slot 0 — same ordering the log_roll scenario uses)
+LOG_DECK = ["MegaMinion", "Fireball", "Log", "Knight", "Musketeer", "Giant", "Archer", "Zap"]
+
 
 def _deck_spell(sim):
     return [_C(sim, n) for n in SDECK]
@@ -219,6 +223,134 @@ def test_earthquake_zone_building_bonus():
     sim.tick(5)
     assert abs(float(sim.s.tower_hp[0, 4]) - (3052.0 - 30 * 20.0)) < 1e-3
     assert not bool(sim.s.z_active.any()), "earthquake zone must expire after 3 s"
+
+
+def test_log_spell_as_deploy_chain_ground_hit():
+    """M3.6: The Log is spellAsDeploy — the deploy projectile spawns AT the cast
+    point (never the crown tower) and travels `forward` = 3 game units, then the
+    rolling piercing sub-projectile rolls 10.1 tiles at raw speed 200 (float32:
+    166.6666717529297 game units per tick).
+
+    Timeline (Log cast between ticks 0/1, red knight deployed at tick 0: spawn
+    tick 21, deploy until tick 41): the cast fires during tick 20, the roll spawns
+    the same tick and starts moving at tick 21. The 2.5-tile minDistance gate
+    opens on the 15th motion tick (tick 35 — the float32 travel sum lands exactly
+    on 2500.0). The knight at (4.0, 12.8) first comes within the 2.45-tile hit
+    radius at tick 34; the gate must block that hit and let the single hit land
+    at tick 35: scaleCard(105) = 268 damage, directional pushback 700 (35 game
+    units per tick for 10 ticks), roll deactivates at range end (tick 81)."""
+    sim = _sim(1)
+    deck = [_C(sim, n) for n in LOG_DECK]
+    sim.set_deck(0, deck)
+    sim.set_deck(1, deck)
+    kni = _C(sim, "Knight")
+    sim.deploy(1, torch.tensor([kni]), torch.tensor([4.0]), torch.tensor([12.8]))
+    ok = sim.play(0, 2, torch.tensor([4.0]), torch.tensor([17.05]))
+    assert ok.tolist() == [True], "log (2 elixir) must play"
+    s = sim.s
+    kn = 0  # unit slot of the knight (first placed)
+    sim.tick(20)
+    # cast fired at tick 20: the roll exists AT the deploy point + 3 units forward
+    rolls = [j for j in range(s.p_active.shape[1])
+             if bool(s.p_active[0, j]) and bool(s.p_pierce[0, j])]
+    assert len(rolls) == 1, "exactly one rolling projectile after the sync"
+    j = rolls[0]
+    assert float(s.p_fx[0, j]) / 65536 == 4000.0, "roll starts at the deploy point x"
+    assert float(s.p_fy[0, j]) / 65536 == 17047.0, "roll starts 3 game units forward of the cast point"
+    assert abs(float(s.p_ox[0, j]) * 1000 - 4000) < 1e-3  # origin = deploy point
+    assert abs(float(s.p_oy[0, j]) * 1000 - 17050) < 1e-3
+    assert float(s.p_step[0, j]) == 166.6666717529297, "float32 speed*dt step"
+    assert float(s.p_range[0, j]) == 10100.0 and float(s.p_mind[0, j]) == 2500.0
+    assert float(s.p_dmg[0, j]) == 268.0, "floor(105 * 2.56) at level 11"
+    assert float(s.p_diry[0, j]) == -1.0  # blue rolls toward the enemy side
+    sim.tick(13)  # -> tick 33: knight spawned (tick 21) in its deploy
+    hp0 = float(s.u_hp[0, kn])
+    assert abs(hp0 - 1766.0) < 1e-3, f"knight hp={hp0}"
+    sim.tick(1)  # -> tick 34: first tick inside the hit radius, gate still closed
+    assert float(s.u_hp[0, kn]) == hp0, "no hits before minDistance (2500) is traveled"
+    sim.tick(1)  # -> tick 35: gate opens, single hit lands
+    assert abs(float(s.u_hp[0, kn]) - (hp0 - 268.0)) < 1e-3
+    assert float(s.u_kb_time[0, kn]) > 0.0, "directional knockback applies"
+    # knockback: 700 / 1.0 = 700 units/s for 0.5 s = 35 units/tick, 10 ticks
+    sim.tick(9)  # -> tick 44: 10 knockback ticks total (35..44)
+    assert float(s.u_kb_time[0, kn]) <= 0.0
+    assert abs(float(s.u_y[0, kn]) - 12.45) < 1e-6, f"y={float(s.u_y[0, kn])}"
+    sim.tick(1)  # -> tick 45: walking resumes (+0.05)
+    assert abs(float(s.u_y[0, kn]) - 12.50) < 1e-6
+    # no second hit (hit-once per entity) and hp stable through the roll's life
+    sim.tick(36)  # -> tick 81: roll deactivates at range end (61st motion tick)
+    assert float(s.u_hp[0, kn]) == hp0 - 268.0, "each entity is hit at most once"
+    assert not bool(s.p_active[0, j]), "roll deactivates at range end (~tick 81)"
+    assert abs(float(s.p_fy[0, j]) / 65536 - 6880.0) < 2.0, \
+        f"final whole-unit y={float(s.p_fy[0, j]) / 65536}"
+
+
+def test_log_air_immune_and_crown_tower_damage():
+    """M3.6: the rolling log (aoeToGround, hitsAir false) passes the flying red
+    MegaMinion in its path without touching it, and lands 15 % crown damage on
+    the red left princess tower: floor(268 * (100 - 85) / 100) = 40."""
+    sim = _sim(1)
+    deck = [_C(sim, n) for n in LOG_DECK]
+    sim.set_deck(0, deck)
+    sim.set_deck(1, deck)
+    mm = _C(sim, "MegaMinion")
+    sim.deploy(1, torch.tensor([mm]), torch.tensor([5.0]), torch.tensor([9.0]))
+    ok = sim.play(0, 2, torch.tensor([4.0]), torch.tensor([17.05]))
+    assert ok.tolist() == [True]
+    s = sim.s
+    hp_seen = None
+    min_dist = 1e18
+    for _ in range(81):  # through the full roll lifetime (tick 81)
+        sim.tick(1)
+        rolls = [j for j in range(s.p_active.shape[1])
+                 if bool(s.p_active[0, j]) and bool(s.p_pierce[0, j])]
+        if not rolls:
+            continue
+        j = rolls[0]
+        rx = float(s.p_fx[0, j]) / 65536
+        ry = float(s.p_fy[0, j]) / 65536
+        for sl in range(64):
+            if bool(s.u_active[0, sl]) and int(s.u_side[0, sl]) == 1:
+                d = ((float(s.u_x[0, sl]) * 1000 - rx) ** 2
+                     + (float(s.u_y[0, sl]) * 1000 - ry) ** 2) ** 0.5
+                min_dist = min(min_dist, d)
+                hp = float(s.u_hp[0, sl])
+                assert hp_seen is None or hp >= hp_seen, \
+                    f"air unit slot {sl} must not take log damage"
+                hp_seen = hp
+    assert hp_seen is not None, "the MegaMinion must be in the air"
+    assert min_dist <= 2550.0, f"air unit must have been inside the hit radius: {min_dist}"
+    # crown-tower damage: exactly 40 (15 % of 268), landed while the roll passes
+    assert abs(float(s.tower_hp[0, 4]) - (3052.0 - 40.0)) < 1e-3, \
+        f"red left princess: {float(s.tower_hp[0, 4])}"
+
+
+def test_knockback_resets_attack_and_blocks_attacks():
+    """M3.6 (Java LogSpellTest.knockback_resetsAttackAnimation): an entity being
+    knocked back resets its in-progress attack and cannot attack while the
+    displacement lasts (CombatSystem.processEntityCombat early return)."""
+    sim = _sim(1)
+    deck = [_C(sim, n) for n in LOG_DECK]
+    sim.set_deck(0, deck)
+    sim.set_deck(1, deck)
+    kni = _C(sim, "Knight")
+    sim.deploy(0, torch.tensor([kni]), torch.tensor([4.0]), torch.tensor([15.0]))
+    sim.deploy(1, torch.tensor([kni]), torch.tensor([4.0]), torch.tensor([12.0]))
+    s = sim.s
+    red = 1  # red knight spawned into slot 1 after the blue one in slot 0
+    for _ in range(200):
+        sim.tick(1)
+        if bool(s.u_attacking[0, red]):
+            break
+    assert bool(s.u_attacking[0, red]), "red knight must reach attack windup"
+    sim._start_knockback(0, red, 0.0, -1.0, 700.0)
+    blue_hp = float(s.u_hp[0, 0])
+    sim.tick(1)
+    assert not bool(s.u_attacking[0, red]), "attack state must be reset by knockback"
+    assert float(s.u_windup[0, red]) == 0.0
+    sim.tick(9)  # remaining knockback ticks
+    assert float(s.u_hp[0, 0]) == blue_hp, "no attack lands during the knockback"
+    assert float(s.u_kb_time[0, red]) <= 0.0
 
 
 def test_full_cycle_draw_order_no_empty_slots():

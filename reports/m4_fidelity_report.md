@@ -7,14 +7,15 @@ wrapper** (the M0-spec data used by both sides) — traces in
 
 ## Method
 
-Five fixed scenarios (`duel_knight`, `duel_musketeer`, `tower_press`,
-`spell_hit`, `push_left`) are replayed 1:1 on both engines from the same
-manifest (`fidelity/m4_traces/<name>.scenario.json`, trace format `m4-trace-v1`,
+Eight fixed scenarios (`duel_knight`, `duel_musketeer`, `tower_press`,
+`spell_hit`, `push_left`, `poison_zone`, `earthquake_zone`, `log_roll`) are
+replayed 1:1 on both engines from the same manifest
+(`fidelity/m4_traces/<name>.scenario.json`, trace format `m4-trace-v1`,
 1500 ticks à 0.05 s, seed 7, `ticks_per_step=1`). The traces are compared with
 
     python3 fidelity/m4_scenarios.py compare <java>.jsonl <gpusim>.jsonl
 
-## Result — all five traces are byte-identical to the reference
+## Result — the original five traces and log_roll are byte-identical to the reference
 
 | scenario        | gpusim vs java_patched            |
 |-----------------|-----------------------------------|
@@ -23,6 +24,7 @@ manifest (`fidelity/m4_traces/<name>.scenario.json`, trace format `m4-trace-v1`,
 | tower_press     | `cmp` identical                   |
 | spell_hit       | `cmp` identical                   |
 | push_left       | `cmp` identical                   |
+| log_roll        | `cmp` identical (M3.6, addendum below) |
 | poison_zone     | zone damage exact; movement soft-differs (buff slow, #23) |
 | earthquake_zone | zone damage exact; movement soft-differs (buff slow, #23) |
 
@@ -39,9 +41,40 @@ tick, caused by the **buff slow** that gpusim does not model
 reference, so trajectories drift after zone entry and later events shift.
 Zone damage derivation/timing itself is java-exact.
 
+### M3.6 The Log (log_roll)
+
+Added in this pass (8 scenarios total). The Log is spellAsDeploy: the deploy
+projectile spawns AT the cast point and travels 3 game units toward the enemy
+side (the reference's preserved legacy `round(minDistance / 1000)` arithmetic),
+then spawns the rolling piercing sub-projectile (raw speed 200 → float32
+166.6666717529297 units/tick, range 10.1 tiles, hit radius 1.95 + collision
+radius, minDistance 2.5 tiles, pushback 700, crown −85). The trace is
+`cmp`-identical: the red knight takes exactly one 268 hit (scaleCard(105) at
+level 11) on tick 115 — the min-distance gate tick; a gate-less model would
+hit on tick 113 — is pushed back along the roll direction (35 game units/tick
+for 10 ticks, `u_kb_time` 0.5 s), the flying MegaMinion crossing the roll's
+path takes no damage (aoeToGround only), and the red left princess tower takes
+the 15 % crown damage (40) at tick 147. The roll deactivates at range end
+(61 motion ticks).
+
+### M3.6 fixes made along the way
+
+1. **Deploy formation offsets** (`TroopFactory.createTroop`): red mirrors the
+   formation `(-dx, -dy)` in the java frame, and the sim frame is y-flipped —
+   `deploy()` now applies `(dx, -dy)` for blue / `(-dx, +dy)` for red. Found
+   because the reference spawned red minions at the mirrored offsets.
+2. **Trace unit names**: gpusim wrote the card name ("minions"); the reference
+   runner writes the unit name ("minion"). `_serialize_env` now emits unit
+   names with the java-side normalization.
+3. A first log_roll draft used 3 Minions for the air-immunity check; the java
+   reference separates clustered AIR units every tick (air-air collisions) while
+   gpusim does not (#3), so their trajectories drift after spawn. The scenario
+   now uses the single-unit MegaMinion; multi-unit clusters stay outside the
+   byte-verified set until collisions are ported (post-M5 per the checklist).
+
 Determinism: two full gpusim passes are byte-identical (`reports/m4_scenarios_report.md`).
-Compare tool: for the five original scenarios `first_divergence_tick = None`, all
-`max_abs_diff` fields 0.0; the two zone scenarios diverge only via the documented
+Compare tool: for the original five scenarios and log_roll `first_divergence_tick = None`,
+all `max_abs_diff` fields 0.0; the two zone scenarios diverge only via the documented
 buff-slow movement (#23).
 
 ## Thresholds
@@ -78,9 +111,11 @@ replays, `reports/m4_replay_findings.md`).
 ## Known deviations (outside the scenario set)
 
 * `DIVERGENCES.md` stays the authoritative list. Open items at this revision:
-  ticking zones (M3.5, next), Log roll model (M3.6), non-homing projectiles
-  (#14), scatter/pierce (#16), unit collision/occupancy (#1/#3 — accepted
-  until M5 if tolerances hold), spawn overflow (#10).
+  non-homing/arc projectiles (#14), scatter/pierce/returning projectiles (#16),
+  unit collision/occupancy (#1/#3 — accepted until M5; observed as per-tick
+  air-air separation in multi-unit deploys, which keeps those out of the
+  byte-verified set), spawn overflow (#10), buff system (#23 — the reason the
+  zone scenarios stay soft).
 * #22 (recorded-replay diffs, real-client capture): the simulator-vs-simulator
   gate above is fully exact; the recording-based diff is re-run in this pass
   (see `reports/m4_replay_diff.*`). A recording is an *observation* of the real
@@ -93,11 +128,12 @@ replays, `reports/m4_replay_findings.md`).
 ```bash
 # gpusim side (regenerates traces + report)
 python3 fidelity/m4_scenarios.py run
-for n in duel_knight duel_musketeer tower_press spell_hit push_left; do
+for n in duel_knight duel_musketeer tower_press spell_hit push_left log_roll; do
   python3 fidelity/m4_scenarios.py compare \
     fidelity/m4_traces/$n.gpusim.jsonl fidelity/m4_traces/java_patched/$n.java.jsonl
 done
-# Java side (on clash-training; wrapper = patched M0 data)
-~/venvs/clash/bin/python fidelity/m4_scenarios_java.py \
-  --scenarios-dir ~/m4run/scenarios --out ~/m4run/out --seed 7 --passes 2
+# Java side (on clash-training; wrapper = patched M0 data shadow classpath)
+~/venvs/clash/bin/python ~/m4run/m4_scenarios_java.py \
+  --scenarios-dir ~/m4run/scenarios --out ~/m4run/out_patched --seed 7 --passes 2 \
+  --bridge-bin ~/m4run/gym-bridge-patched            # --only log_roll for a single scenario
 ```

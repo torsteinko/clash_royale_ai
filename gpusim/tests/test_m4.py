@@ -174,6 +174,32 @@ def test_push_left_tower_falls_and_hp_floor():
     assert recs[-1]["cr"] == [1, 0] and recs[-1]["w"] == -1
 
 
+def test_log_roll_spell_as_deploy_chain():
+    """M3.6 (log_roll): The Log deploys at the cast point; the rolling
+    sub-projectile hits the red knight once (scaleCard(105) = 268) with
+    directional pushback (35 game units/tick for 10 ticks), never touches the
+    flying minions, and lands 15 % crown damage (40) on the red left princess.
+    Verified byte-identical against the java_patched trace (see
+    reports/m4_fidelity_report.md)."""
+    runs, _ = _runs()
+    recs = runs["log_roll"]["records"]
+    assert _present(recs, 1, "knight")[0] == 101  # red deploy at tick 80 -> 101
+    ev = _unit_events(recs, 1, "knight")
+    assert ev[0] == (115, 268.0), f"log hit: {ev[0]}"
+    # knockback: the hit tick drops y by 0.035 tiles for 10 ticks (700/1.0 * 0.5)
+    ky = {r["i"]: [u["y"] for u in r.get("u", [])
+                   if u["s"] == 1 and u["c"] == "knight"][0] for r in recs if
+          any(u["s"] == 1 and u["c"] == "knight" for u in r.get("u", []))}
+    assert ky[114] == 12.5 and ky[115] == 12.465 and ky[124] == 12.15
+    assert ky[125] == 12.2, "walking resumes after the knockback ends"
+    # air immunity: the MegaMinion's only damage is blue tower fire (109)
+    mev = _unit_events(recs, 1, "megaminion")
+    assert mev and all(abs(d - 109.0) < 0.05 and t >= 236 for t, d in mev), mev
+    # crown-tower damage: exactly one 40-damage event on the red left princess
+    tev = _tower_events(recs, 4)
+    assert tev == [(147, 40.0)], tev
+
+
 def test_compare_tool_detects_first_divergence():
     runs, _ = _runs()
     text = runs["duel_knight"]["text"]

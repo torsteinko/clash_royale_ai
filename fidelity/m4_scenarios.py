@@ -93,6 +93,14 @@ ZONE_DECK = ("Knight", "Poison", "Earthquake", "Minions", "Fireball", "Giant",
              "Musketeer", "Zap")  # ordered so both the gpusim hand (deck[0:4]) and the
              # java-shuffled hands (java_random, seeds 7/8) hold every played card
 
+# M3.6 The Log: blue needs the Log in hand (java seed 7 shuffle: [MegaMinion,
+# Log, Archer, Fireball]); red needs MegaMinion (t20) and Knight (t80) in hand
+# (seed 8: [Knight, Zap, Archer, MegaMinion]). gpusim slots: Log deck[2],
+# MegaMinion deck[0], Knight deck[3] — verified with fidelity/java_random.py.
+# The air unit is single-unit (MegaMinion): a multi-unit air card would drift
+# via the air-air unit collisions the sim does not model (DIVERGENCES #3).
+LOG_DECK = ("MegaMinion", "Fireball", "Log", "Knight", "Musketeer", "Giant", "Archer", "Zap")
+
 
 SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
@@ -149,10 +157,22 @@ SCENARIOS: tuple[Scenario, ...] = (
          Action(60, 0, 2, 3.5, 7.0, "Earthquake")),
         deck=ZONE_DECK,
     ),
+    Scenario(
+        "log_roll",
+        "M3.6 The Log (spellAsDeploy two-stage chain): the deploy projectile spawns AT the "
+        "deploy point (not the crown tower) and travels 3 game units, then the rolling "
+        "sub-projectile (105 base, 10.1 tiles, minDistance 2.5 tiles) hits the red knight "
+        "once with directional pushback, passes the flying red MegaMinion untouched (air "
+        "immune) and lands 15 % crown damage on the red left princess tower",
+        (Action(20, 1, 0, 5.0, 9.0, "MegaMinion"),
+         Action(80, 1, 3, 4.0, 12.5, "Knight"),
+         Action(80, 0, 2, 4.0, 17.2, "Log")),
+        deck=LOG_DECK,
+    ),
 )
 
 _HIST_KEYS = ("time", "elixir", "tower_hp", "tower_alive", "crowns", "game_over",
-              "winner", "u_active", "u_side", "u_card", "u_x", "u_y", "u_hp")
+              "winner", "u_active", "u_side", "u_card", "u_unit", "u_x", "u_y", "u_hp")
 
 
 def _snapshot(s) -> dict:
@@ -225,9 +245,17 @@ def run_scenarios(data_dir: str | Path | None = None,
 
     runs = {}
     for ei, sc in enumerate(SCENARIOS):
-        records = _serialize_env(hist, ei, sim.t.names)
+        records = _serialize_env(hist, ei, sim.t.unit_names)
         runs[sc.name] = {"records": records, "text": _trace_text(records)}
     return runs
+
+
+def _norm_name(s: str) -> str:
+    """Trace unit-name normalization (same rule as the java-side runner: strip
+    everything but a-z0-9, lowercase)."""
+    import re
+
+    return re.sub(r"[^a-z0-9]", "", str(s).lower())
 
 
 def _trace_text(records: list[dict]) -> str:
@@ -254,7 +282,7 @@ def _serialize_env(hist: list[dict], e: int, names: list[str]) -> list[dict]:
         if slots:
             units = [{
                 "s": int(snap["u_side"][e, sl]),
-                "c": names[int(snap["u_card"][e, sl])].lower(),
+                "c": _norm_name(names[int(snap["u_unit"][e, sl])]),
                 "x": _r(snap["u_x"][e, sl], 3),
                 "y": _r(snap["u_y"][e, sl], 3),
                 "hp": _r(snap["u_hp"][e, sl], 2),
