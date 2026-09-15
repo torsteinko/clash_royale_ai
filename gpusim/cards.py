@@ -51,6 +51,13 @@ class CardTable:
     u_proj_radius: torch.Tensor | None = None    # projectile hit radius, tiles
     u_loadtime: torch.Tensor | None = None       # hidden loadTime stat (windup pre-charge cap)
 
+    card_types: torch.Tensor | None = None       # (C,) 0=TROOP 1=SPELL 2=BUILDING 3=HERO
+    spell_radius: torch.Tensor | None = None     # (C,) tiles (0 for non-spells)
+    spell_damage: torch.Tensor | None = None     # (C,) base damage (level 1)
+    spell_crown_pct: torch.Tensor | None = None  # (C,) e.g. -70 = deals 30% to crown towers
+    spell_hits_air: torch.Tensor | None = None   # (C,) 1/0
+    spell_hits_ground: torch.Tensor | None = None
+
     card_index: dict = field(default_factory=dict)   # norm name -> card idx
     unit_index: dict = field(default_factory=dict)   # norm name -> unit idx
 
@@ -113,6 +120,19 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         t.summon_delay = _cat(t.summon_delay, float(c.get("summonDeployDelay", 0.0)), device)
         offs = c.get("formationOffsets") or [[0.0, 0.0]]
         t.formation_offsets.append([(float(x), float(y)) for x, y in offs])
+        # card type + spell fields
+        ctype = {"TROOP": 0, "SPELL": 1, "BUILDING": 2, "HERO": 3}.get(str(c.get("type", "TROOP")).upper(), 0)
+        t.card_types = _cat(t.card_types, ctype, device)
+        ae = c.get("areaEffect") or {}
+        pdata = projectiles.get(c.get("projectile"), {}) if c.get("projectile") else {}
+        radius = c.get("radius", ae.get("radius", pdata.get("radius", 0.0)))
+        damage = ae.get("damage", pdata.get("damage", 0.0))
+        crown = ae.get("crownTowerDamagePercent", pdata.get("crownTowerDamagePercent", 0.0))
+        t.spell_radius = _cat(t.spell_radius, float(radius or 0.0), device)
+        t.spell_damage = _cat(t.spell_damage, float(damage or 0.0), device)
+        t.spell_crown_pct = _cat(t.spell_crown_pct, float(crown or 0.0), device)
+        t.spell_hits_air = _cat(t.spell_hits_air, float(ae.get("hitsAir", True)), device)
+        t.spell_hits_ground = _cat(t.spell_hits_ground, float(ae.get("hitsGround", True)), device)
 
     assert t.costs is not None and t.unit_of_card is not None and t.spawn_count is not None and t.summon_delay is not None
     t.costs = t.costs.to(torch.float32)
@@ -121,7 +141,9 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
     t.summon_delay = t.summon_delay.to(torch.float32)
     for name in ("u_health", "u_damage", "u_cooldown", "u_speed", "u_range", "u_sight",
                  "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type",
-                 "u_proj_speed", "u_proj_radius", "u_loadtime"):
+                 "u_proj_speed", "u_proj_radius", "u_loadtime",
+                 "card_types", "spell_radius", "spell_damage", "spell_crown_pct",
+                 "spell_hits_air", "spell_hits_ground"):
         tensor = getattr(t, name)
         assert tensor is not None
         setattr(t, name, tensor.to(torch.float32))

@@ -54,6 +54,7 @@ BOUNDARY_EPS_T = 0.1
 KING_POS = {"blue": (9.0, 29.0), "red": (9.0, 3.0)}
 PRINCESS_POS = {"blue": [(3.5, 25.5), (14.5, 25.5)], "red": [(3.5, 6.5), (14.5, 6.5)]}
 
+SIDE_HALF_Y = 16.0       # blue deploys at y >= 16, red at y <= 16 (river at 15-17)
 RANGED_THRESHOLD = 2.0   # Combat.RANGED_THRESHOLD: range >= 2 tiles => ranged
 TARGET_RETENTION = 1.5   # TargetingSystem.TARGET_RETENTION_RANGE_MULTIPLIER
 
@@ -99,6 +100,10 @@ class SimState:
     p_tx: torch.Tensor           # (B, MAX_PROJ) last known target pos
     p_ty: torch.Tensor
     p_life: torch.Tensor         # (B, MAX_PROJ) seconds remaining
+
+    hand: torch.Tensor           # (B, 2, 4) card idx (-1 empty)
+    cycle: torch.Tensor          # (B, 2, 8) the 8-card rotation queue
+    cycle_pos: torch.Tensor      # (B, 2) long
 
     @property
     def batch_size(self) -> int:
@@ -170,6 +175,9 @@ class BatchedCRSim:
             p_tx=torch.zeros(b, MAX_PROJ, device=dev),
             p_ty=torch.zeros(b, MAX_PROJ, device=dev),
             p_life=torch.zeros(b, MAX_PROJ, device=dev),
+            hand=torch.full((b, 2, 4), -1, dtype=torch.long, device=dev),
+            cycle=torch.full((b, 2, 8), -1, dtype=torch.long, device=dev),
+            cycle_pos=torch.zeros(b, 2, dtype=torch.long, device=dev),
         )
         return self.s
 
@@ -234,6 +242,104 @@ class BatchedCRSim:
         s.spawn_timer[e, side, j] = k * float(self.t.summon_delay[ci]) + TICK_DT
         s.spawn_pos[e, side, j, 0] = xx
         s.spawn_pos[e, side, j, 1] = yy
+
+    # ------------------------------------------------------- hand / card cycle
+    def set_deck(self, side: int, card_idxs: list[int]) -> None:
+        """Set the 8-card deck for every env on `side` (hand = first 4, cycle = rest)."""
+        assert len(card_idxs) == 8
+        s = self.s
+        for e in range(self.b):
+            for k, ci in enumerate(card_idxs):
+                if k < 4:
+                    s.hand[e, side, k] = ci
+                else:
+                    s.cycle[e, side, k - 4] = ci
+            s.cycle_pos[e, side] = 0
+
+    def _zone_ok(self, side: int, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """Deployment zone rule: own half; enemy-side pocket opens when their princess falls."""
+        s = self.s
+        if side == 0:
+            base = y >= SIDE_HALF_Y
+            pocket = (~s.tower_alive[:, 4] & (x < 9.0)) | (~s.tower_alive[:, 5] & (x >= 9.0))
+        else:
+            base = y <= SIDE_HALF_Y
+            pocket = (~s.tower_alive[:, 1] & (x < 9.0)) | (~s.tower_alive[:, 2] & (x >= 9.0))
+        return base | pocket
+
+    def play(self, side: int, slot: int, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """Play hand-slot `slot` for `side` in every env (spells: anywhere; troops: own half).
+
+        Returns a (B,) success mask. On success the played card rotates to the back.
+        """
+        s, dev = self.s, self.device
+        assert side in (0, 1) and 0 <= slot < 4
+        card = s.hand[:, side, slot]
+        valid = card >= 0
+        cclamp = card.clamp(0, len(self.t.names) - 1)
+        is_spell = valid & (self.t.card_types[cclamp] == 1)
+
+        # troops: zone check + standard deploy path (handles cost + spawning)
+        troop_ok = valid & ~is_spell & self._zone_ok(side, x, y)
+        troop_card = torch.where(troop_ok, card, torch.full_like(card, -1))
+        ok_troop = self.deploy(side, troop_card, x, y)
+
+        # spells: cast (anywhere on the arena)
+        ok_spell = torch.zeros_like(valid)
+        cast_mask = valid & is_spell
+        if bool(cast_mask.any()):
+            ok_spell = self._cast_spell(side, card, x, y, cast_mask)
+
+        ok = ok_troop | ok_spell
+        for e in torch.nonzero(ok, as_tuple=False).flatten().tolist():
+            pos = int(s.cycle_pos[e, side]) % 8
+            played = int(s.hand[e, side, slot])
+            s.hand[e, side, slot] = s.cycle[e, side, pos]
+            s.cycle[e, side, pos] = played
+            s.cycle_pos[e, side] += 1
+        return ok
+
+    def _cast_spell(self, side: int, card: torch.Tensor, x: torch.Tensor,
+                    y: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """Instant area spell: damage enemy units + towers in radius (crown-tower % applied)."""
+        s, dev = self.s, self.device
+        cclamp = card.clamp(0, len(self.t.names) - 1)
+        cost = self._costs[cclamp]
+        fire = mask & (s.elixir[:, side] >= cost - 1e-6)
+        if not bool(fire.any()):
+            return fire
+        s.elixir[:, side] = torch.where(fire, s.elixir[:, side] - cost, s.elixir[:, side])
+
+        dmg = (self.t.spell_damage[cclamp] * self.fac)          # level-scaled
+        rad = self.t.spell_radius[cclamp]
+        hits_air = self.t.spell_hits_air[cclamp] > 0.5
+        hits_ground = self.t.spell_hits_ground[cclamp] > 0.5
+
+        # enemy units (incl. buildings): in-radius by center distance + radii
+        enemy = s.u_active & (s.u_side == 1 - side)
+        dx = s.u_x - x.unsqueeze(1)
+        dy = s.u_y - y.unsqueeze(1)
+        d2 = dx * dx + dy * dy
+        eff = (rad.unsqueeze(1) + self._radius[s.u_unit]) ** 2
+        mt = self.t.u_move_type[s.u_unit]
+        type_ok = torch.where(mt == 1, hits_air.unsqueeze(1), hits_ground.unsqueeze(1))
+        hit_u = enemy & fire.unsqueeze(1) & type_ok & (d2 <= eff)
+        if bool(hit_u.any()):
+            s.u_hp = s.u_hp - torch.where(hit_u, dmg.unsqueeze(1), torch.zeros_like(s.u_hp))
+
+        # enemy towers: crown-tower damage percent applies
+        crown_mult = 1.0 + self.t.spell_crown_pct[cclamp] / 100.0
+        dmg_t = dmg * crown_mult
+        t_rad = torch.where(self.tower_king, KING_RADIUS, T_RADIUS)
+        dx_t = self.tower_pos[:, :, 0] - x.unsqueeze(1)
+        dy_t = self.tower_pos[:, :, 1] - y.unsqueeze(1)
+        d2_t = dx_t * dx_t + dy_t * dy_t
+        eff_t = (rad.unsqueeze(1) + t_rad.unsqueeze(0)) ** 2
+        enemy_t = self.tower_side.unsqueeze(0) == (1 - side)
+        hit_t = s.tower_alive & enemy_t & fire.unsqueeze(1) & (d2_t <= eff_t)
+        if bool(hit_t.any()):
+            s.tower_hp = s.tower_hp - torch.where(hit_t, dmg_t.unsqueeze(1), torch.zeros_like(s.tower_hp))
+        return fire
 
     # ------------------------------------------------------------------ tick
     def tick(self, n: int = 1, dt: float = TICK_DT) -> None:

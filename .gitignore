@@ -9,4 +9,4 @@ dataset/
 recordings/
 KataCR/
 replay_data/
-replay_data_patched/
+replay_data_patched/.worker.lock
