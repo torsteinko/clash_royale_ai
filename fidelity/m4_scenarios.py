@@ -86,6 +86,12 @@ class Scenario:
     name: str
     desc: str
     actions: tuple[Action, ...]
+    deck: tuple[str, ...] | None = None  # None = the shared DECK
+
+
+ZONE_DECK = ("Knight", "Poison", "Earthquake", "Minions", "Fireball", "Giant",
+             "Musketeer", "Zap")  # ordered so both the gpusim hand (deck[0:4]) and the
+             # java-shuffled hands (java_random, seeds 7/8) hold every played card
 
 
 SCENARIOS: tuple[Scenario, ...] = (
@@ -125,6 +131,24 @@ SCENARIOS: tuple[Scenario, ...] = (
         (Action(20, 0, 0, 4.0, 17.5, "Knight"),
          Action(140, 0, 1, 4.0, 20.0, "Musketeer")),
     ),
+    Scenario(
+        "poison_zone",
+        "M3.5 ticking zone vs the Java reference: blue poisons the red left princess lane; the "
+        "red knight and minions walk through the zone (poison hits ground AND air)",
+        (Action(20, 1, 0, 4.0, 8.5, "Knight"),
+         Action(80, 1, 3, 5.0, 8.5, "Minions"),
+         Action(60, 0, 1, 3.5, 7.0, "Poison")),
+        deck=ZONE_DECK,
+    ),
+    Scenario(
+        "earthquake_zone",
+        "M3.5 ticking zone (hitsAir false): the red knight takes earthquake ticks, the minions "
+        "fly through unharmed; the princess tower takes the building bonus (x4.5) + crown %",
+        (Action(20, 1, 0, 4.0, 8.5, "Knight"),
+         Action(80, 1, 3, 5.0, 8.5, "Minions"),
+         Action(60, 0, 2, 3.5, 7.0, "Earthquake")),
+        deck=ZONE_DECK,
+    ),
 )
 
 _HIST_KEYS = ("time", "elixir", "tower_hp", "tower_alive", "crowns", "game_over",
@@ -161,6 +185,15 @@ def run_scenarios(data_dir: str | Path | None = None,
     deck_idx = [sim.t.card_index[name.lower().replace(" ", "")] for name in DECK]
     for side in (0, 1):
         sim.set_deck(side, deck_idx)
+    # per-scenario deck overrides (zone scenarios need Poison/Earthquake in hand)
+    for ei, sc in enumerate(SCENARIOS):
+        if sc.deck is None:
+            continue
+        mask = torch.zeros(n_env, dtype=torch.bool)
+        mask[ei] = True
+        idx = [sim.t.card_index[name.lower().replace(" ", "")] for name in sc.deck]
+        for side in (0, 1):
+            sim.set_deck(side, idx, env_mask=mask)
 
     schedule: dict[int, list[tuple[int, Action]]] = defaultdict(list)
     for ei, sc in enumerate(SCENARIOS):
@@ -251,7 +284,7 @@ def build_manifest(scenario: Scenario, duration_ticks: int, level: int,
             "(= Java side: submit it in step call number k+1, ticks_per_step=1)"
         ),
         "tower_slots": TOWER_SLOTS,
-        "decks": {"blue": DECK, "red": DECK},
+        "decks": {"blue": list(scenario.deck or DECK), "red": list(scenario.deck or DECK)},
         "actions": [a.to_json() for a in scenario.actions],
         "engine": {"impl": "gpusim", "commit": _git_sha(), "device": device},
         "data_dir": str(data_dir),

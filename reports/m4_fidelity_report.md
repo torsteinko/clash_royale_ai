@@ -23,9 +23,26 @@ manifest (`fidelity/m4_traces/<name>.scenario.json`, trace format `m4-trace-v1`,
 | tower_press     | `cmp` identical                   |
 | spell_hit       | `cmp` identical                   |
 | push_left       | `cmp` identical                   |
+| poison_zone     | zone damage exact; movement soft-differs (buff slow, #23) |
+| earthquake_zone | zone damage exact; movement soft-differs (buff slow, #23) |
+
+### M3.5 zone scenarios (poison_zone, earthquake_zone)
+
+Added in this pass (7 scenarios total). While the two sims are in lockstep the
+zone results are exact: poison ticks at ticks 85/90/… (32 ticks × 5 on the
+tower, 23 per tick on units), earthquake at 82/84/… (30 ticks × 20 on the
+tower, 7 per tick on units), ground/air filtering identical (poison hits the
+flying minions; earthquake does not — `hitsAir false`). The first divergence
+tick is 86 (poison) / 83 (quake) — the very tick AFTER the first zone damage
+tick, caused by the **buff slow** that gpusim does not model
+(DIVERGENCES #23): units inside a zone move at 0.85×/0.5× speed in the
+reference, so trajectories drift after zone entry and later events shift.
+Zone damage derivation/timing itself is java-exact.
 
 Determinism: two full gpusim passes are byte-identical (`reports/m4_scenarios_report.md`).
-Compare tool: `first_divergence_tick = None`, all `max_abs_diff` fields 0.0.
+Compare tool: for the five original scenarios `first_divergence_tick = None`, all
+`max_abs_diff` fields 0.0; the two zone scenarios diverge only via the documented
+buff-slow movement (#23).
 
 ## Thresholds
 

@@ -98,7 +98,10 @@ def make_record(i: int, obs: dict) -> dict:
     th, ta = tower_slots(obs)
     units = []
     for e in obs["entities"]:
-        if e.get("entityType") == "TOWER":
+        # trace contract: units only (troops/buildings/heroes). The reference
+        # also exposes towers, projectiles and area-effect zones (poison etc.)
+        # as entities — they are not units.
+        if e.get("entityType") in ("TOWER", "PROJECTILE", "SPELL"):
             continue
         units.append({
             "s": 0 if e["team"] == "BLUE" else 1,

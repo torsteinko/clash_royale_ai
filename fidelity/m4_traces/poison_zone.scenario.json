@@ -1,13 +1,13 @@
 {
   "format": "m4-scenario-v1",
-  "name": "duel_knight",
-  "desc": "mirror melee duel on the right bridge lane: identical cadence, mutual KO on the same tick (t=15.05) \u2014 canary for same-tick damage/death resolution vs the Java reference",
+  "name": "poison_zone",
+  "desc": "M3.5 ticking zone vs the Java reference: blue poisons the red left princess lane; the red knight and minions walk through the zone (poison hits ground AND air)",
   "source": "gpusim",
   "level": 11,
   "dt": 0.05,
   "duration_ticks": 1500,
   "trace_format": "m4-trace-v1",
-  "trace_file": "duel_knight.gpusim.jsonl",
+  "trace_file": "poison_zone.gpusim.jsonl",
   "tick_semantics": "record i = state after i ticks (t = i*dt, t=0 before any tick); an action with at_tick=k is applied between record k and record k+1, i.e. during tick k+1 (= Java side: submit it in step call number k+1, ticks_per_step=1)",
   "tower_slots": [
     "king_blue",
@@ -20,43 +20,52 @@
   "decks": {
     "blue": [
       "Knight",
-      "Musketeer",
+      "Poison",
+      "Earthquake",
+      "Minions",
       "Fireball",
-      "Archer",
       "Giant",
-      "Zap",
-      "Log",
-      "Cannon"
+      "Musketeer",
+      "Zap"
     ],
     "red": [
       "Knight",
-      "Musketeer",
+      "Poison",
+      "Earthquake",
+      "Minions",
       "Fireball",
-      "Archer",
       "Giant",
-      "Zap",
-      "Log",
-      "Cannon"
+      "Musketeer",
+      "Zap"
     ]
   },
   "actions": [
     {
       "at_tick": 20,
-      "side": 0,
-      "side_name": "blue",
-      "slot": 0,
-      "x": 14.5,
-      "y": 20.0,
-      "card": "Knight"
-    },
-    {
-      "at_tick": 20,
       "side": 1,
       "side_name": "red",
       "slot": 0,
-      "x": 14.5,
-      "y": 12.0,
+      "x": 4.0,
+      "y": 8.5,
       "card": "Knight"
+    },
+    {
+      "at_tick": 80,
+      "side": 1,
+      "side_name": "red",
+      "slot": 3,
+      "x": 5.0,
+      "y": 8.5,
+      "card": "Minions"
+    },
+    {
+      "at_tick": 60,
+      "side": 0,
+      "side_name": "blue",
+      "slot": 1,
+      "x": 3.5,
+      "y": 7.0,
+      "card": "Poison"
     }
   ],
   "engine": {
