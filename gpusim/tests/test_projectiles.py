@@ -53,14 +53,11 @@ def test_projectile_flight_time():
 def test_projectile_damage_value():
     sim = _sim(1)
     mus = sim.t.card_index["musketeer"]
-    ui = sim.t.unit_index["musketeer"]
-    dmg = float(sim._dmg[ui])
-    speed = float(sim.t.u_proj_speed[ui])
+    dmg = float(sim._dmg[sim.t.unit_index["musketeer"]])
     sim.deploy(0, torch.tensor([mus]), torch.tensor([9.0]), torch.tensor([11.0]))
-    t_shot = _first_hit_time(sim, "musketeer")
-    flight = 7.1 / speed
-    # after the first impact, before the second shot (cadence = cooldown)
-    sim.tick(n=int((t_shot + flight + 0.15) / TICK_DT))
+    # Java sync port: first impact measured at ~3.10s (sync + deploy + windup + flight);
+    # sample between first impact and the second shot
+    sim.tick(n=int((3.10 + 0.25) / TICK_DT))
     hp = float(sim.s.tower_hp[0, 4])
     assert abs(hp - (PRINCESS_HP - dmg)) < 1e-3, f"tower hp {hp}, expected {PRINCESS_HP - dmg}"
 
@@ -72,7 +69,9 @@ def test_melee_still_instant():
     # Java sync port timeline: activation ~1.05s (SYNC+1 tick) + deploy anim 1.0s
     # + windup 0.5s => first melee hit lands ~2.55s (damage applies directly, no projectile)
     sim.tick(n=int((2.55 + 0.2) / TICK_DT))
-    assert not bool(sim.s.p_active.any()), "melee units must not spawn projectiles"
+    # the red tower may have return-fire arrows in flight at the knight by now —
+    # but the BLUE side (the melee knight) must never spawn projectiles (p_side == 0)
+    assert not bool((sim.s.p_active & (sim.s.p_side == 0)).any()), "melee units must not spawn projectiles"
     assert float(sim.s.tower_hp[0, 4]) < PRINCESS_HP, "melee damage lands instantly at the hit moment"
 
 
