@@ -386,8 +386,16 @@ class BatchedCRSim:
         s, dev = self.s, self.device
         s.time = s.time + dt
 
-        # elixir regen with double/triple phases (GameEngine.checkTimeLimit gates)
-        rate = 1.0 + (s.time >= DOUBLE_ELIXIR_T).float() + (s.time >= TRIPLE_ELIXIR_T).float()
+        # elixir regen with double/triple phases. Java semantics (GameEngine.tick):
+        # player regen runs at step 2, checkTimeLimit at step 13 of the SAME tick,
+        # and the frame counter increments at the end — so `enterDoubleElixir`
+        # (frame >= 2400, i.e. 120.0 s elapsed at the check) only affects the
+        # NEXT tick's regen: the first x2 regen lands at elapsed 120.10 s
+        # (tick 2402). gpusim applies the multiplier to the tick that ENDS at
+        # `time`, hence the strict `> T + TICK_DT` (pinned by test_m3).
+        rate = (1.0
+                + (s.time > DOUBLE_ELIXIR_T + TICK_DT + 1e-4).float()
+                + (s.time > TRIPLE_ELIXIR_T + TICK_DT + 1e-4).float())
         s.elixir = torch.clamp(s.elixir + (dt / ELIXIR_PERIOD) * rate.unsqueeze(-1), max=ELIXIR_MAX)
 
         # staggered spawns
@@ -705,9 +713,19 @@ class BatchedCRSim:
             s.tower_alive = s.tower_alive & ~fallen
 
     def _time_limit(self) -> None:
+        """Match timing exactly as Java `GameEngine.checkTimeLimit` sees it.
+
+        `checkTimeLimit` runs at step 13 of tick N (frame counter incremented at
+        the end), so the regular-time-end check that first reads
+        `frame >= 3600` happens during tick 3601 — i.e. at elapsed time
+        180.05 s, not 180.00 s. gpusim checks at the END of the tick (time = the
+        tick's end time), so the boundary is shifted by half a tick to land on
+        the same tick: first trigger at `time >= 180.025` -> 180.05 ✓ (the
+        half-tick margin keeps it float-safe). Same for the OT end at 300.05 s.
+        """
         s = self.s
         # regular time end: crowns decide, else overtime
-        at_end = (s.time >= MATCH_END_T) & (s.time - 0.0 < MATCH_END_T + 1) & ~s.game_over
+        at_end = (s.time >= MATCH_END_T + TICK_DT / 2) & ~s.game_over
         if bool(at_end.any()):
             blue, red = s.crowns[:, 0], s.crowns[:, 1]
             decided = at_end & (blue != red)
@@ -716,7 +734,7 @@ class BatchedCRSim:
                 w = torch.where(blue > red, torch.zeros_like(blue), torch.ones_like(blue))
                 s.winner = torch.where(decided, w, s.winner)
         # overtime end: crowns, then total tower hp, then draw
-        at_final = (s.time >= MATCH_FINAL_T) & (s.time - 0.0 < MATCH_FINAL_T + 1) & ~s.game_over
+        at_final = (s.time >= MATCH_FINAL_T + TICK_DT / 2) & ~s.game_over
         if bool(at_final.any()):
             blue, red = s.crowns[:, 0], s.crowns[:, 1]
             hp_b = torch.where(s.tower_alive, s.tower_hp, torch.zeros_like(s.tower_hp))[:, :3].sum(dim=1)

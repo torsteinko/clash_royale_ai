@@ -33,7 +33,7 @@ Følg PRIORITET-rekkefølgen under (kritisk sti først), kryss av etter hvert.
 - [ ] M3.4 Spell-prosjektil-flytid (fireball/arrows: fly til punkt → deretter AOE)
 - [ ] M3.5 Tikkende soner: poison/earthquake (lifeDuration + hitSpeed + damage per tick)
 - [ ] M3.6 Log (spellAsDeploy rullende prosjektil eller presis tilnærming dokumentert i DIVERGENCES)
-- [ ] M3.7 OT/elixir-grenser verifisert mot Java checkTimeLimit + test
+- [x] M3.7 OT/elixir-grenser verifisert mot Java checkTimeLimit + test: sluttidene ligger nå på samme tick som Java (180.05/300.05 s — checkTimeLimit leser frame-telleren fra forrige tick), x2-elixir fra 120.10 s og x3 fra 240.10 s (Java slår om på tick 2401/4801 ETTER den tickens regen); test_m3: `test_time_limit_boundaries_match_java`, `test_elixir_phase_boundaries_match_java` (feiler på gammel kode)
 - [ ] M3.8 Fuzz: 200 fullverdige kamper via play() fra begge sider uten krasj + determinisme-test
 - [ ] M5.3 CPU-bench oppdatert + docs/GPU_QUICKSTART.md steg-for-steg verifisert (legg til trenings-steg: pip install stable-baselines3 sb3_contrib, python -m gpusim.train_gpu)
 - [ ] M5.4 SLUTTVERIFISERING: alle suiter grønne + bench + docs → kort sluttrapport til Olsen («NÅ kan du kjøre»)
@@ -45,4 +45,4 @@ Følg PRIORITET-rekkefølgen under (kritisk sti først), kryss av etter hvert.
 
 ## Testsviter (alle MÅ være grønne før commit)
 test_smoke · test_combat · test_projectiles · test_pathing · test_m3 · test_vecenv · test_m4 · test_sb3
-(kjør alle: `for t in test_smoke test_combat test_projectiles test_pathing test_m3 test_vecenv test_m4 test_sb3; do python3 -m gpusim.tests.$t || break; done` — 45 tester)
+(kjør alle: `for t in test_smoke test_combat test_projectiles test_pathing test_m3 test_vecenv test_m4 test_sb3; do python3 -m gpusim.tests.$t || break; done` — 47 tester)
