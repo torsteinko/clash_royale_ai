@@ -24,6 +24,24 @@ def level_factor(level: int) -> float:
     return LEVEL_FACTORS[max(0, min(level - 1, len(LEVEL_FACTORS) - 1))]
 
 
+def level_multiplier_java(level: int) -> int:
+    """The Java reference's integer-hundredths card multiplier (LevelScaling.java).
+
+    m starts at 100; advance per level: ``m = floor(m * 1.10)``; the scaled stat is
+    ``floor(base * m / 100)`` (integer math). Level 11 -> m = 256 (exactly 2.56).
+    """
+    m = 100
+    for _ in range(1, max(1, level)):
+        m = int(m * 1.10)
+    return m
+
+
+def scaled_stat_java(base: torch.Tensor, level: int) -> torch.Tensor:
+    """Java `LevelScaling.scaleCard`: integer floor(base * m / 100) with m per level."""
+    m = level_multiplier_java(level)
+    return torch.floor(base.float() * m / 100.0)
+
+
 @dataclass
 class CardTable:
     """Per-card and per-unit tensors. C = cards, U = units."""
@@ -51,12 +69,13 @@ class CardTable:
     u_proj_radius: torch.Tensor | None = None    # projectile hit radius, tiles
     u_loadtime: torch.Tensor | None = None       # hidden loadTime stat (windup pre-charge cap)
 
-    card_types: torch.Tensor | None = None       # (C,) 0=TROOP 1=SPELL 2=BUILDING 3=HERO
+    card_types: torch.Tensor | None = None      # (C,) 0=TROOP 1=SPELL 2=BUILDING 3=HERO
     spell_radius: torch.Tensor | None = None     # (C,) tiles (0 for non-spells)
     spell_damage: torch.Tensor | None = None     # (C,) base damage (level 1)
     spell_crown_pct: torch.Tensor | None = None  # (C,) e.g. -70 = deals 30% to crown towers
     spell_hits_air: torch.Tensor | None = None   # (C,) 1/0
     spell_hits_ground: torch.Tensor | None = None
+    spell_speed: torch.Tensor | None = None      # (C,) tiles/s; > 0 = flying spell (projectile)
 
     card_index: dict = field(default_factory=dict)   # norm name -> card idx
     unit_index: dict = field(default_factory=dict)   # norm name -> unit idx
@@ -133,6 +152,9 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         t.spell_crown_pct = _cat(t.spell_crown_pct, float(crown or 0.0), device)
         t.spell_hits_air = _cat(t.spell_hits_air, float(ae.get("hitsAir", True)), device)
         t.spell_hits_ground = _cat(t.spell_hits_ground, float(ae.get("hitsGround", True)), device)
+        # Flying spells (projectile-based): speed in tiles/s (raw value 60 = 1 tile/s)
+        praw = float(pdata.get("speed", 0.0)) if pdata else 0.0
+        t.spell_speed = _cat(t.spell_speed, praw / 60.0, device)
 
     assert t.costs is not None and t.unit_of_card is not None and t.spawn_count is not None and t.summon_delay is not None
     t.costs = t.costs.to(torch.float32)
@@ -143,7 +165,7 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
                  "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type",
                  "u_proj_speed", "u_proj_radius", "u_loadtime",
                  "card_types", "spell_radius", "spell_damage", "spell_crown_pct",
-                 "spell_hits_air", "spell_hits_ground"):
+                 "spell_hits_air", "spell_hits_ground", "spell_speed"):
         tensor = getattr(t, name)
         assert tensor is not None
         setattr(t, name, tensor.to(torch.float32))

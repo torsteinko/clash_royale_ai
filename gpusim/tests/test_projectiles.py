@@ -69,8 +69,9 @@ def test_melee_still_instant():
     sim = _sim(1)
     kni = sim.t.card_index["knight"]
     sim.deploy(0, torch.tensor([kni]), torch.tensor([4.5]), torch.tensor([8.5]))
-    t_first = _first_hit_time(sim, "knight")
-    sim.tick(n=int((t_first + 0.15) / TICK_DT))
+    # Java sync port timeline: activation ~1.05s (SYNC+1 tick) + deploy anim 1.0s
+    # + windup 0.5s => first melee hit lands ~2.55s (damage applies directly, no projectile)
+    sim.tick(n=int((2.55 + 0.2) / TICK_DT))
     assert not bool(sim.s.p_active.any()), "melee units must not spawn projectiles"
     assert float(sim.s.tower_hp[0, 4]) < PRINCESS_HP, "melee damage lands instantly at the hit moment"
 
