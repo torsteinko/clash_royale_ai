@@ -49,6 +49,7 @@ class CardTable:
     u_move_type: torch.Tensor | None = None      # 0=GROUND 1=AIR 2=BUILDING
     u_proj_speed: torch.Tensor | None = None     # projectile speed, tiles/s (0 = no projectile)
     u_proj_radius: torch.Tensor | None = None    # projectile hit radius, tiles
+    u_loadtime: torch.Tensor | None = None       # hidden loadTime stat (windup pre-charge cap)
 
     card_index: dict = field(default_factory=dict)   # norm name -> card idx
     unit_index: dict = field(default_factory=dict)   # norm name -> unit idx
@@ -100,6 +101,7 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         praw = float(pdata.get("speed", 0.0)) if pdata else 0.0
         t.u_proj_speed = _cat(t.u_proj_speed, praw * (1000.0 / 60.0) / 1000.0, device)  # tiles/s
         t.u_proj_radius = _cat(t.u_proj_radius, float(pdata.get("projectileRadius", 0.5)) if pdata else 0.0, device)
+        t.u_loadtime = _cat(t.u_loadtime, float(u.get("loadTime", 0.0)), device)
 
     for c in cards:
         t.names.append(c.get("name"))
@@ -119,7 +121,7 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
     t.summon_delay = t.summon_delay.to(torch.float32)
     for name in ("u_health", "u_damage", "u_cooldown", "u_speed", "u_range", "u_sight",
                  "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type",
-                 "u_proj_speed", "u_proj_radius"):
+                 "u_proj_speed", "u_proj_radius", "u_loadtime"):
         tensor = getattr(t, name)
         assert tensor is not None
         setattr(t, name, tensor.to(torch.float32))

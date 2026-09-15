@@ -29,16 +29,27 @@ TRIPLE_ELIXIR_T = 240.0  # overtime + 60s
 MATCH_END_T = 180.0
 MATCH_FINAL_T = 300.0    # overtime end (regular 180s + OT 120s)
 
-# Tower stats. HP = sim-verified probe values (level-11 equivalents);
-# princess damage 109 = noff level-1 (50) x tower scale (~2.18), matching the
-# known tournament-standard value. Verify exact tower curve in M4.
+# Tower stats — exact from reference Tower.java + LevelScaling (DEFAULT_TOWER_LEVEL 11)
 T_KING_HP = 4824.0
 T_PRINCESS_HP = 3052.0
 T_PRINCESS_DMG = 109.0
-T_CD = 0.8
-T_RANGE = 7.5
-T_RADIUS = 1.0           # tower collision radius (verify M4)
+T_PRINCESS_CD = 0.8
+T_PRINCESS_RANGE = 7.5
+T_RADIUS = 1.0            # princess collision radius
 KING_RADIUS = 1.5
+T_KING_DMG = 109.0
+T_KING_CD = 1.0
+T_KING_RANGE = 7.0        # Tower.CROWN_RANGE
+
+# Arena / pathing constants (Arena.java + BasePathfinder.java)
+RIVER_Y_MIN_T = 15.0      # tiles; river zone spans (15, 17)
+RIVER_Y_MAX_T = 17.0
+RIVER_CENTER_T = 16.0
+BRIDGE_LX = 3.5           # left bridge center (spans x 2..5)
+BRIDGE_RX = 14.5          # right bridge center (spans x 13..16)
+BRIDGE_ALIGN_T = 1.0      # walk straight if within 1 tile of the bridge center
+APPROACH_TOL_T = 0.2
+BOUNDARY_EPS_T = 0.1
 
 KING_POS = {"blue": (9.0, 29.0), "red": (9.0, 3.0)}
 PRINCESS_POS = {"blue": [(3.5, 25.5), (14.5, 25.5)], "red": [(3.5, 6.5), (14.5, 6.5)]}
@@ -54,6 +65,7 @@ class SimState:
     tower_hp: torch.Tensor      # (B, 6)
     tower_alive: torch.Tensor   # (B, 6) bool
     tower_cd: torch.Tensor      # (B, 6)
+    king_active: torch.Tensor   # (B, 2) bool — king tower activated (attacks)
     crowns: torch.Tensor        # (B, 2) int
     game_over: torch.Tensor     # (B,) bool
     winner: torch.Tensor        # (B,) -1 none, 0 blue, 1 red, 2 draw
@@ -66,7 +78,10 @@ class SimState:
     u_x: torch.Tensor           # (B, MAX)
     u_y: torch.Tensor           # (B, MAX)
     u_deploy: torch.Tensor      # (B, MAX) deploy countdown, seconds
-    u_atk: torch.Tensor         # (B, MAX) attack cooldown countdown
+    u_atk: torch.Tensor         # (B, MAX) current cooldown countdown (AttackStateMachine.currentCooldown)
+    u_windup: torch.Tensor      # (B, MAX) remaining windup
+    u_load: torch.Tensor        # (B, MAX) accumulated load time (capped at loadTime)
+    u_attacking: torch.Tensor   # (B, MAX) bool
     u_tgt: torch.Tensor         # (B, MAX) target slot id (-1 = none); >= MAX = tower
     u_locked: torch.Tensor      # (B, MAX) bool
 
@@ -124,6 +139,7 @@ class BatchedCRSim:
                                  torch.full((N_TOWERS,), T_PRINCESS_HP, device=dev)).expand(b, N_TOWERS).clone(),
             tower_alive=torch.ones(b, N_TOWERS, dtype=torch.bool, device=dev),
             tower_cd=torch.zeros(b, N_TOWERS, device=dev),
+            king_active=torch.zeros(b, 2, dtype=torch.bool, device=dev),
             crowns=torch.zeros(b, 2, dtype=torch.long, device=dev),
             game_over=torch.zeros(b, dtype=torch.bool, device=dev),
             winner=torch.full((b,), -1, dtype=torch.long, device=dev),
@@ -136,6 +152,9 @@ class BatchedCRSim:
             u_y=torch.zeros(b, MAX_UNITS, device=dev),
             u_deploy=torch.zeros(b, MAX_UNITS, device=dev),
             u_atk=torch.zeros(b, MAX_UNITS, device=dev),
+            u_windup=torch.zeros(b, MAX_UNITS, device=dev),
+            u_load=torch.zeros(b, MAX_UNITS, device=dev),
+            u_attacking=torch.zeros(b, MAX_UNITS, dtype=torch.bool, device=dev),
             u_tgt=torch.full((b, MAX_UNITS), -1, dtype=torch.long, device=dev),
             u_locked=torch.zeros(b, MAX_UNITS, dtype=torch.bool, device=dev),
             spawn_pending=torch.full((b, 2, 8), -1, dtype=torch.long, device=dev),
@@ -198,7 +217,10 @@ class BatchedCRSim:
         s.u_x[e, slot] = xx
         s.u_y[e, slot] = yy
         s.u_deploy[e, slot] = float(self.t.u_deploy[ui])
-        s.u_atk[e, slot] = float(self.t.u_cooldown[ui])
+        s.u_atk[e, slot] = 0.0  # AttackStateMachine starts with currentCooldown = 0
+        s.u_windup[e, slot] = 0.0
+        s.u_load[e, slot] = 0.0
+        s.u_attacking[e, slot] = False
         s.u_tgt[e, slot] = -1
         s.u_locked[e, slot] = False
 
@@ -241,8 +263,13 @@ class BatchedCRSim:
 
         # timers
         s.u_deploy = torch.clamp(s.u_deploy - dt, min=0)
-        s.u_atk = torch.clamp(s.u_atk - dt, min=0)
         s.tower_cd = torch.clamp(s.tower_cd - dt, min=0)
+
+        # king activation: damage taken OR a friendly princess destroyed (Tower activation rule)
+        blue_princess_dead = (~s.tower_alive[:, 1]) | (~s.tower_alive[:, 2])
+        red_princess_dead = (~s.tower_alive[:, 4]) | (~s.tower_alive[:, 5])
+        s.king_active = s.king_active | torch.stack([blue_princess_dead, red_princess_dead], dim=1) \
+            | (s.tower_hp[:, [0, 3]] < (T_KING_HP - 1e-6))
 
         self._tower_attacks(dt)
         self._unit_combat(dt)
@@ -328,15 +355,32 @@ class BatchedCRSim:
         in_range = (new_tgt >= 0) & (d2_masked.gather(2, sel.unsqueeze(2)).squeeze(2) <= sel_rng_sq)
         s.u_locked = in_range
 
-        # attack execution: melee (and projectile-less ranged) hit instantly;
-        # ranged units with projectile data fire a flying projectile (M2)
-        can_fire = in_range & (s.u_atk <= 0) & a_active
-        if bool(can_fire.any()):
+        # AttackStateMachine timers: cooldown--, windup-- while attacking, load++ otherwise (capped)
+        s.u_atk = torch.clamp(s.u_atk - dt, min=0)
+        s.u_windup = torch.where(s.u_attacking, s.u_windup - dt, s.u_windup)
+        s.u_load = torch.where(s.u_attacking, s.u_load,
+                               torch.minimum(s.u_load + dt, self.t.u_loadtime[s.u_unit]))
+        # cancel an in-progress attack when the target leaves range
+        cancel = s.u_attacking & ~in_range
+        s.u_attacking = s.u_attacking & ~cancel
+        s.u_windup = torch.where(cancel, torch.zeros_like(s.u_windup), s.u_windup)
+        # start a new attack sequence: windup = max(0, cooldown - accumulated load); load consumed
+        start = in_range & a_active & ~s.u_attacking & (s.u_atk <= 0)
+        s.u_windup = torch.where(start, torch.clamp(self.t.u_cooldown[s.u_unit] - s.u_load, min=0), s.u_windup)
+        s.u_load = torch.where(start, torch.zeros_like(s.u_load), s.u_load)
+        s.u_attacking = s.u_attacking | start
+
+        # execute attack: melee (and projectile-less ranged) hit instantly;
+        # ranged units with projectile data fire a flying projectile (M2).
+        # epsilon: float32 windup accumulation can leave ~1e-7 residue; without it the
+        # attack slips one tick (25-tick cycles instead of 24 — DIVERGENCES #17).
+        fire = s.u_attacking & (s.u_windup <= 1e-5) & in_range & a_active
+        if bool(fire.any()):
             dmg = self._dmg[s.u_unit]
             proj_speed = self.t.u_proj_speed[s.u_unit]
             is_ranged = a_rng >= RANGED_THRESHOLD
-            via_proj = can_fire & is_ranged & (proj_speed > 0)
-            direct = can_fire & ~via_proj
+            via_proj = fire & is_ranged & (proj_speed > 0)
+            direct = fire & ~via_proj
             # direct damage: unit targets
             unit_tgt = direct & (sel < MAX_UNITS)
             if bool(unit_tgt.any()):
@@ -353,7 +397,9 @@ class BatchedCRSim:
             if bool(via_proj.any()):
                 for e, i in torch.nonzero(via_proj, as_tuple=False).tolist():
                     self._spawn_projectile(e, i, int(sel[e, i]), float(dmg[e, i]), float(proj_speed[e, i]))
-            s.u_atk = torch.where(can_fire, self.t.u_cooldown[s.u_unit], s.u_atk)
+            # finishAttack: currentCooldown = 0 (immediate chaining via windup)
+            s.u_attacking = s.u_attacking & ~fire
+            s.u_atk = torch.where(fire, torch.zeros_like(s.u_atk), s.u_atk)
 
     def _spawn_projectile(self, e: int, i: int, target_slot: int, dmg: float, speed: float) -> None:
         s = self.s
@@ -414,28 +460,33 @@ class BatchedCRSim:
 
     def _tower_attacks(self, dt: float) -> None:
         s, dev = self.s, self.device
-        b = s.elixir.shape[0]
-        # princess towers only (king activation not yet ported, DIVERGENCES #13)
-        for t_idx in (1, 2, 4, 5):
+        for t_idx in range(N_TOWERS):
+            is_king = bool(self.tower_king[t_idx])
             alive = s.tower_alive[:, t_idx] & (s.tower_cd[:, t_idx] <= 0)
+            if is_king:
+                alive = alive & s.king_active[:, int(self.tower_side[t_idx])]
             if not bool(alive.any()):
                 continue
             side = int(self.tower_side[t_idx])
+            rng = T_KING_RANGE if is_king else T_PRINCESS_RANGE
+            rad = KING_RADIUS if is_king else T_RADIUS
+            dmg = T_KING_DMG if is_king else T_PRINCESS_DMG
+            cd = T_KING_CD if is_king else T_PRINCESS_CD
             enemy = s.u_active & (s.u_side == 1 - side)
             dx = s.u_x - self.tower_pos[:, t_idx, 0].unsqueeze(1)
             dy = s.u_y - self.tower_pos[:, t_idx, 1].unsqueeze(1)
             d2 = dx * dx + dy * dy
-            eff_sq = (T_RANGE + T_RADIUS + self._radius[s.u_unit]) ** 2
+            eff_sq = (rng + rad + self._radius[s.u_unit]) ** 2
             cand = enemy & (d2 <= eff_sq)
             d2m = torch.where(cand, d2, torch.full_like(d2, float("inf")))
             nearest = d2m.argmin(dim=1)
             has = cand.any(dim=1)
-            fire = alive & has
-            if bool(fire.any()):
-                bidx = torch.nonzero(fire, as_tuple=False).flatten()
+            firem = alive & has
+            if bool(firem.any()):
+                bidx = torch.nonzero(firem, as_tuple=False).flatten()
                 tgt = nearest[bidx]
-                s.u_hp[bidx, tgt] = s.u_hp[bidx, tgt] - T_PRINCESS_DMG
-                s.tower_cd[bidx, t_idx] = T_CD
+                s.u_hp[bidx, tgt] = s.u_hp[bidx, tgt] - dmg
+                s.tower_cd[bidx, t_idx] = cd
 
     def _movement(self, dt: float) -> None:
         s, dev = self.s, self.device
@@ -461,13 +512,32 @@ class BatchedCRSim:
         adv_y = torch.where(s.u_side == 0, king_y, rk_y)
         gx = torch.where(targetless, adv_x, gx)
         gy = torch.where(targetless, adv_y, gy)
-        dx = gx - s.u_x
-        dy = gy - s.u_y
-        dist = torch.sqrt(dx * dx + dy * dy).clamp(min=1e-6)
+        # BasePathfinder port: ground units route via bridges; air flies straight
+        cur_x, cur_y = s.u_x, s.u_y
+        air = self.t.u_move_type[s.u_unit] == 1
+        north = cur_y > RIVER_Y_MAX_T
+        south = cur_y < RIVER_Y_MIN_T
+        in_river = ~north & ~south
+        cross_n = south & (gy > RIVER_Y_MAX_T)
+        cross_s = north & (gy < RIVER_Y_MIN_T)
+        bridge_x = torch.where((cur_x - BRIDGE_LX).abs() < (cur_x - BRIDGE_RX).abs(),
+                               torch.full_like(cur_x, BRIDGE_LX), torch.full_like(cur_x, BRIDGE_RX))
+        bx = torch.where((cur_x - bridge_x).abs() < BRIDGE_ALIGN_T, cur_x, bridge_x)
+        approach_y = torch.where(cross_n, torch.full_like(cur_y, RIVER_Y_MIN_T),
+                                 torch.full_like(cur_y, RIVER_Y_MAX_T))
+        pre = (cross_n & (cur_y < RIVER_Y_MIN_T - APPROACH_TOL_T)) | (cross_s & (cur_y > RIVER_Y_MAX_T + APPROACH_TOL_T))
+        wp_y = torch.where(pre, approach_y, torch.full_like(cur_y, RIVER_CENTER_T))
+        exit_y = torch.where(gy > cur_y, torch.full_like(cur_y, RIVER_Y_MAX_T + BOUNDARY_EPS_T),
+                             torch.full_like(cur_y, RIVER_Y_MIN_T - BOUNDARY_EPS_T))
+        wp_y = torch.where(in_river, exit_y, wp_y)
+        use_wp = ~air & (cross_n | cross_s | in_river)
+        dir_x = torch.where(use_wp, bx - cur_x, gx - cur_x)
+        dir_y = torch.where(use_wp, wp_y - cur_y, gy - cur_y)
+        dist = torch.sqrt(dir_x * dir_x + dir_y * dir_y).clamp(min=1e-6)
         speed = self.t.u_speed[s.u_unit] / 60.0  # GameUnits.rawSpeedToUnitsPerSecond
         step = speed * dt
-        ux = s.u_x + dx / dist * step
-        uy = s.u_y + dy / dist * step
+        ux = s.u_x + dir_x / dist * step
+        uy = s.u_y + dir_y / dist * step
         go = moving | targetless
         s.u_x = torch.where(go, ux, s.u_x)
         s.u_y = torch.where(go, uy, s.u_y)

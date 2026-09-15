@@ -30,21 +30,32 @@ def _unit_state(sim, e=0):
 
 
 def test_melee_duel_deterministic_ttk():
+    import math
+
     sim = _sim(2)
     knight = sim.t.card_index["knight"]
-    dmg = float(sim._dmg[sim.t.unit_index["knight"]])   # 202.2 at lvl 11
-    hp = float(sim._hp[sim.t.unit_index["knight"]])     # 1766 at lvl 11
+    ui = sim.t.unit_index["knight"]
+    dmg = float(sim._dmg[ui])            # 202.2 at lvl 11
+    hp = float(sim._hp[ui])              # 1766 at lvl 11
+    cd = float(sim.t.u_cooldown[ui])
+    loadt = float(sim.t.u_loadtime[ui])
+    dep = float(sim.t.u_deploy[ui])
+    first = dep + max(0.0, cd - min(dep, loadt))  # AttackStateMachine: windup = cd - load
     # deploy 2 tiles apart (edge range 1.2+0.5+0.5=2.2 => in range immediately)
     sim.deploy(0, torch.tensor([knight, knight]), torch.full((2,), 9.0), torch.full((2,), 20.0))
     sim.deploy(1, torch.tensor([knight, knight]), torch.full((2,), 9.0), torch.full((2,), 18.0))
-    # at 10s: 8 hits each (first at 1.2s, every 1.2s) -> both at ~148 hp
-    sim.tick(n=int(10.0 / TICK_DT))
+    t = 10.0
+    n_hits = int((t - 0.06 - first) / cd + 1e-9) + 1   # hits landed safely by t (~1-tick margin)
+    sim.tick(n=int(t / TICK_DT))
     st = _unit_state(sim, 0)
     assert len(st) == 2, f"both knights must survive to 10s: {st}"
+    hp_exp = hp - n_hits * dmg
     for _, uhp, _, _ in st:
-        assert abs(uhp - (hp - 8 * dmg)) < 2.5, f"hp {uhp} vs expected ~{hp - 8 * dmg}"
-    # symmetric duel: both land the 9th hit -> double KO shortly after 10.8s
-    sim.tick(n=int(1.5 / TICK_DT))
+        assert abs(uhp - hp_exp) < 2.5, f"hp {uhp} vs expected ~{hp_exp}"
+    # symmetric duel: both land the killing hit -> double KO
+    t_kill = first + (math.ceil(hp / dmg) - 1) * cd
+    assert t_kill > t
+    sim.tick(n=int((t_kill - t + 0.3) / TICK_DT))
     assert len(_unit_state(sim, 0)) == 0, "symmetric duel ends in a double KO"
 
 
@@ -71,15 +82,27 @@ def test_giant_targets_buildings_only():
     # giant marches up mid; a knight stands in its path
     sim.deploy(0, torch.tensor([gi, gi]), torch.full((2,), 9.0), torch.full((2,), 20.0))
     sim.deploy(1, torch.tensor([kni, kni]), torch.full((2,), 9.0), torch.full((2,), 15.0))
-    # at ~10s: giant must have locked a BUILDING target (tower slot >= MAX_UNITS)
-    sim.tick(n=int(10.0 / TICK_DT))
-    g_idx = [i for i, a in enumerate(sim.s.u_active[0]) if a and sim.t.names[int(sim.s.u_card[0, i])] == "Giant"]
-    assert g_idx, "giant should still be alive at 10s"
-    assert int(sim.s.u_tgt[0, g_idx[0]]) >= MAX_UNITS, "giant must target a building, never the knight"
+    # the giant must NEVER target a unit slot, and must acquire a building within ~37s
+    # (it routes via the bridge first, then spots a princess tower)
+    acquired = False
+    g_idx = []
+    for _ in range(25):
+        sim.tick(n=int(1.5 / TICK_DT))
+        g_idx = [i for i, a in enumerate(sim.s.u_active[0])
+                 if a and sim.t.names[int(sim.s.u_card[0, i])] == "Giant"]
+        if not g_idx:
+            break
+        tgt = int(sim.s.u_tgt[0, g_idx[0]])
+        assert tgt == -1 or tgt >= MAX_UNITS, f"giant must never target a unit (tgt={tgt})"
+        if tgt >= MAX_UNITS:
+            acquired = True
+            break
+    assert g_idx, "giant should still be alive"
+    assert acquired, "giant must acquire a building target"
     # knight must NEVER take damage from the giant (buildings-only)
-    sim.tick(n=int(8.0 / TICK_DT))
     k_full = float(sim._hp[sim.t.unit_index["knight"]])
-    k_idx = [i for i, a in enumerate(sim.s.u_active[0]) if a and sim.t.names[int(sim.s.u_card[0, i])] == "Knight"]
+    k_idx = [i for i, a in enumerate(sim.s.u_active[0])
+             if a and sim.t.names[int(sim.s.u_card[0, i])] == "Knight"]
     assert k_idx, "knight alive"
     assert abs(float(sim.s.u_hp[0, k_idx[0]]) - k_full) < 1e-3, "giant must not damage the knight"
 
