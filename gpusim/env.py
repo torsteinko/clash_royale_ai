@@ -1,12 +1,13 @@
 """Batched Clash Royale simulation core (tensor-based, device-agnostic).
 
-v0 (milestone M1): tensor state, elixir economy, deployment with formation
-offsets, level scaling, basic movement. Combat/pathing/spells land in M2/M3 —
-divergences from the Java sim are tracked in DIVERGENCES.md and this module
-must not silently approximate: TODO-marked mechanics are OFF until ported.
+M2 slice: targeting (nearest + lock/retention), melee/ranged combat with
+cooldowns, tower attacks, deaths, crowns, time-limit decisions, double/triple
+elixir phases. Ported 1:1 from the Java reference (TargetingSystem.java,
+CombatSystem.java, GameEngine.java tick order, GameUnits.java speed formula)
+except where noted in DIVERGENCES.md.
 
-Coordinate system mirrors crforge: x in [0, 18], y in [0, 32] tiles,
-origin top-left; blue (bottom) side y >= 16.
+Coordinate system: x in [0, 18], y in [0, 32] tiles, origin top-left;
+blue (bottom) side = y >= 16. Level-1 base values + level factor scaling.
 """
 from __future__ import annotations
 
@@ -14,41 +15,63 @@ from dataclasses import dataclass
 
 import torch
 
-from .cards import CardTable
+from .cards import CardTable, level_factor
 
-MAX_UNITS = 256          # per env
-TICK_DT = 0.05           # 20 ticks/s — matches the reference tick rate (verify in M4)
+MAX_UNITS = 64           # per env (overflow tracked in DIVERGENCES.md #10)
+N_TOWERS = 6             # slot order: [kingB, pB_l, pB_r, kingR, pR_l, pR_r]
+TICK_DT = 0.05           # 20 ticks/s (GameEngine.TICKS_PER_SECOND = 20)
 ELIXIR_START = 5.0
 ELIXIR_MAX = 10.0
-ELIXIR_PERIOD = 2.8      # seconds per elixir (single elixir phase)
-MATCH_OT = 180.0         # regular time; overtime rules land in M3
+ELIXIR_PERIOD = 2.8      # seconds per elixir at rate 1
+DOUBLE_ELIXIR_T = 120.0  # activated at match_end - 60s
+TRIPLE_ELIXIR_T = 240.0  # overtime + 60s
+MATCH_END_T = 180.0
+MATCH_FINAL_T = 300.0    # overtime end (regular 180s + OT 120s)
 
-# Tower geometry (crforge arena, tiles). Placeholders until M2 verifies.
-TOWER_KING = {"blue": (9.0, 29.0), "red": (9.0, 3.0)}
-TOWER_PRINCESS = {"blue": [(3.5, 25.5), (14.5, 25.5)], "red": [(3.5, 6.5), (14.5, 6.5)]}
-TOWER_HP_KING = 4824.0        # verified L2 probe (fidelity)
-TOWER_HP_PRINCESS = 3052.0
+# Tower stats. HP = sim-verified probe values (level-11 equivalents);
+# princess damage 109 = noff level-1 (50) x tower scale (~2.18), matching the
+# known tournament-standard value. Verify exact tower curve in M4.
+T_KING_HP = 4824.0
+T_PRINCESS_HP = 3052.0
+T_PRINCESS_DMG = 109.0
+T_CD = 0.8
+T_RANGE = 7.5
+T_RADIUS = 1.0           # tower collision radius (verify M4)
+KING_RADIUS = 1.5
+
+KING_POS = {"blue": (9.0, 29.0), "red": (9.0, 3.0)}
+PRINCESS_POS = {"blue": [(3.5, 25.5), (14.5, 25.5)], "red": [(3.5, 6.5), (14.5, 6.5)]}
+
+RANGED_THRESHOLD = 2.0   # Combat.RANGED_THRESHOLD: range >= 2 tiles => ranged
+TARGET_RETENTION = 1.5   # TargetingSystem.TARGET_RETENTION_RANGE_MULTIPLIER
 
 
 @dataclass
 class SimState:
-    """SoA tensor state. B = batch size."""
+    elixir: torch.Tensor        # (B, 2)
+    time: torch.Tensor          # (B,)
+    tower_hp: torch.Tensor      # (B, 6)
+    tower_alive: torch.Tensor   # (B, 6) bool
+    tower_cd: torch.Tensor      # (B, 6)
+    crowns: torch.Tensor        # (B, 2) int
+    game_over: torch.Tensor     # (B,) bool
+    winner: torch.Tensor        # (B,) -1 none, 0 blue, 1 red, 2 draw
 
-    elixir: torch.Tensor            # (B, 2) [blue, red]
-    time: torch.Tensor              # (B,)
-    tower_hp: torch.Tensor          # (B, 2, 3) [king, princess_l, princess_r] x [blue, red]
+    u_active: torch.Tensor      # (B, MAX) bool
+    u_side: torch.Tensor        # (B, MAX) long
+    u_card: torch.Tensor        # (B, MAX) long
+    u_unit: torch.Tensor        # (B, MAX) long
+    u_hp: torch.Tensor          # (B, MAX)
+    u_x: torch.Tensor           # (B, MAX)
+    u_y: torch.Tensor           # (B, MAX)
+    u_deploy: torch.Tensor      # (B, MAX) deploy countdown, seconds
+    u_atk: torch.Tensor         # (B, MAX) attack cooldown countdown
+    u_tgt: torch.Tensor         # (B, MAX) target slot id (-1 = none); >= MAX = tower
+    u_locked: torch.Tensor      # (B, MAX) bool
 
-    u_active: torch.Tensor          # (B, MAX_UNITS) bool
-    u_side: torch.Tensor            # (B, MAX_UNITS) 0=blue, 1=red
-    u_card: torch.Tensor            # (B, MAX_UNITS) card idx
-    u_unit: torch.Tensor            # (B, MAX_UNITS) unit idx
-    u_hp: torch.Tensor              # (B, MAX_UNITS) current hp
-    u_x: torch.Tensor               # (B, MAX_UNITS)
-    u_y: torch.Tensor               # (B, MAX_UNITS)
-    u_cd: torch.Tensor              # (B, MAX_UNITS) seconds until next attack
-
-    spawn_pending: torch.Tensor     # (B, 2, 8) queued multi-unit deploys (card idx, -1 empty)
-    spawn_timer: torch.Tensor       # (B, 2, 8)
+    spawn_pending: torch.Tensor  # (B, 2, 8) long, card idx (-1 empty)
+    spawn_timer: torch.Tensor    # (B, 2, 8)
+    spawn_pos: torch.Tensor      # (B, 2, 8, 2)
 
     @property
     def batch_size(self) -> int:
@@ -56,28 +79,42 @@ class SimState:
 
 
 class BatchedCRSim:
-    """Batched simulator. All envs tick in lockstep."""
-
     def __init__(self, tables: CardTable, batch_size: int, device: str = "cpu", level: int = 11):
         self.t = tables
         self.device = torch.device(device)
         self.b = batch_size
         self.level = level
-        self._mk = self.t.unit_of_card.to(self.device)
+        self.fac = level_factor(level)
         self._costs = self.t.costs.to(self.device)
-        self._hp = self.t.scaled(self.t.u_health, level).to(self.device)
+        self._hp = (self.t.u_health * self.fac).to(self.device)
+        self._dmg = (self.t.u_damage * self.fac).to(self.device)
+        self._radius = self.t.u_radius.to(self.device)
         self.reset()
 
-    # ---------------------------------------------------------------- reset
+    # ------------------------------------------------------------------ reset
     def reset(self) -> SimState:
         b, dev = self.b, self.device
+        # tower geometry tables
+        pos = []
+        king_flags = []
+        for side, key in ((0, "blue"), (1, "red")):
+            pos.append(KING_POS[key])
+            pos.extend(PRINCESS_POS[key])
+            king_flags.append([True, False, False])
+        self.tower_pos = torch.tensor(pos, dtype=torch.float32, device=dev).expand(b, N_TOWERS, 2).clone()
+        self.tower_king = torch.tensor(sum(king_flags, []), dtype=torch.bool, device=dev)
+        self.tower_side = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long, device=dev)
+
         self.s = SimState(
             elixir=torch.full((b, 2), ELIXIR_START, device=dev),
             time=torch.zeros(b, device=dev),
-            tower_hp=torch.stack([
-                torch.tensor([TOWER_HP_KING, TOWER_HP_PRINCESS, TOWER_HP_PRINCESS], device=dev),
-                torch.tensor([TOWER_HP_KING, TOWER_HP_PRINCESS, TOWER_HP_PRINCESS], device=dev),
-            ]).expand(b, 2, 3).clone(),
+            tower_hp=torch.where(self.tower_king, torch.full((N_TOWERS,), T_KING_HP, device=dev),
+                                 torch.full((N_TOWERS,), T_PRINCESS_HP, device=dev)).expand(b, N_TOWERS).clone(),
+            tower_alive=torch.ones(b, N_TOWERS, dtype=torch.bool, device=dev),
+            tower_cd=torch.zeros(b, N_TOWERS, device=dev),
+            crowns=torch.zeros(b, 2, dtype=torch.long, device=dev),
+            game_over=torch.zeros(b, dtype=torch.bool, device=dev),
+            winner=torch.full((b,), -1, dtype=torch.long, device=dev),
             u_active=torch.zeros(b, MAX_UNITS, dtype=torch.bool, device=dev),
             u_side=torch.zeros(b, MAX_UNITS, dtype=torch.long, device=dev),
             u_card=torch.full((b, MAX_UNITS), -1, dtype=torch.long, device=dev),
@@ -85,19 +122,18 @@ class BatchedCRSim:
             u_hp=torch.zeros(b, MAX_UNITS, device=dev),
             u_x=torch.zeros(b, MAX_UNITS, device=dev),
             u_y=torch.zeros(b, MAX_UNITS, device=dev),
-            u_cd=torch.zeros(b, MAX_UNITS, device=dev),
+            u_deploy=torch.zeros(b, MAX_UNITS, device=dev),
+            u_atk=torch.zeros(b, MAX_UNITS, device=dev),
+            u_tgt=torch.full((b, MAX_UNITS), -1, dtype=torch.long, device=dev),
+            u_locked=torch.zeros(b, MAX_UNITS, dtype=torch.bool, device=dev),
             spawn_pending=torch.full((b, 2, 8), -1, dtype=torch.long, device=dev),
             spawn_timer=torch.zeros(b, 2, 8, device=dev),
+            spawn_pos=torch.zeros(b, 2, 8, 2, device=dev),
         )
         return self.s
 
     # ------------------------------------------------------------ deployment
     def deploy(self, side: int, card_idx: torch.Tensor, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """Deploy a card for `side` in every env where card_idx >= 0.
-
-        Returns a (B,) bool mask of successful deployments (elixir paid).
-        Multi-unit cards queue staggered spawns (summonDeployDelay).
-        """
         assert side in (0, 1)
         s, dev = self.s, self.device
         card_idx = card_idx.to(dev)
@@ -105,19 +141,10 @@ class BatchedCRSim:
         cost = self._costs[card_idx.clamp(min=0)]
         afford = s.elixir[:, side] >= cost - 1e-6
         ok = want & afford
-
         s.elixir[:, side] = torch.where(ok, s.elixir[:, side] - cost, s.elixir[:, side])
         if not bool(ok.any()):
             return ok
-
-        # First unit spawns immediately at the deployment point; extras go to
-        # the stagger queue with formation offsets (resolved in tick()).
-        self._spawn_units(side, card_idx, x, y, ok)
-        return ok
-
-    def _spawn_units(self, side, card_idx, x, y, mask):
-        s = self.s
-        for e in torch.nonzero(mask, as_tuple=False).flatten().tolist():
+        for e in torch.nonzero(ok, as_tuple=False).flatten().tolist():
             ci = int(card_idx[e])
             count = int(self.t.spawn_count[ci])
             ui = int(self.t.unit_of_card[ci])
@@ -125,14 +152,15 @@ class BatchedCRSim:
             hp = float(self._hp[ui])
             for k in range(count):
                 ox, oy = offs[k % len(offs)] if offs else (0.0, 0.0)
-                slot = self._free_slot(e)
-                if slot < 0:
-                    break  # capacity: drop overflow (tracked via DIVERGENCES)
+                xx, yy = float(x[e]) + ox, float(y[e]) + oy
                 if k == 0:
-                    self._place(e, slot, side, ci, ui, hp, float(x[e]) + ox, float(y[e]) + oy)
+                    slot = self._free_slot(e)
+                    if slot < 0:
+                        break
+                    self._place(e, slot, side, ci, ui, hp, xx, yy)
                 else:
-                    # queue extra units (delay model per card)
-                    self._queue_spawn(e, side, ci, float(x[e]) + ox, float(y[e]) + oy, k)
+                    self._queue_spawn(e, side, ci, xx, yy, k)
+        return ok
 
     def _free_slot(self, e: int) -> int:
         inactive = (~self.s.u_active[e]).nonzero(as_tuple=False).flatten()
@@ -147,7 +175,10 @@ class BatchedCRSim:
         s.u_hp[e, slot] = hp
         s.u_x[e, slot] = xx
         s.u_y[e, slot] = yy
-        s.u_cd[e, slot] = self.t.u_cooldown[ui]
+        s.u_deploy[e, slot] = float(self.t.u_deploy[ui])
+        s.u_atk[e, slot] = float(self.t.u_cooldown[ui])
+        s.u_tgt[e, slot] = -1
+        s.u_locked[e, slot] = False
 
     def _queue_spawn(self, e, side, ci, xx, yy, k):
         s = self.s
@@ -156,10 +187,9 @@ class BatchedCRSim:
             return
         j = int(q[0])
         s.spawn_pending[e, side, j] = ci
-        # position stored by convention: k-th queued unit spawns at deploy pos
         s.spawn_timer[e, side, j] = k * float(self.t.summon_delay[ci]) + TICK_DT
-        self._queue_pos = getattr(self, "_queue_pos", {})
-        self._queue_pos[(e, side, j)] = (xx, yy)
+        s.spawn_pos[e, side, j, 0] = xx
+        s.spawn_pos[e, side, j, 1] = yy
 
     # ------------------------------------------------------------------ tick
     def tick(self, n: int = 1, dt: float = TICK_DT) -> None:
@@ -167,39 +197,237 @@ class BatchedCRSim:
             self._tick_once(dt)
 
     def _tick_once(self, dt: float) -> None:
-        s = self.s
-        s.time += dt
-        # elixir regen (single-elixir phase; double/triple in M3)
-        s.elixir = torch.clamp(s.elixir + dt / ELIXIR_PERIOD, max=ELIXIR_MAX)
+        s, dev = self.s, self.device
+        s.time = s.time + dt
+
+        # elixir regen with double/triple phases (GameEngine.checkTimeLimit gates)
+        rate = 1.0 + (s.time >= DOUBLE_ELIXIR_T).float() + (s.time >= TRIPLE_ELIXIR_T).float()
+        s.elixir = torch.clamp(s.elixir + (dt / ELIXIR_PERIOD) * rate.unsqueeze(-1), max=ELIXIR_MAX)
 
         # staggered spawns
-        due = s.spawn_timer <= 0
-        pending = s.spawn_pending >= 0
-        fired = due & pending
+        s.spawn_timer = torch.clamp(s.spawn_timer - dt, min=0)
+        fired = (s.spawn_timer <= 0) & (s.spawn_pending >= 0)
         if bool(fired.any()):
             for e, side, j in torch.nonzero(fired, as_tuple=False).tolist():
                 ci = int(s.spawn_pending[e, side, j])
                 ui = int(self.t.unit_of_card[ci])
-                xx, yy = self._queue_pos.get((e, side, j), (9.0, 16.0 + 8.0 * (1 - side)))
                 slot = self._free_slot(e)
                 if slot >= 0:
-                    self._place(e, slot, side, ci, ui, float(self._hp[ui]), xx, yy)
+                    self._place(e, slot, side, ci, ui, float(self._hp[ui]),
+                                float(s.spawn_pos[e, side, j, 0]), float(s.spawn_pos[e, side, j, 1]))
                 s.spawn_pending[e, side, j] = -1
-        s.spawn_timer = torch.clamp(s.spawn_timer - dt, min=0)
 
-        # movement v0: march toward the enemy king tower (straight line).
-        # TODO(M2): bridge waypoints + occupancy + collision. DIVERGENCE #1.
-        if bool(s.u_active.any()):
-            tgt_y = torch.where(s.u_side == 0,
-                                torch.full_like(s.u_y, TOWER_KING["red"][1]),
-                                torch.full_like(s.u_y, TOWER_KING["blue"][1]))
-            tgt_x = torch.full_like(s.u_x, 9.0)
-            dx, dy = tgt_x - s.u_x, tgt_y - s.u_y
-            dist = torch.sqrt(dx * dx + dy * dy).clamp(min=1e-6)
-            speed = self.t.u_speed.to(self.device)[s.u_unit]
-            step = speed * dt / 20.0  # crforge speed units -> tiles/s (verify M4)
-            s.u_x = torch.where(s.u_active, s.u_x + dx / dist * step, s.u_x)
-            s.u_y = torch.where(s.u_active, s.u_y + dy / dist * step, s.u_y)
+        # timers
+        s.u_deploy = torch.clamp(s.u_deploy - dt, min=0)
+        s.u_atk = torch.clamp(s.u_atk - dt, min=0)
+        s.tower_cd = torch.clamp(s.tower_cd - dt, min=0)
+
+        self._tower_attacks(dt)
+        self._unit_combat(dt)
+        self._movement(dt)
+        self._resolve_deaths()
+        self._time_limit()
+
+    # --------------------------------------------------------------- combat
+    def _target_pads(self):
+        """Build padded target tensors: units [0,MAX) then towers [MAX,MAX+6)."""
+        s = self.s
+        b = s.elixir.shape[0]
+        t_alive = torch.cat([s.u_active, s.tower_alive], dim=1)         # (B, MAX+6)
+        t_side = torch.cat([s.u_side, self.tower_side.expand(b, N_TOWERS)], dim=1)
+        t_x = torch.cat([s.u_x, self.tower_pos[..., 0]], dim=1)
+        t_y = torch.cat([s.u_y, self.tower_pos[..., 1]], dim=1)
+        t_rad = torch.cat([self._radius[s.u_unit], torch.where(self.tower_king, KING_RADIUS, T_RADIUS).expand(b, N_TOWERS)], dim=1)
+        # move type: units from table, towers = BUILDING (2)
+        t_move = torch.cat([self.t.u_move_type[s.u_unit], torch.full((b, N_TOWERS), 2, dtype=torch.long, device=self.device)], dim=1)
+        return t_alive, t_side, t_x, t_y, t_rad, t_move
+
+    def _unit_combat(self, dt: float) -> None:
+        s, dev = self.s, self.device
+        T = MAX_UNITS + N_TOWERS
+        b = s.elixir.shape[0]
+        t_alive, t_side, t_x, t_y, t_rad, t_move = self._target_pads()
+
+        # attacker-side tensors
+        a_active = s.u_active & (s.u_deploy <= 0)
+        a_side = s.u_side
+        a_rng = self.t.u_range[s.u_unit]
+        a_sight = self.t.u_sight[s.u_unit]
+        a_rad = self._radius[s.u_unit]
+        a_tt = self.t.u_target_type[s.u_unit]
+        a_only_b = self.t.u_only_buildings[s.u_unit]
+
+        # squared distances attacker->target (B, MAX, T)
+        dx = s.u_x.unsqueeze(2) - t_x.unsqueeze(1)
+        dy = s.u_y.unsqueeze(2) - t_y.unsqueeze(1)
+        d2 = dx * dx + dy * dy
+
+        # candidate mask
+        enemy = t_side.unsqueeze(1) != a_side.unsqueeze(2)
+        # target type compatibility (TargetingSystem.canTarget):
+        # targetOnlyBuildings overrides everything; otherwise by movement dimension.
+        only_b = (a_only_b > 0).unsqueeze(2)              # (B,MAX,1)
+        is_building = (t_move == 2).unsqueeze(1)          # (B,1,T)
+        tgt_ground = (t_move == 0).unsqueeze(1)           # (B,1,T)
+        tgt_air = (t_move == 1).unsqueeze(1)              # (B,1,T)
+        tt = a_tt.unsqueeze(2)                            # (B,MAX,1)
+        base_ok = (tt == 0) | ((tt == 1) & (tgt_ground | is_building)) | ((tt == 2) & tgt_air)
+        type_ok = torch.where(only_b, is_building.expand_as(base_ok), base_ok)
+        sight_sq = (a_sight.unsqueeze(2) + a_rad.unsqueeze(2) + t_rad.unsqueeze(1)) ** 2
+        cand = enemy & t_alive.unsqueeze(1) & type_ok & (d2 <= sight_sq) & a_active.unsqueeze(2)
+
+        # nearest selection
+        BIG = torch.full_like(d2, float("inf"))
+        d2_masked = torch.where(cand, d2, BIG)
+        nearest = d2_masked.argmin(dim=2)
+        has_any = cand.any(dim=2)
+
+        # lock retention: keep current target while still valid within sight*1.5
+        # (Java TargetingSystem.isValidTarget: type/team/alive + retention radius)
+        cur = s.u_tgt.clone()
+        cur_valid = (cur >= 0) & (cur < T)
+        cur_idx = cur.clamp(0, T - 1)
+        cur_enemy = torch.gather(enemy, 2, cur_idx.unsqueeze(2)).squeeze(2)
+        cur_alive = torch.gather(t_alive.unsqueeze(1).expand(b, MAX_UNITS, T), 2, cur_idx.unsqueeze(2)).squeeze(2)
+        cur_typeok = torch.gather(type_ok, 2, cur_idx.unsqueeze(2)).squeeze(2)
+        cur_d2_raw = torch.gather(d2, 2, cur_idx.unsqueeze(2)).squeeze(2)
+        ret = ((a_sight * TARGET_RETENTION).unsqueeze(2) + a_rad.unsqueeze(2) + t_rad.unsqueeze(1)) ** 2
+        cur_ret_sq = torch.gather(ret, 2, cur_idx.unsqueeze(2)).squeeze(2)
+        keep = cur_valid & cur_enemy & cur_alive & cur_typeok & (cur_d2_raw <= cur_ret_sq)
+        tbo = a_only_b > 0  # targetOnlyBuildings: always retarget nearest building
+        new_tgt = torch.where(keep & ~tbo, cur, torch.where(has_any, nearest, torch.full_like(nearest, -1)))
+        s.u_tgt = new_tgt
+
+        # attack range (edge-to-edge inclusive)
+        rng_sq = (a_rng.unsqueeze(2) + a_rad.unsqueeze(2) + t_rad.unsqueeze(1)) ** 2
+        sel = new_tgt.clamp(0, T - 1)
+        sel_rng_sq = torch.gather(rng_sq, 2, sel.unsqueeze(2)).squeeze(2)
+        in_range = (new_tgt >= 0) & (d2_masked.gather(2, sel.unsqueeze(2)).squeeze(2) <= sel_rng_sq)
+        s.u_locked = in_range
+
+        # attack execution (melee/ranged both instant in v0; projectile flight is DIVERGENCES #14)
+        can_fire = in_range & (s.u_atk <= 0) & a_active
+        if bool(can_fire.any()):
+            dmg = self._dmg[s.u_unit]
+            # apply to unit targets
+            unit_tgt = can_fire & (sel < MAX_UNITS)
+            if bool(unit_tgt.any()):
+                b_idx, s_idx = torch.nonzero(unit_tgt, as_tuple=True)
+                tgt_slot = sel[b_idx, s_idx]
+                s.u_hp[b_idx, tgt_slot] = s.u_hp[b_idx, tgt_slot] - dmg[b_idx, s_idx]
+            # apply to tower targets
+            tw_tgt = can_fire & (sel >= MAX_UNITS)
+            if bool(tw_tgt.any()):
+                b_idx, s_idx = torch.nonzero(tw_tgt, as_tuple=True)
+                t_idx = sel[b_idx, s_idx] - MAX_UNITS
+                s.tower_hp[b_idx, t_idx] = s.tower_hp[b_idx, t_idx] - dmg[b_idx, s_idx]
+            s.u_atk = torch.where(can_fire, self.t.u_cooldown[s.u_unit], s.u_atk)
+
+    def _tower_attacks(self, dt: float) -> None:
+        s, dev = self.s, self.device
+        b = s.elixir.shape[0]
+        # princess towers only (king activation not yet ported, DIVERGENCES #13)
+        for t_idx in (1, 2, 4, 5):
+            alive = s.tower_alive[:, t_idx] & (s.tower_cd[:, t_idx] <= 0)
+            if not bool(alive.any()):
+                continue
+            side = int(self.tower_side[t_idx])
+            enemy = s.u_active & (s.u_side == 1 - side)
+            dx = s.u_x - self.tower_pos[:, t_idx, 0].unsqueeze(1)
+            dy = s.u_y - self.tower_pos[:, t_idx, 1].unsqueeze(1)
+            d2 = dx * dx + dy * dy
+            eff_sq = (T_RANGE + T_RADIUS + self._radius[s.u_unit]) ** 2
+            cand = enemy & (d2 <= eff_sq)
+            d2m = torch.where(cand, d2, torch.full_like(d2, float("inf")))
+            nearest = d2m.argmin(dim=1)
+            has = cand.any(dim=1)
+            fire = alive & has
+            if bool(fire.any()):
+                bidx = torch.nonzero(fire, as_tuple=False).flatten()
+                tgt = nearest[bidx]
+                s.u_hp[bidx, tgt] = s.u_hp[bidx, tgt] - T_PRINCESS_DMG
+                s.tower_cd[bidx, t_idx] = T_CD
+
+    def _movement(self, dt: float) -> None:
+        s, dev = self.s, self.device
+        T = MAX_UNITS + N_TOWERS
+        t_alive, t_side, t_x, t_y, t_rad, t_move = self._target_pads()
+        go_move = s.u_active & (s.u_deploy <= 0) & ~s.u_locked
+        # buildings don't move
+        go_move = go_move & (self.t.u_move_type[s.u_unit] != 2)
+        has_target = s.u_tgt >= 0
+        moving = go_move & has_target
+        targetless = go_move & ~has_target
+        if not bool(moving.any()) and not bool(targetless.any()):
+            return
+        # goal: current target; targetless units advance toward the enemy king
+        sel = s.u_tgt.clamp(0, T - 1)
+        gx = torch.gather(t_x, 1, sel)
+        gy = torch.gather(t_y, 1, sel)
+        king_x = torch.full_like(s.u_x, KING_POS["red"][0])
+        king_y = torch.full_like(s.u_y, KING_POS["red"][1])
+        rk_x = torch.full_like(s.u_x, KING_POS["blue"][0])
+        rk_y = torch.full_like(s.u_y, KING_POS["blue"][1])
+        adv_x = torch.where(s.u_side == 0, king_x, rk_x)
+        adv_y = torch.where(s.u_side == 0, king_y, rk_y)
+        gx = torch.where(targetless, adv_x, gx)
+        gy = torch.where(targetless, adv_y, gy)
+        dx = gx - s.u_x
+        dy = gy - s.u_y
+        dist = torch.sqrt(dx * dx + dy * dy).clamp(min=1e-6)
+        speed = self.t.u_speed[s.u_unit] / 60.0  # GameUnits.rawSpeedToUnitsPerSecond
+        step = speed * dt
+        ux = s.u_x + dx / dist * step
+        uy = s.u_y + dy / dist * step
+        go = moving | targetless
+        s.u_x = torch.where(go, ux, s.u_x)
+        s.u_y = torch.where(go, uy, s.u_y)
+
+    def _resolve_deaths(self) -> None:
+        s = self.s
+        # unit deaths
+        dead = s.u_active & (s.u_hp <= 0)
+        if bool(dead.any()):
+            s.u_active = s.u_active & ~dead
+        # tower deaths
+        fallen = s.tower_alive & (s.tower_hp <= 0)
+        if bool(fallen.any()):
+            b_idx, t_idx = torch.nonzero(fallen, as_tuple=True)
+            for bb, tt in zip(b_idx.tolist(), t_idx.tolist()):
+                side = int(self.tower_side[tt])
+                if bool(self.tower_king[tt]):
+                    s.crowns[bb, 1 - side] += 3
+                    s.game_over[bb] = True
+                    s.winner[bb] = 1 - side
+                else:
+                    s.crowns[bb, 1 - side] += 1
+            s.tower_alive = s.tower_alive & ~fallen
+
+    def _time_limit(self) -> None:
+        s = self.s
+        # regular time end: crowns decide, else overtime
+        at_end = (s.time >= MATCH_END_T) & (s.time - 0.0 < MATCH_END_T + 1) & ~s.game_over
+        if bool(at_end.any()):
+            blue, red = s.crowns[:, 0], s.crowns[:, 1]
+            decided = at_end & (blue != red)
+            if bool(decided.any()):
+                s.game_over = s.game_over | decided
+                w = torch.where(blue > red, torch.zeros_like(blue), torch.ones_like(blue))
+                s.winner = torch.where(decided, w, s.winner)
+        # overtime end: crowns, then total tower hp, then draw
+        at_final = (s.time >= MATCH_FINAL_T) & (s.time - 0.0 < MATCH_FINAL_T + 1) & ~s.game_over
+        if bool(at_final.any()):
+            blue, red = s.crowns[:, 0], s.crowns[:, 1]
+            hp_b = torch.where(s.tower_alive, s.tower_hp, torch.zeros_like(s.tower_hp))[:, :3].sum(dim=1)
+            hp_r = torch.where(s.tower_alive, s.tower_hp, torch.zeros_like(s.tower_hp))[:, 3:].sum(dim=1)
+            w = torch.full_like(blue, 2)
+            w = torch.where(blue > red, torch.zeros_like(w), w)
+            w = torch.where(red > blue, torch.ones_like(w), w)
+            tie = blue == red
+            w = torch.where(tie & (hp_b > hp_r), torch.zeros_like(w), w)
+            w = torch.where(tie & (hp_r > hp_b), torch.ones_like(w), w)
+            s.winner = torch.where(at_final, w, s.winner)
+            s.game_over = s.game_over | at_final
 
 
 def make_sim(data_dir: str, batch_size: int, device: str = "cpu", level: int = 11) -> BatchedCRSim:

@@ -12,8 +12,8 @@
       "card": "minionhorde",
       "field": "damage",
       "value": 42,
-      "source": "level-basis ruling, 2026-09-15",
-      "note": "OPEN: noff's horde row shows 46 = 42 x 1.1 (+1 level factor) while its minions row shows 42. No level-shift field exists in the game data for Minion Horde (checked). Verify in L2/in-game: do horde minions really hit for more?"
+      "source": "Olsen, in-game player verdict, 2026-09-15",
+      "note": "RESOLVED: horde minions deal the same per-minion damage as Minions (42); noff's 46 is a display artifact. The horde's higher total damage comes from the count (x6). No level-shift field exists for the horde — consistent."
     },
     {
       "card": "skeletonarmy",

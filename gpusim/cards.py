@@ -42,6 +42,11 @@ class CardTable:
     u_speed: torch.Tensor | None = None
     u_range: torch.Tensor | None = None
     u_sight: torch.Tensor | None = None
+    u_radius: torch.Tensor | None = None         # collision radius, tiles
+    u_deploy: torch.Tensor | None = None         # deploy time, seconds
+    u_target_type: torch.Tensor | None = None    # 0=ALL 1=GROUND 2=AIR (air-hitting dimension)
+    u_only_buildings: torch.Tensor | None = None # true = ignores non-buildings (Giant, Hog, Balloon)
+    u_move_type: torch.Tensor | None = None      # 0=GROUND 1=AIR 2=BUILDING
 
     card_index: dict = field(default_factory=dict)   # norm name -> card idx
     unit_index: dict = field(default_factory=dict)   # norm name -> unit idx
@@ -78,6 +83,13 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         t.u_speed = _cat(t.u_speed, float(u.get("speed", 0.0)), device)
         t.u_range = _cat(t.u_range, float(u.get("range", 1.0)), device)
         t.u_sight = _cat(t.u_sight, float(u.get("sightRange", 5.5)), device)
+        t.u_radius = _cat(t.u_radius, float(u.get("collisionRadius", 0.5)), device)
+        t.u_deploy = _cat(t.u_deploy, float(u.get("deployTime", 1.0)), device)
+        tt = str(u.get("targetType", "ALL")).upper()
+        t.u_target_type = _cat(t.u_target_type, {"ALL": 0, "GROUND": 1, "AIR": 2}.get(tt, 0), device)
+        t.u_only_buildings = _cat(t.u_only_buildings, float(bool(u.get("targetOnlyBuildings", False))), device)
+        mt = str(u.get("movementType", "GROUND")).upper()
+        t.u_move_type = _cat(t.u_move_type, {"GROUND": 0, "AIR": 1, "BUILDING": 2}.get(mt, 0), device)
 
     for c in cards:
         t.names.append(c.get("name"))
@@ -95,7 +107,8 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
     t.unit_of_card = t.unit_of_card.to(torch.long)
     t.spawn_count = t.spawn_count.to(torch.long)
     t.summon_delay = t.summon_delay.to(torch.float32)
-    for name in ("u_health", "u_damage", "u_cooldown", "u_speed", "u_range", "u_sight"):
+    for name in ("u_health", "u_damage", "u_cooldown", "u_speed", "u_range", "u_sight",
+                 "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type"):
         tensor = getattr(t, name)
         assert tensor is not None
         setattr(t, name, tensor.to(torch.float32))
