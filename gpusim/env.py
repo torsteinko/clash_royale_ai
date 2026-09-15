@@ -18,6 +18,7 @@ import torch
 from .cards import CardTable, level_factor
 
 MAX_UNITS = 64           # per env (overflow tracked in DIVERGENCES.md #10)
+MAX_PROJ = 128           # per env
 N_TOWERS = 6             # slot order: [kingB, pB_l, pB_r, kingR, pR_l, pR_r]
 TICK_DT = 0.05           # 20 ticks/s (GameEngine.TICKS_PER_SECOND = 20)
 ELIXIR_START = 5.0
@@ -72,6 +73,17 @@ class SimState:
     spawn_pending: torch.Tensor  # (B, 2, 8) long, card idx (-1 empty)
     spawn_timer: torch.Tensor    # (B, 2, 8)
     spawn_pos: torch.Tensor      # (B, 2, 8, 2)
+
+    p_active: torch.Tensor       # (B, MAX_PROJ) bool
+    p_x: torch.Tensor            # (B, MAX_PROJ)
+    p_y: torch.Tensor            # (B, MAX_PROJ)
+    p_dmg: torch.Tensor          # (B, MAX_PROJ)
+    p_speed: torch.Tensor        # (B, MAX_PROJ) tiles/s
+    p_radius: torch.Tensor       # (B, MAX_PROJ)
+    p_target: torch.Tensor       # (B, MAX_PROJ) target slot id
+    p_tx: torch.Tensor           # (B, MAX_PROJ) last known target pos
+    p_ty: torch.Tensor
+    p_life: torch.Tensor         # (B, MAX_PROJ) seconds remaining
 
     @property
     def batch_size(self) -> int:
@@ -129,6 +141,16 @@ class BatchedCRSim:
             spawn_pending=torch.full((b, 2, 8), -1, dtype=torch.long, device=dev),
             spawn_timer=torch.zeros(b, 2, 8, device=dev),
             spawn_pos=torch.zeros(b, 2, 8, 2, device=dev),
+            p_active=torch.zeros(b, MAX_PROJ, dtype=torch.bool, device=dev),
+            p_x=torch.zeros(b, MAX_PROJ, device=dev),
+            p_y=torch.zeros(b, MAX_PROJ, device=dev),
+            p_dmg=torch.zeros(b, MAX_PROJ, device=dev),
+            p_speed=torch.zeros(b, MAX_PROJ, device=dev),
+            p_radius=torch.zeros(b, MAX_PROJ, device=dev),
+            p_target=torch.full((b, MAX_PROJ), -1, dtype=torch.long, device=dev),
+            p_tx=torch.zeros(b, MAX_PROJ, device=dev),
+            p_ty=torch.zeros(b, MAX_PROJ, device=dev),
+            p_life=torch.zeros(b, MAX_PROJ, device=dev),
         )
         return self.s
 
@@ -224,6 +246,7 @@ class BatchedCRSim:
 
         self._tower_attacks(dt)
         self._unit_combat(dt)
+        self._projectiles(dt)
         self._movement(dt)
         self._resolve_deaths()
         self._time_limit()
@@ -305,23 +328,89 @@ class BatchedCRSim:
         in_range = (new_tgt >= 0) & (d2_masked.gather(2, sel.unsqueeze(2)).squeeze(2) <= sel_rng_sq)
         s.u_locked = in_range
 
-        # attack execution (melee/ranged both instant in v0; projectile flight is DIVERGENCES #14)
+        # attack execution: melee (and projectile-less ranged) hit instantly;
+        # ranged units with projectile data fire a flying projectile (M2)
         can_fire = in_range & (s.u_atk <= 0) & a_active
         if bool(can_fire.any()):
             dmg = self._dmg[s.u_unit]
-            # apply to unit targets
-            unit_tgt = can_fire & (sel < MAX_UNITS)
+            proj_speed = self.t.u_proj_speed[s.u_unit]
+            is_ranged = a_rng >= RANGED_THRESHOLD
+            via_proj = can_fire & is_ranged & (proj_speed > 0)
+            direct = can_fire & ~via_proj
+            # direct damage: unit targets
+            unit_tgt = direct & (sel < MAX_UNITS)
             if bool(unit_tgt.any()):
                 b_idx, s_idx = torch.nonzero(unit_tgt, as_tuple=True)
                 tgt_slot = sel[b_idx, s_idx]
                 s.u_hp[b_idx, tgt_slot] = s.u_hp[b_idx, tgt_slot] - dmg[b_idx, s_idx]
-            # apply to tower targets
-            tw_tgt = can_fire & (sel >= MAX_UNITS)
+            # direct damage: tower targets
+            tw_tgt = direct & (sel >= MAX_UNITS)
             if bool(tw_tgt.any()):
                 b_idx, s_idx = torch.nonzero(tw_tgt, as_tuple=True)
                 t_idx = sel[b_idx, s_idx] - MAX_UNITS
                 s.tower_hp[b_idx, t_idx] = s.tower_hp[b_idx, t_idx] - dmg[b_idx, s_idx]
+            # projectiles
+            if bool(via_proj.any()):
+                for e, i in torch.nonzero(via_proj, as_tuple=False).tolist():
+                    self._spawn_projectile(e, i, int(sel[e, i]), float(dmg[e, i]), float(proj_speed[e, i]))
             s.u_atk = torch.where(can_fire, self.t.u_cooldown[s.u_unit], s.u_atk)
+
+    def _spawn_projectile(self, e: int, i: int, target_slot: int, dmg: float, speed: float) -> None:
+        s = self.s
+        free = (~s.p_active[e]).nonzero(as_tuple=False).flatten()
+        if free.numel() == 0:
+            return  # overflow: drop (DIVERGENCES #10 policy)
+        j = int(free[0])
+        s.p_active[e, j] = True
+        s.p_x[e, j] = s.u_x[e, i]
+        s.p_y[e, j] = s.u_y[e, i]
+        s.p_dmg[e, j] = dmg
+        s.p_speed[e, j] = speed
+        s.p_radius[e, j] = float(self.t.u_proj_radius[s.u_unit[e, i]])
+        s.p_target[e, j] = target_slot
+        s.p_tx[e, j] = s.p_x[e, j]
+        s.p_ty[e, j] = s.p_y[e, j]
+        s.p_life[e, j] = 3.0
+
+    def _projectiles(self, dt: float) -> None:
+        s, dev = self.s, self.device
+        if not bool(s.p_active.any()):
+            return
+        T = MAX_UNITS + N_TOWERS
+        t_alive, t_side, t_x, t_y, t_rad, t_move = self._target_pads()
+        idx = s.p_target.clamp(0, T - 1)
+        tx = torch.gather(t_x, 1, idx)
+        ty = torch.gather(t_y, 1, idx)
+        talive = torch.gather(t_alive, 1, idx)
+        trad = torch.gather(t_rad, 1, idx)
+        # homing: track living targets; frozen targets keep the last known position
+        s.p_tx = torch.where(talive & s.p_active, tx, s.p_tx)
+        s.p_ty = torch.where(talive & s.p_active, ty, s.p_ty)
+        dx = s.p_tx - s.p_x
+        dy = s.p_ty - s.p_y
+        dist = torch.sqrt(dx * dx + dy * dy).clamp(min=1e-6)
+        step = s.p_speed * dt
+        s.p_x = s.p_x + torch.where(s.p_active, dx / dist * step, torch.zeros_like(step))
+        s.p_y = s.p_y + torch.where(s.p_active, dy / dist * step, torch.zeros_like(step))
+        # impact: within combined radius of the (living) target
+        dx2 = s.p_tx - s.p_x
+        dy2 = s.p_ty - s.p_y
+        dist2 = torch.sqrt(dx2 * dx2 + dy2 * dy2)
+        hit = s.p_active & talive & (dist2 <= (s.p_radius + trad))
+        if bool(hit.any()):
+            unit_hits = hit & (idx < MAX_UNITS)
+            if bool(unit_hits.any()):
+                b_idx, j_idx = torch.nonzero(unit_hits, as_tuple=True)
+                tgt_slot = idx[b_idx, j_idx]
+                s.u_hp[b_idx, tgt_slot] = s.u_hp[b_idx, tgt_slot] - s.p_dmg[b_idx, j_idx]
+            tower_hits = hit & (idx >= MAX_UNITS)
+            if bool(tower_hits.any()):
+                b_idx, j_idx = torch.nonzero(tower_hits, as_tuple=True)
+                t_idx = idx[b_idx, j_idx] - MAX_UNITS
+                s.tower_hp[b_idx, t_idx] = s.tower_hp[b_idx, t_idx] - s.p_dmg[b_idx, j_idx]
+        # lifetime expiry
+        s.p_life = s.p_life - dt
+        s.p_active = s.p_active & ~hit & (s.p_life > 0)
 
     def _tower_attacks(self, dt: float) -> None:
         s, dev = self.s, self.device

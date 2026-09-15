@@ -15,7 +15,7 @@ configs until then.
 | 7 | Card cycle/hand not modelled (caller passes any card) | OPEN | M3 |
 | 10 | Unit spawn overflow (slots > MAX_UNITS) silently dropped | OPEN | M5 |
 | 13 | King tower: never attacks; activation rule (damage taken / princess falls) not implemented | OPEN | M2 |
-| 14 | Projectiles: ranged attacks deal instant damage; no flight time, no projectile types (scatter, pierce, returning) | OPEN | M2/M3 |
+| 14 | Projectiles: homing flight + radius impact DONE; remaining: non-homing/arc shots (gravity), AOE-on-impact, scatter/pierce/returning projectiles, tower shots still instant | PARTIAL | M2/M3 |
 | 15 | Attack windup / loadTime not modelled (attack fires the instant the cooldown expires) | OPEN | M2 |
 | 16 | Multiple targets / AOE splash / abilities (charge, dash, reflect, kamikaze, death spawns) not implemented | OPEN | M3 |
 

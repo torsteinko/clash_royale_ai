@@ -47,6 +47,8 @@ class CardTable:
     u_target_type: torch.Tensor | None = None    # 0=ALL 1=GROUND 2=AIR (air-hitting dimension)
     u_only_buildings: torch.Tensor | None = None # true = ignores non-buildings (Giant, Hog, Balloon)
     u_move_type: torch.Tensor | None = None      # 0=GROUND 1=AIR 2=BUILDING
+    u_proj_speed: torch.Tensor | None = None     # projectile speed, tiles/s (0 = no projectile)
+    u_proj_radius: torch.Tensor | None = None    # projectile hit radius, tiles
 
     card_index: dict = field(default_factory=dict)   # norm name -> card idx
     unit_index: dict = field(default_factory=dict)   # norm name -> unit idx
@@ -65,12 +67,14 @@ def _norm(name: str) -> str:
 
 
 def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
-    """Load cards.json + units.json from the patched data dir."""
+    """Load cards.json + units.json (+ projectiles.json) from the patched data dir."""
     data_dir = Path(data_dir)
     cards_raw = json.loads((data_dir / "cards.json").read_text())
     units_raw = json.loads((data_dir / "units.json").read_text())
     cards = cards_raw if isinstance(cards_raw, list) else list(cards_raw.values())
     units = units_raw if isinstance(units_raw, list) else list(units_raw.values())
+    proj_path = data_dir / "projectiles.json"
+    projectiles = json.loads(proj_path.read_text()) if proj_path.exists() else {}
 
     t = CardTable()
     t.unit_names = [u.get("name") or u.get("id") for u in units]
@@ -90,6 +94,12 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
         t.u_only_buildings = _cat(t.u_only_buildings, float(bool(u.get("targetOnlyBuildings", False))), device)
         mt = str(u.get("movementType", "GROUND")).upper()
         t.u_move_type = _cat(t.u_move_type, {"GROUND": 0, "AIR": 1, "BUILDING": 2}.get(mt, 0), device)
+        # projectile mapping: raw speed is on the same scale as unit raw speeds (x1000/60)
+        pname = u.get("projectile")
+        pdata = projectiles.get(pname, {}) if pname else {}
+        praw = float(pdata.get("speed", 0.0)) if pdata else 0.0
+        t.u_proj_speed = _cat(t.u_proj_speed, praw * (1000.0 / 60.0) / 1000.0, device)  # tiles/s
+        t.u_proj_radius = _cat(t.u_proj_radius, float(pdata.get("projectileRadius", 0.5)) if pdata else 0.0, device)
 
     for c in cards:
         t.names.append(c.get("name"))
@@ -108,7 +118,8 @@ def load_tables(data_dir: str | Path, device: str = "cpu") -> CardTable:
     t.spawn_count = t.spawn_count.to(torch.long)
     t.summon_delay = t.summon_delay.to(torch.float32)
     for name in ("u_health", "u_damage", "u_cooldown", "u_speed", "u_range", "u_sight",
-                 "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type"):
+                 "u_radius", "u_deploy", "u_target_type", "u_only_buildings", "u_move_type",
+                 "u_proj_speed", "u_proj_radius"):
         tensor = getattr(t, name)
         assert tensor is not None
         setattr(t, name, tensor.to(torch.float32))

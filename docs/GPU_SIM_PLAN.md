@@ -20,10 +20,11 @@ the same training stack (SB3 VecEnv-compatible), with league self-play.
   activation, projectiles, unit collision occupancy.
   *Progress 2026-09-15:* targeting (nearest + lock/retention + type matrix +
   buildings-only), melee/ranged combat, cooldowns, deploy timers, tower
-  attacks, deaths/crowns, elixir phases, time-limit decisions — DONE with
-  7 passing tests. Remaining: bridge pathing, collisions, king activation,
-  projectile flight, windup. Throughput note: combat logic ~3k env-steps/s on
-  CPU at B=1024 — M5 will optimize (active-slot sparsity, fp16) and measure
+  attacks, deaths/crowns, elixir phases, time-limit decisions, projectile
+  flight (homing, radius impact) — DONE with 16 passing tests. Remaining:
+  bridge pathing, collisions, king activation, windup, non-homing projectiles.
+  Throughput note: combat logic ~2.8k env-steps/s on
+  CPU at B=256 — M5 will optimize (active-slot sparsity, fp16) and measure
   on the 5070 Ti.
 - [ ] **M3 — Full rules.** Spells (radius, falloff, tower damage %), deploy-time
   rules and placement zones, overtime + tiebreak, win conditions, card cycle.
