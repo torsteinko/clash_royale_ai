@@ -45,6 +45,9 @@ ZONES = [
     (3.5, 8.0), (9.0, 8.0), (14.5, 8.0),         # 10-12 enemy mid
     (3.5, 6.0), (14.5, 6.0),                      # 13-14 enemy tower-adjacent
 ]
+# red attacks the same action codes from its own perspective (180° map mirror)
+ZONES_RED = [(x, 32.0 - y) for (x, y) in ZONES]
+_ZONES_BY_SIDE = (ZONES, ZONES_RED)
 
 
 @dataclass
@@ -69,15 +72,26 @@ class GPUSimVecEnv:
         self.reset()
 
     # ------------------------------------------------------------------ reset
-    def reset(self) -> torch.Tensor:
-        self.sim.reset()
-        if self.deck_blue is not None:
-            self.sim.set_deck(0, self.deck_blue)
-        if self.deck_red is not None:
-            self.sim.set_deck(1, self.deck_red)
+    def reset(self, env_mask: torch.Tensor | None = None) -> torch.Tensor:
+        """Full reset, or a partial reset of the rows selected by `env_mask` (B,).
+
+        Partial form (M5 auto-reset): the selected battles restart (state, deck,
+        reward bookkeeping) while the rest of the lockstep batch keeps playing.
+        """
+        self.sim.reset(env_mask=env_mask)
+        for side, deck in ((0, self.deck_blue), (1, self.deck_red)):
+            if deck is not None:
+                self.sim.set_deck(side, deck, env_mask=env_mask)
         s = self.sim.s
-        self._prev_hp = self._tower_totals()
-        self._prev_crowns = s.crowns.clone()
+        own, ene = self._tower_totals()
+        if env_mask is None:
+            self._prev_hp = (own.clone(), ene.clone())
+            self._prev_crowns = s.crowns.clone()
+        else:
+            m = env_mask.to(self.sim.device)
+            self._prev_hp = (torch.where(m, own, self._prev_hp[0]),
+                             torch.where(m, ene, self._prev_hp[1]))
+            self._prev_crowns = torch.where(m.unsqueeze(1), s.crowns, self._prev_crowns)
         return self._obs()
 
     def _tower_totals(self):
@@ -87,31 +101,36 @@ class GPUSimVecEnv:
         return own.clone(), ene.clone()
 
     # ------------------------------------------------------------ action masks
-    def action_masks(self) -> torch.Tensor:
+    def action_masks(self, side: int = 0) -> torch.Tensor:
         """(B, 61) bool: no-op always allowed; a play needs a non-empty affordable
-        hand slot and (troops only) a legal deployment zone."""
+        hand slot and (troops only) a legal deployment zone.
+
+        `side` 0 = blue (the learning side), 1 = red (opponent policies)."""
         s = self.sim.s
         dev = self.sim.device
         masks = torch.zeros(self.b, N_ACTIONS, dtype=torch.bool, device=dev)
         masks[:, 0] = True
-        zone_xy = torch.tensor(ZONES, dtype=torch.float32, device=dev)
+        zone_xy = torch.tensor(_ZONES_BY_SIDE[side], dtype=torch.float32, device=dev)
         for slot in range(4):
-            card = s.hand[:, 0, slot]
+            card = s.hand[:, side, slot]
             cclamp = card.clamp(0, len(self.sim.t.names) - 1)
             ok = card >= 0
             if not bool(ok.any()):
                 continue
-            afford = s.elixir[:, 0] >= self.sim._costs[cclamp] - 1e-6
+            afford = s.elixir[:, side] >= self.sim._costs[cclamp] - 1e-6
             is_spell = self.sim.t.card_types[cclamp] == 1
             for z in range(15):
                 x = zone_xy[z, 0].expand(self.b)
                 y = zone_xy[z, 1].expand(self.b)
-                zok = torch.where(is_spell, torch.ones_like(ok), self.sim._zone_ok(0, x, y))
+                zok = torch.where(is_spell, torch.ones_like(ok), self.sim._zone_ok(side, x, y))
                 masks[:, 1 + slot * 15 + z] = ok & afford & zok
         return masks
 
-    # ------------------------------------------------------------------- step
-    def step(self, actions: torch.Tensor) -> VecStep:
+    # ---------------------------------------------------------------- actions
+    def apply_actions(self, side: int, actions: torch.Tensor) -> None:
+        """Play 61-code actions (0 = no-op) for `side`; illegal plays are dropped
+        by the sim's own checks. Used by `step()` for blue and by opponent
+        policies driving red."""
         assert actions.shape == (self.b,)
         dev = self.sim.device
         a = actions.to(dev)
@@ -119,15 +138,19 @@ class GPUSimVecEnv:
         idx = (a - 1).clamp(min=0)
         slot = (idx // 15).long()
         zone = (idx % 15).long()
-        ztab = torch.tensor(ZONES, dtype=torch.float32, device=dev)
+        ztab = torch.tensor(_ZONES_BY_SIDE[side], dtype=torch.float32, device=dev)
         zx = ztab[zone, 0]
         zy = ztab[zone, 1]
-
         # one play() call per hand slot, restricted to the envs that chose it
         for sl in range(4):
             sel = (~noop) & (slot == sl)
             if bool(sel.any()):
-                self.sim.play(0, sl, zx, zy, env_mask=sel)
+                self.sim.play(side, sl, zx, zy, env_mask=sel)
+
+    # ------------------------------------------------------------------- step
+    def step(self, actions: torch.Tensor) -> VecStep:
+        assert actions.shape == (self.b,)
+        self.apply_actions(0, actions)
 
         self.sim.tick(STEP_TICKS)
 

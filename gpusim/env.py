@@ -11,6 +11,7 @@ blue (bottom) side = y >= 16. Level-1 base values + level factor scaling.
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 import torch
@@ -124,7 +125,14 @@ class BatchedCRSim:
         self.reset()
 
     # ------------------------------------------------------------------ reset
-    def reset(self) -> SimState:
+    def reset(self, env_mask: torch.Tensor | None = None) -> SimState:
+        """Reset all rows, or only the rows selected by ``env_mask`` (B,) bool.
+
+        Geometry tables (tower_pos/tower_king/tower_side) are rebuilt for the
+        whole batch (row-independent). The partial form is the auto-reset hook
+        used by the SB3 vector env (M5): a finished battle restarts without
+        touching its neighbours in the lockstep batch.
+        """
         b, dev = self.b, self.device
         # tower geometry tables
         pos = []
@@ -137,7 +145,7 @@ class BatchedCRSim:
         self.tower_king = torch.tensor(sum(king_flags, []), dtype=torch.bool, device=dev)
         self.tower_side = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long, device=dev)
 
-        self.s = SimState(
+        new = SimState(
             elixir=torch.full((b, 2), ELIXIR_START, device=dev),
             time=torch.zeros(b, device=dev),
             tower_hp=torch.where(self.tower_king, torch.full((N_TOWERS,), T_KING_HP, device=dev),
@@ -179,6 +187,16 @@ class BatchedCRSim:
             cycle=torch.full((b, 2, 8), -1, dtype=torch.long, device=dev),
             cycle_pos=torch.zeros(b, 2, dtype=torch.long, device=dev),
         )
+        if env_mask is None or bool(env_mask.all()):
+            self.s = new
+        else:
+            old = self.s
+            m = env_mask.to(dev)
+            for f in dataclasses.fields(SimState):
+                o, n = getattr(old, f.name), getattr(new, f.name)
+                mask = m.view(-1, *([1] * (o.dim() - 1)))
+                setattr(new, f.name, torch.where(mask, n, o))
+            self.s = new
         return self.s
 
     # ------------------------------------------------------------ deployment
@@ -244,11 +262,18 @@ class BatchedCRSim:
         s.spawn_pos[e, side, j, 1] = yy
 
     # ------------------------------------------------------- hand / card cycle
-    def set_deck(self, side: int, card_idxs: list[int]) -> None:
-        """Set the 8-card deck for every env on `side` (hand = first 4, cycle = rest)."""
+    def set_deck(self, side: int, card_idxs: list[int],
+                 env_mask: torch.Tensor | None = None) -> None:
+        """Set the 8-card deck for `side` (hand = first 4, cycle = rest).
+
+        `env_mask` (B,) bool restricts the write to selected rows (used after a
+        partial reset so only restarted battles get a fresh hand).
+        """
         assert len(card_idxs) == 8
         s = self.s
-        for e in range(self.b):
+        rows = range(self.b) if env_mask is None \
+            else torch.nonzero(env_mask, as_tuple=False).flatten().tolist()
+        for e in rows:
             for k, ci in enumerate(card_idxs):
                 if k < 4:
                     s.hand[e, side, k] = ci
@@ -296,11 +321,17 @@ class BatchedCRSim:
 
         ok = ok_troop | ok_spell
         for e in torch.nonzero(ok, as_tuple=False).flatten().tolist():
-            pos = int(s.cycle_pos[e, side]) % 8
+            # 4-slot draw queue: draw the next card into the played slot, put the
+            # played card back at the drawn position (the queue's back). This is
+            # an exact FIFO equivalent of the Java Hand model (played -> back of
+            # cycle, next -> empty slot, draw new next); `cycle_pos % 4`, NOT
+            # % 8 — the queue holds 4 pending cards, and drawing past them would
+            # read uninitialised slots (-1).
+            pos = int(s.cycle_pos[e, side]) % 4
             played = int(s.hand[e, side, slot])
             s.hand[e, side, slot] = s.cycle[e, side, pos]
             s.cycle[e, side, pos] = played
-            s.cycle_pos[e, side] += 1
+            s.cycle_pos[e, side] = (s.cycle_pos[e, side] + 1) % 4
         return ok
 
     def _cast_spell(self, side: int, card: torch.Tensor, x: torch.Tensor,

@@ -72,6 +72,39 @@ def test_determinism():
     assert torch.equal(out_a.reward, out_b.reward)
 
 
+def test_partial_reset_only_masked_rows():
+    """M5 auto-reset hook: resetting selected rows restarts them exactly like a
+    fresh battle (state + deck + masks) while neighbours keep playing."""
+    from gpusim.env import ELIXIR_START
+
+    venv = _vv(b=2)
+    fresh = _vv(b=1)
+    fresh_obs = fresh.reset()[0]
+    venv.reset()
+    # spend elixir + deploy on both rows, then advance
+    venv.apply_actions(0, torch.tensor([1 + 0 * 15 + 4, 1 + 1 * 15 + 1]))
+    venv.sim.tick(45)
+    t_before = float(venv.sim.s.time[1])
+    assert t_before > 2.0
+
+    obs = venv.reset(env_mask=torch.tensor([True, False]))
+    s = venv.sim.s
+    # row 0: fully fresh (state, deck, cycle) and obs identical to a new battle
+    assert float(s.time[0]) == 0.0
+    assert float(s.elixir[0, 0]) == ELIXIR_START
+    assert not s.u_active[0].any() and not s.p_active[0].any()
+    assert s.hand[0, 0].tolist() == fresh.sim.s.hand[0, 0].tolist()
+    assert torch.equal(obs[0], fresh_obs)
+    # row 1: untouched progress, deck state preserved
+    assert float(s.time[1]) == t_before
+    assert abs(float(s.elixir[1, 0]) - ELIXIR_START) > 1e-6 or bool(s.u_active[1].any())
+
+    # the batch keeps stepping normally after a partial reset
+    out = venv.step(torch.tensor([0, 0]))
+    assert out.obs.shape == (2, OBS_DIM)
+    assert float(venv.sim.s.time[0]) > 0.0
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:
